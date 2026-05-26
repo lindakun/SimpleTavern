@@ -1,0 +1,208 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+本文件为 Claude Code 提供 SimpleTavern 重构工作区的开发指引。
+
+## 项目概述
+
+本目录是 **SillyTavern 后端重构**的独立工作区。重构代码**全新搭建在此目录下**，与原项目 `/Users/linda/code/SillyTavern/` **完全独立**，两边不共享代码、不互相修改。
+
+SillyTavern 是一个面向高级用户的 LLM 前端（v1.18.0，AGPL-3.0），后端使用 Node.js/Express，前端使用原生 HTML/CSS/JavaScript。
+
+**重构目标**：前后端分离，后端迁移到 TypeScript + 分层架构（Controller → Service → Repository），前端零感知迁移。
+
+## 新旧项目关系
+
+```
+/Users/linda/code/SillyTavern/   ← 原项目（不动）
+  ├── src/                       ← 旧后端代码
+  ├── public/                    ← 旧前端（重构期间仍使用此前端）
+  └── data/                      ← 共享数据（新后端只读）
+
+/Users/linda/code/SimpleTavern/  ← 新项目（前后端分离）
+  ├── backend/                   ← TypeScript 后端
+  │   └── src/                   ← 后端源码
+  ├── frontend/                  ← React 19 前端
+  │   └── src/                   ← 前端源码
+  └── refactor/                  ← 规划文档
+```
+
+**关键约定**：
+- 后端独立运行在 **8001 端口**（原项目 8000）
+- 前端运行在 **3000 端口**，Vite proxy 将 `/api/*` 转发到后端
+- 原项目的 `data/` 目录作为共享数据源，新项目**只读**原有数据格式
+- 角色卡 PNG 与 JSON 完全兼容原 SillyTavern（V1/V2/V3）
+
+## 开发命令
+
+```bash
+# === 后端（端口 8001）===
+cd /Users/linda/code/SimpleTavern/backend
+npm install
+npm run dev                  # tsx watch 热重载
+npm run build                # tsc 编译（tsconfig: strict, NodeNext）
+npm run start                # 无 watch 启动
+
+# === 前端（端口 3000，代理 /api/* → 8001）===
+cd /Users/linda/code/SimpleTavern/frontend
+npm install
+npm run dev                  # Vite 开发服务器
+npm run build                # Vite 构建
+npm run preview              # Vite 预览构建产物
+npm run lint                 # tsc --noEmit 类型检查
+
+# === 同时运行（开发时需两个终端）===
+# 终端 1: 启动后端
+cd /Users/linda/code/SimpleTavern/backend && npm run dev
+# 终端 2: 启动前端
+cd /Users/linda/code/SimpleTavern/frontend && npm run dev
+```
+
+## 配置
+
+### 环境变量（backend/.env）
+
+```bash
+# 数据目录（默认指向 /Users/linda/code/SillyTavern/data）
+SIMPLE_TAVERN_DATA_ROOT=/path/to/data
+
+# 日志级别：debug | info | warn | error
+LOG_LEVEL=info
+
+# 多 LLM 配置，按序号扩展
+SIMPLE_TAVERN_LLM_0_BASE_URL=https://api.xxx.com/v1
+SIMPLE_TAVERN_LLM_0_MODEL=model-name
+SIMPLE_TAVERN_LLM_0_API_KEY=sk-xxx
+SIMPLE_TAVERN_LLM_0_NAME=MyProvider
+SIMPLE_TAVERN_LLM_1_BASE_URL=...
+```
+
+配置优先级：CLI 参数 > 环境变量 > config.yaml（从原项目读取）> 默认值。
+
+config.yaml 中的 port 会自动 +1（原项目 8000 → 新后端 8001）。
+
+## 后端架构
+
+### 分层结构
+
+```
+server.ts ← app.ts ← modules/*/
+  ├── controller/     ← 路由处理，req/res 处理，调用 service，错误转发给 next(err)
+  ├── service/        ← 纯函数，无副作用，接收目录路径等上下文参数
+  ├── repository/     ← 文件 I/O 封装（PNG 角色卡、JSONL 聊天、用户持久化）
+  ├── routes/         ← Express Router 定义，关联到 controller 方法
+  ├── validator/      ← 输入验证（角色数据校验）
+  └── parser/         ← 格式解析（PNG 角色卡读取）
+```
+
+### 代码约定
+
+- **Controller**: try/catch 包裹，成功调用 `res.json()`，失败调用 `next(err)`，由全局 `errorHandler` 统一处理
+- **Service**: 纯导出函数（非 class），直接接收 `charactersDir`、`chatsDir` 等路径参数
+- **Repository**: 文件系统操作的唯一入口
+- **Result 模式**（`common/result.ts`）: `Result<T, E>` 类型用于需要显式处理成功/失败的场景，分为 `Ok` 和 `Err`，替代隐式 throw/catch
+- **错误层次**（`common/errors.ts`）: `AppError` 基类 → `NotFoundError`(404) / `BadRequestError`(400) / `UnauthorizedError`(401) / `ForbiddenError`(403) / `ConflictError`(409) / `TooManyRequestsError`(429)
+
+### 认证机制
+
+- Cookie-session 认证（非 JWT，使用 `cookie-session` 包）
+- `auth-guard.ts` 提供两个中间件：`requireLogin`（检查 session.handle）和 `requireAdmin`（额外检查 session.admin）
+- 路由分为**公开**（注册在 `requireLogin` 之前）和**私有**（注册在之后）
+- 公开路由示例：登录、注册、角色发现、AI 聊天、收藏、用户角色列表、聊天线程、角色导入
+
+### 数据存储
+
+| 数据类型 | 存储方式 | 位置 |
+|---------|---------|------|
+| 用户 | node-persist (JSON key-value) | `dataRoot/default-user/` |
+| 角色 | PNG 角色卡（嵌入 JSON） | `dataRoot/<user>/characters/` |
+| 聊天 | .jsonl 文件（每行一个 JSON） | `dataRoot/<user>/chats/<character>/` |
+| 设置 | JSON 文件 | `dataRoot/<user>/settings.json` |
+
+### 模块清单
+
+| 模块 | 文件 | 职责 |
+|------|------|------|
+| **auth** | `auth.controller.ts`, `auth.service.ts`, `auth.routes.ts` | 登录/登出/密码恢复/管理员用户管理 |
+| **users** | `users.repository.ts`, `users.service.ts`, `favorites.controller.ts`, `favorites.routes.ts` | 用户数据层、收藏、设置 |
+| **characters** | `characters.controller.ts`, `characters.service.ts`, `characters.repository.ts`, `characters.validator.ts`, `characters.parser.ts`, `characters.importer.ts`, `characters.user.service.ts` | 角色 CRUD、PNG 角色卡读写、导入/导出、用户发布 |
+| **chats** | `chats.controller.ts`, `chats.service.ts`, `chats.repository.ts` | 聊天读写、JSONL 文件操作、路径安全检查 |
+| **backends** | `chat-completions/`, `llm-config.ts`, `types.ts` | AI 聊天补全（OpenAI-compatible）、LLM 配置、多 provider 支持 |
+| **discover** | `discover.controller.ts`, `seed.service.ts` | 发现页面、种子角色、评价系统 |
+
+### 共享中间件
+
+| 中间件 | 位置 | 功能 |
+|--------|------|------|
+| CORS | `shared/middleware/cors.ts` | CORS 配置 |
+| 错误处理 | `shared/middleware/error-handler.ts` | 统一错误响应格式 `{ error, message }` |
+| 认证守卫 | `shared/middleware/auth-guard.ts` | requireLogin / requireAdmin |
+| 请求上下文 | `shared/middleware/request-context.ts` | 请求追踪 |
+
+## 前端架构
+
+### 技术栈
+
+- **React 19** + TypeScript
+- **Vite 6** + `@vitejs/plugin-react`
+- **Tailwind CSS v4** + `@tailwindcss/vite`（零配置文件）
+- **motion** v12（动画，AnimatePresence 页面切换）
+- **lucide-react**（图标）
+
+### 路由
+
+无 react-router。手动路由，基于 `ScreenId` 枚举在 `App.tsx` 中做条件渲染，使用 `AnimatePresence` 实现页面切换动画。
+
+```
+App.tsx ← 14 个 Screen 组件
+  ├── WelcomeScreen / EmailLoginScreen / RegisterScreen
+  ├── DiscoverScreen / CharacterDetailScreen
+  ├── ChatScreen（AI 对话）
+  ├── CreateChoiceScreen / CreateCharacterScreen
+  ├── MessageCenterScreen / ProfileScreen
+  ├── MyCharactersScreen / MyFavoritesScreen
+  ├── SettingsScreen / HelpFeedbackScreen
+```
+
+### 数据流
+
+- 使用 `useState` 管理应用状态（characters, favoriteIds, chatThreads）
+- `useEffect` 在挂载时从后端加载数据
+- 对后端 API 调用使用 optimistic UI updates + rollback 模式
+- `App.tsx` 作为唯一状态管理组件，子组件通过 props 接收数据和回调
+
+## 已实现的 API 端点
+
+| 分类 | 端点 | 说明 |
+|------|------|------|
+| **公开** | `GET /csrf-token` `GET /version` | 基础端点 |
+| **认证** | `POST /api/users/login|list|recover-*` | 登录/用户列表/密码恢复 |
+| **用户** | `POST /api/users/logout|change-*` | 登出/改密码/改名/改头像 |
+| **管理员** | `POST /api/users/create|delete|disable|enable|promote|demote` | 用户管理 |
+| **收藏** | `GET/POST /api/users/favorites` `DELETE /api/users/favorites/:id` | 收藏系统 |
+| **角色** | `POST /api/characters/all|get|create|edit|delete|rename|export|import|chats|publish` | 角色 CRUD + 导入导出 |
+| **发现** | `GET /api/discover` `GET /api/discover/:id` `POST /api/discover/:id/reviews` | 种子角色 + 导入角色 |
+| **聊天** | `POST /api/chats/save|get|rename|delete|export|import` `POST /api/chats/group/*` | 聊天 CRUD + 群组 |
+| **AI 聊天** | `POST /api/chat` `GET /api/chat/providers` | 角色扮演聊天（多 LLM） |
+| **线程** | `GET /api/chat/threads` `GET /api/chat/threads/:id` | 聊天历史 |
+| **用户角色** | `GET /api/users/characters` | 用户创建的角色列表 |
+| **设置** | `GET/POST /api/users/settings` | 用户设置读写 |
+
+## 重构进度
+
+| 阶段 | 内容 | 状态 |
+|------|------|------|
+| 0 | 基础设施搭建（TypeScript/Express/Config） | ✓ 完成 |
+| 1 | 认证与用户模块（登录/注册/密码管理） | ✓ 完成 |
+| 2 | 角色与聊天模块（CRUD + PNG 角色卡） | ✓ 完成 |
+| 3 | AI 后端模块（OpenAI-compatible 多 LLM 支持） | ✓ 完成 |
+| 4 | 用户功能模块（收藏/发布角色/聊天线程/设置） | ✓ 完成 |
+| 5 | 图像与语音模块 | 待开始 |
+| 6 | 收尾与清理 | 待开始 |
+
+## 参考文档
+
+- `refactor/architecture-reference.md` — 原项目架构问题分析 + 完整 API 接口清单
+- `refactor/migration-plan.md` — 完整重构计划（目标架构、6 阶段迁移、文件变更清单）
+- `refactor/api-reference.md` — 新后端 API 文档（含请求/响应格式、示例、数据模型）

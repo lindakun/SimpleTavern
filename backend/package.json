@@ -1,0 +1,53 @@
+{
+    "name": "simple-tavern",
+    "version": "0.1.0",
+    "description": "SillyTavern backend rewrite in TypeScript",
+    "type": "module",
+    "scripts": {
+        "dev": "tsx watch src/server.ts",
+        "start": "tsx src/server.ts",
+        "build": "tsc",
+        "lint": "echo 'TODO: add eslint'"
+    },
+    "dependencies": {
+        "@google/genai": "^2.6.0",
+        "archiver": "^7.0.1",
+        "chalk": "^5.6.0",
+        "compression": "^1.8.1",
+        "cookie-session": "^2.1.1",
+        "cors": "^2.8.6",
+        "crc": "^4.3.2",
+        "csrf-sync": "^4.2.1",
+        "dotenv": "^17.4.2",
+        "express": "^4.21.0",
+        "helmet": "^8.1.0",
+        "lodash": "^4.18.1",
+        "mime-types": "^3.0.2",
+        "multer": "^2.1.1",
+        "node-persist": "^4.0.4",
+        "png-chunk-text": "^1.0.0",
+        "png-chunks-extract": "^1.0.0",
+        "rate-limiter-flexible": "^5.0.5",
+        "sanitize-filename": "^1.6.4",
+        "uuid": "^14.0.0",
+        "yaml": "^2.8.3",
+        "yargs": "^17.7.1"
+    },
+    "devDependencies": {
+        "@types/archiver": "^6.0.3",
+        "@types/compression": "^1.8.1",
+        "@types/cookie-session": "^2.0.49",
+        "@types/cors": "^2.8.19",
+        "@types/express": "^4.17.23",
+        "@types/lodash": "^4.17.24",
+        "@types/mime-types": "^3.0.1",
+        "@types/multer": "^2.1.0",
+        "@types/node": "^22.0.0",
+        "@types/node-persist": "^3.1.8",
+        "@types/sanitize-filename": "^1.1.28",
+        "@types/uuid": "^10.0.0",
+        "@types/yargs": "^17.0.33",
+        "tsx": "^4.19.0",
+        "typescript": "^5.9.3"
+    }
+}

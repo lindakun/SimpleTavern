@@ -1,0 +1,161 @@
+import { ChatRequest, ChatResponse, LlmConfig, ChatMessage } from '../types.js';
+import { getLlmConfigs, getActiveLlm } from '../llm-config.js';
+import { logger } from '../../../common/logger.js';
+
+/**
+ * 构建角色扮演的消息列表
+ * 将用户请求 + 角色信息转换为 LLM 消息格式
+ */
+function buildMessages(req: ChatRequest): ChatMessage[] {
+    const messages: ChatMessage[] = [];
+
+    // 系统指令 — 角色设定
+    let systemPrompt = `You are roleplaying as a fictional character named "${req.characterName}".
+
+Character Description:
+${req.characterDescription || 'A fictional AI character in a cyberpunk world.'}`;
+
+    if (req.worldBook) {
+        systemPrompt += `\n\nWorldbook / Lore & Speaking Guidelines:
+${req.worldBook}`;
+    }
+
+    systemPrompt += `\n\nCRITICAL RULES:
+1. Always stay in character. Never speak as an AI assistant.
+2. Speak primarily in Chinese unless the character's description specifies otherwise.
+3. Keep responses conversational and relatively short.
+4. Show your character's personality traits in your responses.`;
+
+    messages.push({ role: 'system', content: systemPrompt });
+
+    // 历史消息
+    if (req.history && req.history.length > 0) {
+        for (const msg of req.history) {
+            messages.push({
+                role: msg.role === 'user' ? 'user' : 'assistant',
+                content: msg.text,
+            });
+        }
+    }
+
+    // 当前消息
+    messages.push({ role: 'user', content: req.message });
+
+    return messages;
+}
+
+/**
+ * 通过 OpenAI-compatible API 发送聊天补全请求
+ */
+async function callLlmApi(config: LlmConfig, messages: ChatMessage[]): Promise<string> {
+    const url = `${config.baseUrl.replace(/\/+$/, '')}/chat/completions`;
+
+    logger.debug(`LLM 请求: ${url}, model=${config.model}`);
+
+    const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${config.apiKey}`,
+        },
+        body: JSON.stringify({
+            model: config.model,
+            messages,
+            temperature: 0.9,
+            max_tokens: 1024,
+        }),
+    });
+
+    if (!response.ok) {
+        const errorText = await response.text().catch(() => 'Unknown error');
+        throw new Error(`LLM API 错误 (${response.status}): ${errorText}`);
+    }
+
+    const data = await response.json() as any;
+
+    if (!data.choices || data.choices.length === 0) {
+        throw new Error('LLM API 返回空响应');
+    }
+
+    return data.choices[0].message?.content || '';
+}
+
+/**
+ * 处理聊天请求 — 前端主入口
+ */
+export async function processChat(req: ChatRequest): Promise<ChatResponse> {
+    const configs = getLlmConfigs();
+
+    // 选择 LLM
+    let activeConfig: LlmConfig | undefined;
+    if (req.provider) {
+        activeConfig = configs.find(c => c.id === req.provider || c.name === req.provider);
+    }
+    if (!activeConfig) {
+        activeConfig = getActiveLlm();
+    }
+
+    if (!activeConfig) {
+        // 无配置时返回模拟回复
+        logger.warn('未配置 LLM，使用模拟回复');
+        return {
+            text: getSimulatedReply(req.characterName),
+            provider: 'mock',
+            model: 'mock',
+        };
+    }
+
+    const messages = buildMessages(req);
+
+    try {
+        const reply = await callLlmApi(activeConfig, messages);
+        return { text: reply || '……（未收到回复）', provider: activeConfig.id, model: activeConfig.model };
+    } catch (err: any) {
+        logger.error('LLM 调用失败:', err);
+        throw err;
+    }
+}
+
+/**
+ * 获取可用 LLM 列表
+ */
+export function getProviders() {
+    return getLlmConfigs().map(c => ({
+        id: c.id,
+        name: c.name,
+        model: c.model,
+    }));
+}
+
+/**
+ * 无 LLM 配置时的模拟回复
+ */
+function getSimulatedReply(characterName: string): string {
+    const name = characterName.toLowerCase();
+    if (name.includes('yuki') || name.includes('柚姬')) {
+        const r = [
+            '哼，你又在入侵我的个人终端？好大的胆子。下不为例……听懂了吗？',
+            '啧，一上来就问这个……你脑袋里的网络驱动器需要重置了吧？',
+            '真是服了你了……算了，跟你讲讲新京贫民区的极光也是可以的，不过不许告诉本区的主脑！',
+            '傲娇？谁是傲娇啊！我只是懒得理你……哼！',
+        ];
+        return r[Math.floor(Math.random() * r.length)];
+    }
+    if (name.includes('yuzu') || name.includes('柚子')) {
+        const r = [
+            '喵呜！网络信号连接成功！今天有什么烦恼喵？',
+            '太棒了喵！让元气的声波扫清你的大脑高频劳损吧！',
+            '（猫耳欢快地扑棱两下）今天的心率很稳定哦，奖励你一个特制的数码治愈音符~',
+        ];
+        return r[Math.floor(Math.random() * r.length)];
+    }
+    if (name.includes('samurai') || name.includes('武士') || name.includes('sam')) {
+        const r = [
+            '（握紧了刀柄）多说无益。在这片霓虹荒废的街道，唯有刀刃下的真相不会骗人。',
+            '你还年轻。别把命丢在大公司的佣兵手里。',
+            '哼。只要你给得齐源晶，我的刀刃，就是你的影子。',
+        ];
+        return r[Math.floor(Math.random() * r.length)];
+    }
+    return `【${characterName}】：“信号收到了。在新京2099的雨夜，你找我有什么事？”`;
+}
