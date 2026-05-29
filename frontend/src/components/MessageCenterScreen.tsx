@@ -1,4 +1,3 @@
-import React from 'react';
 import { ScreenId, Character, ChatThread } from '../types';
 import { RotateCw } from 'lucide-react';
 import BottomNav from './BottomNav';
@@ -92,8 +91,8 @@ export default function MessageCenterScreen({
             const thread = chatThreads[c.id];
             
             // Get last message text or fallback to tagline
-            const lastMsgText = thread?.messages?.length > 0
-              ? thread.messages[thread.messages.length - 1].text
+            const lastMsgText = thread?.messages && thread.messages.length > 0
+              ? thread.messages[thread.messages.length - 1]?.text || c.tagline
               : c.tagline;
 
             const unreadCount = thread?.unreadCount || 0;

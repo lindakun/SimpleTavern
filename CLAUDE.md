@@ -29,34 +29,103 @@ SillyTavern 是一个面向高级用户的 LLM 前端（v1.18.0，AGPL-3.0），
 ```
 
 **关键约定**：
-- 后端独立运行在 **8001 端口**（原项目 8000）
-- 前端运行在 **3000 端口**，Vite proxy 将 `/api/*` 转发到后端
+- 后端独立运行在 **8001 端口**（原项目 SillyTavern 在 8000）
+- 前端运行在 **3000 端口**
+- 管理后台运行在 **3002 端口**
 - 原项目的 `data/` 目录作为共享数据源，新项目**只读**原有数据格式
 - 角色卡 PNG 与 JSON 完全兼容原 SillyTavern（V1/V2/V3）
 
-## 开发命令
+## 开发环境
+
+开发环境使用 **Docker Compose** 部署在本机，三个服务各自运行在独立容器中：
+
+```
+/Users/linda/code/SimpleTavern/
+  ├── backend/    → simple-tavern-backend    (端口 8001)
+  ├── frontend/   → simple-tavern-frontend   (端口 3000)
+  ├── admin/      → simple-tavern-admin      (端口 3002)
+  ├── .env        → 共享环境变量（LLM 配置等）
+  └── docker-compose.yml
+```
+
+另有原项目 SillyTavern 的容器 `sillytavern`（端口 8000），当前处于 **Paused** 状态。
+
+### 常用 Docker 命令
 
 ```bash
-# === 后端（端口 8001）===
+cd /Users/linda/code/SimpleTavern
+
+# 启动全部服务
+docker compose up -d
+
+# 查看状态
+docker compose ps
+
+# 查看日志
+docker compose logs -f backend
+docker compose logs -f frontend
+docker compose logs -f admin
+
+# 重启单个服务
+docker compose restart backend
+
+# 停止全部服务
+docker compose down
+
+# 重新构建并启动（代码变更后）
+docker compose up -d --build
+```
+
+### 容器健康状态
+
+| 容器 | 端口 | 健康检查 | 状态 |
+|------|------|----------|------|
+| simple-tavern-backend | 8001 | `wget http://127.0.0.1:8001/version` | ✅ healthy |
+| simple-tavern-frontend | 3000 | 无 | ✅ running |
+| simple-tavern-admin | 3002 | 无 | ✅ running |
+
+> ⚠️ **注意**：健康检查必须使用 `127.0.0.1` 而非 `localhost`，因为容器内 `localhost` 可能解析到 IPv6 `::1` 导致连接失败。
+
+### 数据挂载
+
+backend 容器挂载本机的 `/Users/linda/code/SillyTavern/data` 作为 `/data`：
+- 角色卡：`/data/<user>/characters/`
+- 聊天记录：`/data/<user>/chats/<character>/`
+- 用户数据：`/data/default-user/`
+
+### 本地开发（非 Docker）
+
+也可以不用 Docker，直接在本机运行（适合频繁修改代码的场景）：
+
+```bash
+# === 一键启动脚本 ===
+./start-dev.sh
+
+# === 或手动分别启动 ===
+# 终端 1: 后端（tsx watch 热重载）
+cd /Users/linda/code/SimpleTavern/backend && npm run dev
+
+# 终端 2: 前端（Vite dev server）
+cd /Users/linda/code/SimpleTavern/frontend && npm run dev
+```
+
+### 构建命令
+
+```bash
+# === 后端 ===
 cd /Users/linda/code/SimpleTavern/backend
 npm install
 npm run dev                  # tsx watch 热重载
 npm run build                # tsc 编译（tsconfig: strict, NodeNext）
 npm run start                # 无 watch 启动
 
-# === 前端（端口 3000，代理 /api/* → 8001）===
+# === 前端 ===
 cd /Users/linda/code/SimpleTavern/frontend
 npm install
 npm run dev                  # Vite 开发服务器
 npm run build                # Vite 构建
 npm run preview              # Vite 预览构建产物
 npm run lint                 # tsc --noEmit 类型检查
-
-# === 同时运行（开发时需两个终端）===
-# 终端 1: 启动后端
-cd /Users/linda/code/SimpleTavern/backend && npm run dev
-# 终端 2: 启动前端
-cd /Users/linda/code/SimpleTavern/frontend && npm run dev
 ```
 
 ## 配置

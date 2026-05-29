@@ -1,0 +1,386 @@
+import { useState, useMemo } from 'react';
+import {
+  useAllCharacters,
+  useAdminDeleteCharacter,
+  useAdminDeletePublished,
+  useAdminEditCharacter,
+  useUsers,
+} from '../hooks/useAdminApi';
+import { Search, Trash2, X, Check, User, Pencil } from 'lucide-react';
+import type { AdminCharacterItem } from '../types';
+
+export default function Characters() {
+  const { data: characters = [], isLoading, error } = useAllCharacters();
+  const { data: users = [] } = useUsers();
+  const deleteChar = useAdminDeleteCharacter();
+  const deletePublished = useAdminDeletePublished();
+  const editChar = useAdminEditCharacter();
+
+  // 过滤条件
+  const [ownerFilter, setOwnerFilter] = useState('ALL');
+  const [tagFilter, setTagFilter] = useState('ALL');
+  const [search, setSearch] = useState('');
+  const [confirmDelete, setConfirmDelete] = useState<{ owner: string; avatar: string; name: string; source: string } | null>(null);
+  const [editingChar, setEditingChar] = useState<AdminCharacterItem | null>(null);
+
+  // 提取所有唯一标签
+  const allTags = useMemo(() => {
+    const tags = new Set<string>();
+    for (const c of characters) {
+      if (Array.isArray(c.tags)) {
+        for (const t of c.tags) tags.add(t);
+      }
+    }
+    return ['ALL', ...Array.from(tags).sort()];
+  }, [characters]);
+
+  // 过滤后的角色列表
+  const filtered = useMemo(() => {
+    return characters.filter((c) => {
+      if (ownerFilter !== 'ALL' && c._owner !== ownerFilter) return false;
+      if (tagFilter !== 'ALL' && (!Array.isArray(c.tags) || !c.tags.includes(tagFilter))) return false;
+      if (search.trim()) {
+        const q = search.toLowerCase();
+        if (!c.name?.toLowerCase().includes(q)) return false;
+      }
+      return true;
+    });
+  }, [characters, ownerFilter, tagFilter, search]);
+
+  const handleDelete = async () => {
+    if (!confirmDelete) return;
+    try {
+      if (confirmDelete.source === 'published') {
+        await deletePublished.mutateAsync({
+          handle: confirmDelete.owner,
+          characterId: confirmDelete.avatar, // published uses characterId
+        });
+      } else {
+        await deleteChar.mutateAsync({
+          handle: confirmDelete.owner,
+          avatar_url: confirmDelete.avatar,
+        });
+      }
+      setConfirmDelete(null);
+    } catch { /* error handled by hook */ }
+  };
+
+  // 获取角色的 PNG 文件名（只显示 .png 的实际文件，不显示 URL）
+  const getFileName = (c: AdminCharacterItem) => {
+    const name = c._fileName || c.avatar || '';
+    if (name.endsWith('.png')) return name;
+    return '';
+  };
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-lg font-bold text-white font-mono tracking-wider">角色管理</h1>
+        <p className="text-xs text-on-surface-variant mt-1">
+          {isLoading ? '加载中...' : `共 ${filtered.length} / ${characters.length} 个角色`}
+        </p>
+      </div>
+
+      {/* 过滤条件 */}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="flex items-center gap-2 bg-surface-container/50 border border-outline-variant/20 rounded-xl px-3 py-1.5">
+          <User className="w-3.5 h-3.5 text-on-surface-variant/60" />
+          <select
+            value={ownerFilter}
+            onChange={(e) => setOwnerFilter(e.target.value)}
+            className="bg-transparent text-xs text-white outline-none cursor-pointer"
+          >
+            <option value="ALL">全部拥有者</option>
+            {users.map((u) => (
+              <option key={u.handle} value={u.handle}>{u.handle}</option>
+            ))}
+          </select>
+        </div>
+
+        <div className="flex items-center gap-2 bg-surface-container/50 border border-outline-variant/20 rounded-xl px-3 py-1.5">
+          <select
+            value={tagFilter}
+            onChange={(e) => setTagFilter(e.target.value)}
+            className="bg-transparent text-xs text-white outline-none cursor-pointer"
+          >
+            {allTags.map((tag) => (
+              <option key={tag} value={tag}>
+                {tag === 'ALL' ? '全部标签' : tag}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="relative flex-1 min-w-[200px]">
+          <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant/50 pointer-events-none" />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="按角色名称搜索..."
+            className="w-full bg-surface-container border border-outline-variant/30 rounded-xl py-1.5 pl-9 pr-4 text-xs text-white placeholder:text-on-surface-variant/30 outline-none focus:border-accent-pink transition-colors"
+          />
+        </div>
+      </div>
+
+      {error && (
+        <div className="bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3 text-xs text-red-400">
+          加载失败：{(error as Error).message}
+        </div>
+      )}
+
+      {/* 角色列表 */}
+      {isLoading ? (
+        <div className="space-y-3">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="h-16 bg-surface-container/50 rounded-xl animate-pulse" />
+          ))}
+        </div>
+      ) : (
+        <div className="bg-surface-container/30 border border-outline-variant/20 rounded-2xl overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-outline-variant/20 text-on-surface-variant font-mono">
+                  <th className="text-left px-5 py-3 font-semibold">角色名称</th>
+                  <th className="text-left px-5 py-3 font-semibold">拥有者</th>
+                  <th className="text-left px-5 py-3 font-semibold">标签</th>
+                  <th className="text-right px-5 py-3 font-semibold">大小</th>
+                  <th className="text-right px-5 py-3 font-semibold">操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="text-center py-12 text-on-surface-variant">
+                      没有找到匹配的角色
+                    </td>
+                  </tr>
+                ) : (
+                  filtered.map((char, i) => {
+                    const fileName = getFileName(char);
+                    return (
+                    <tr key={`${char._owner}_${fileName}_${i}`} className="border-b border-outline-variant/10 hover:bg-surface-container/50 transition-colors">
+                      <td className="px-5 py-3">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-7 h-7 rounded-lg bg-accent-purple/15 flex items-center justify-center text-[10px] font-bold text-accent-purple overflow-hidden flex-shrink-0">
+                            {char.avatar && !char.avatar.startsWith('data:') && char.avatar.startsWith('http') ? (
+                              <img src={char.avatar} alt="" className="w-full h-full object-cover" />
+                            ) : (
+                              (char.name?.[0] || '?').toUpperCase()
+                            )}
+                          </div>
+                          <div>
+                            <span className="text-white font-medium">{char.name || '未命名'}</span>
+                            {fileName && (
+                              <span className="text-on-surface-variant/40 ml-2 text-[10px] font-mono">{fileName}</span>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-5 py-3">
+                        <span className="text-on-surface-variant font-mono">{char._owner}</span>
+                      </td>
+                      <td className="px-5 py-3">
+                        <div className="flex flex-wrap gap-1">
+                          {(char.tags as string[])?.slice(0, 4).map((tag: string) => (
+                            <span key={tag} className="px-1.5 py-0.5 bg-surface-elevated/60 border border-outline-variant/20 rounded text-[9px] text-on-surface-variant">
+                              {tag}
+                            </span>
+                          ))}
+                          {(char.tags as string[])?.length > 4 && (
+                            <span className="text-[9px] text-on-surface-variant/40">
+                              +{(char.tags as string[]).length - 4}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-5 py-3 text-right text-on-surface-variant/60 font-mono text-[10px]">
+                        {char.data_size ? formatSize(char.data_size) : '-'}
+                      </td>
+                      <td className="px-5 py-3 text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          {char._source === 'seed' ? (
+                            <span className="text-[9px] text-on-surface-variant/30 font-mono italic px-2">内置</span>
+                          ) : (
+                            <>
+                              <button
+                                onClick={() => setEditingChar(char)}
+                                title="编辑角色"
+                                className="p-1.5 rounded-lg text-on-surface-variant/50 hover:text-accent-pink hover:bg-accent-pink/10 cursor-pointer transition-colors"
+                              >
+                                <Pencil className="w-3.5 h-3.5" />
+                              </button>
+
+                              {confirmDelete &&
+                               confirmDelete.owner === char._owner &&
+                               confirmDelete.avatar === fileName ? (
+                                <>
+                                  <button
+                                    onClick={handleDelete}
+                                    disabled={deleteChar.isPending}
+                                    className="p-1.5 rounded-lg text-red-400 hover:bg-red-500/10 cursor-pointer"
+                                    title="确认删除"
+                                  >
+                                    <Check className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    onClick={() => setConfirmDelete(null)}
+                                    className="p-1.5 rounded-lg text-on-surface-variant hover:text-white cursor-pointer"
+                                    title="取消"
+                                  >
+                                    <X className="w-3.5 h-3.5" />
+                                  </button>
+                                </>
+                              ) : (
+                                <button
+                                  onClick={() =>
+                                    setConfirmDelete({
+                                      owner: char._owner,
+                                      avatar: char._source === 'published' ? (char.id || '') : fileName,
+                                      name: char.name || fileName,
+                                      source: char._source || 'file',
+                                    })
+                                  }
+                                  title="删除角色"
+                                  className="p-1.5 rounded-lg text-on-surface-variant/50 hover:text-red-400 hover:bg-red-500/10 cursor-pointer transition-colors"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* 编辑弹窗 */}
+      {editingChar && (
+        <EditModal
+          char={editingChar}
+          fileName={getFileName(editingChar)}
+          onSave={async (name, tags) => {
+            await editChar.mutateAsync({
+              handle: editingChar._owner,
+              avatar_url: getFileName(editingChar),
+              name,
+              tags,
+            });
+            setEditingChar(null);
+          }}
+          onClose={() => setEditingChar(null)}
+          isPending={editChar.isPending}
+        />
+      )}
+    </div>
+  );
+}
+
+function formatSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes}B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
+}
+
+function EditModal({
+  char,
+  fileName,
+  onSave,
+  onClose,
+  isPending,
+}: {
+  char: AdminCharacterItem;
+  fileName: string;
+  onSave: (name: string, tags: string[]) => Promise<void>;
+  onClose: () => void;
+  isPending: boolean;
+}) {
+  const [name, setName] = useState(char.name || '');
+  const [tagsStr, setTagsStr] = useState(Array.isArray(char.tags) ? char.tags.join(', ') : '');
+  const [error, setError] = useState('');
+
+  const handleSave = async () => {
+    if (!name.trim()) {
+      setError('角色名称不能为空');
+      return;
+    }
+    const tags = tagsStr
+      .split(',')
+      .map((t) => t.trim())
+      .filter(Boolean);
+    await onSave(name.trim(), tags);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-6">
+      <div className="w-full max-w-md bg-surface border border-outline-variant/20 rounded-2xl overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-outline-variant/20">
+          <h2 className="text-sm font-bold text-white font-mono">编辑角色</h2>
+          <button onClick={onClose} className="text-on-surface-variant hover:text-white cursor-pointer">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="p-5 space-y-4">
+          <div className="flex items-center gap-3 pb-2 border-b border-outline-variant/10">
+            <span className="text-xs text-on-surface-variant font-mono">拥有者: {char._owner}</span>
+            <span className="text-[10px] text-on-surface-variant/40 font-mono">{fileName}</span>
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-[11px] font-semibold text-on-surface-variant ml-1">角色名称</label>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="w-full bg-surface-container border border-outline-variant/30 rounded-xl px-4 py-2.5 text-xs text-white placeholder:text-on-surface-variant/30 outline-none focus:border-accent-pink transition-colors"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-[11px] font-semibold text-on-surface-variant ml-1">
+              标签 <span className="text-on-surface-variant/40 font-normal">（逗号分隔）</span>
+            </label>
+            <input
+              type="text"
+              value={tagsStr}
+              onChange={(e) => setTagsStr(e.target.value)}
+              placeholder="傲娇, 治愈, 赛博朋克"
+              className="w-full bg-surface-container border border-outline-variant/30 rounded-xl px-4 py-2.5 text-xs text-white placeholder:text-on-surface-variant/30 outline-none focus:border-accent-pink transition-colors"
+            />
+          </div>
+
+          {error && (
+            <div className="bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-2.5 text-xs text-red-400">
+              {error}
+            </div>
+          )}
+
+          <div className="flex gap-3 pt-2">
+            <button
+              onClick={onClose}
+              className="flex-1 py-2.5 bg-surface-elevated border border-outline-variant/30 text-xs text-on-surface-variant rounded-xl hover:text-white transition-colors cursor-pointer"
+            >
+              取消
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={isPending}
+              className="flex-1 py-2.5 bg-gradient-to-r from-accent-pink to-accent-purple text-white text-xs font-bold rounded-xl hover:brightness-110 active:scale-95 disabled:opacity-50 transition-all cursor-pointer"
+            >
+              {isPending ? '保存中...' : '保存'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

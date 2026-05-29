@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { ScreenId, Character } from '../types';
 import { Search, X } from 'lucide-react';
 import BottomNav from './BottomNav';
+import { CharacterCardSkeleton } from './Skeleton';
 
 interface DiscoverScreenProps {
   characters: Character[];
@@ -35,9 +36,6 @@ export default function DiscoverScreen({
     return matchesSearch && matchesTag;
   });
 
-  // Yuki is our special VIP hero in Nocturnal Neon layout!
-  const yukiCharacter = characters.find((c) => c.id === 'yuki');
-
   return (
     <div className="relative min-h-screen bg-background-deep text-white pb-24">
       {/* Light glow effects */}
@@ -48,7 +46,7 @@ export default function DiscoverScreen({
       <header className="sticky top-0 z-40 bg-background-deep/80 backdrop-blur-md px-6 py-4 flex items-center justify-between border-b border-outline-variant/20">
         <div className="flex items-center gap-2">
           <img
-            src={characters.find((c) => c.id === 'yuzu_chan')?.avatar || 'https://lh3.googleusercontent.com/aida-public/AB6AXuBNJkIhL5VgrhIzVuQ-pQ9KjmstVrmxacrtGuB0W8LG1Wuj4MsAGn2nzXGu37GIac8AMsRYcOSrQ_BDfkoOxhF0_SX5zJ9vH8F2UKfZuX97jvw5ZC877pAQelU8AKYQSJKeSw49A3iQEM_3kaz6lGI4QuKTsB2J7p5GIVykxFsz_YHCd4FJ8Vos12aPC8BXhAOK86roItVXfexuUZM7tBC73wfLoRPLcCRbsfxlOWSwDiq5jkoo4VyvLzbLti0o-zgXjsJkOZV8JQ'}
+            src="/yuzuai_logo.png"
             alt="Yuzu AI Logo"
             referrerPolicy="no-referrer"
             className="w-8 h-8 rounded-full border border-accent-pink/40 object-cover shadow-[0_0_10px_rgba(232,121,199,0.3)]"
@@ -101,10 +99,16 @@ export default function DiscoverScreen({
 
         {/* Discovery Feed Grid */}
         <div className="space-y-4">
-          
-          {filteredCharacters.length === 0 ? (
+
+          {filteredCharacters.length === 0 && searchQuery ? (
             <div className="py-12 bg-surface-container/30 border border-outline-variant/20 rounded-2xl text-center text-on-surface-variant">
               没有找到匹配的AI角色
+            </div>
+          ) : filteredCharacters.length === 0 ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <CharacterCardSkeleton key={i} />
+              ))}
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">

@@ -321,12 +321,12 @@ export default function ProfileScreen({
                 onMouseLeave={handleDragEnd}
                 onTouchStart={(e) => {
                   const t = e.touches[0];
-                  handleDragStart(t.clientX, t.clientY);
+                  if (t) handleDragStart(t.clientX, t.clientY);
                 }}
                 onTouchMove={(e) => {
                   if (dragStart.current) {
                     const t = e.touches[0];
-                    handleDragMove(t.clientX, t.clientY);
+                    if (t) handleDragMove(t.clientX, t.clientY);
                   }
                 }}
                 onTouchEnd={handleDragEnd}

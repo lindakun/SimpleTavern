@@ -21,6 +21,18 @@
       ]
     },
     "allowImportingTsExtensions": true,
-    "noEmit": true
+    "noEmit": true,
+
+    // 严格模式
+    "strict": true,
+    "noImplicitAny": true,
+    "noImplicitReturns": true,
+    "noImplicitThis": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    // 暂时关闭 strictNullChecks 的严格可选属性检查，避免大量重构
+    // "exactOptionalPropertyTypes": true,
+    // "noUncheckedIndexedAccess": true
   }
 }

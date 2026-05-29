@@ -1,0 +1,50 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --color-background-deep: #090A0F;
+  --color-surface: #0F111A;
+  --color-surface-container: #161823;
+  --color-surface-elevated: #1A1D29;
+
+  --color-accent-pink: #EC4899;
+  --color-accent-purple: #8B5CF6;
+
+  --color-on-surface: #E0E0E6;
+  --color-on-surface-variant: #9FA1AC;
+
+  --color-outline-variant: rgba(255, 255, 255, 0.08);
+
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+
+  --animate-subtle-fadeIn: subtle-fadeIn 0.25s ease-out forwards;
+}
+
+@keyframes subtle-fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+html {
+  background-color: #090A0F;
+}
+
+body {
+  overflow-x: hidden;
+}
+
+/* 自定义滚动条 */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(236, 72, 153, 0.3);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(236, 72, 153, 0.5);
+}

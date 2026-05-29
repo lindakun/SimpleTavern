@@ -1,0 +1,167 @@
+import { Request, Response, NextFunction } from 'express';
+import { getAllUsers, getUserDirectories } from '../users/users.repository.js';
+import { getAllCharacters, removeCharacter, processCharacter, editCharacter } from './characters.service.js';
+import { getSeedCharacters } from './seed.service.js';
+import { getUserCharacters, deleteUserCharacter } from './characters.user.service.js';
+import { getConfig } from '../../config/index.js';
+
+/**
+ * 管理员 - 获取所有用户的所有角色
+ * POST /api/characters/admin-all
+ */
+export async function adminGetAllCharacters(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+        const config = getConfig();
+        const filterHandle = req.body?.handle as string | undefined;
+        const users = await getAllUsers();
+        const results: Record<string, unknown>[] = [];
+
+        // 1. 种子角色
+        if (!filterHandle) {
+            for (const seed of getSeedCharacters()) {
+                results.push({
+                    ...seed,
+                    _owner: '__seed__',
+                    _fileName: '',
+                    _source: 'seed',
+                });
+            }
+        }
+
+        // 2. 用户发布角色（node-persist 存储）
+        for (const user of users) {
+            const handle = user.handle;
+            if (filterHandle && handle !== filterHandle) continue;
+            const userChars = await getUserCharacters(handle);
+            for (const uc of userChars) {
+                results.push({
+                    ...uc,
+                    _owner: handle,
+                    _fileName: '',
+                    _source: 'published',
+                });
+            }
+        }
+
+        // 3. 文件角色（PNG 角色卡）
+        for (const user of users) {
+            const handle = user.handle;
+            if (filterHandle && handle !== filterHandle) continue;
+
+            const dirs = getUserDirectories(config.dataRoot, handle);
+            const characters = getAllCharacters(dirs.characters, dirs.chats, true);
+
+            for (const char of characters) {
+                const fileName = (char as Record<string, unknown>).avatar as string || '';
+                results.push({
+                    ...char,
+                    _owner: handle,
+                    _fileName: fileName,
+                    _source: 'file',
+                });
+            }
+        }
+
+        res.json(results);
+    } catch (err) {
+        next(err);
+    }
+}
+
+/**
+ * 管理员 - 删除指定用户的指定角色
+ * POST /api/characters/admin-delete
+ */
+export async function adminDeleteCharacter(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+        const { handle, avatar_url } = req.body as { handle?: string; avatar_url?: string };
+
+        if (!handle || !avatar_url) {
+            res.status(400).json({ error: 'BAD_REQUEST', message: 'Missing required fields: handle, avatar_url' });
+            return;
+        }
+
+        const config = getConfig();
+        const dirs = getUserDirectories(config.dataRoot, handle);
+        const deleted = removeCharacter(avatar_url, dirs.characters);
+
+        if (!deleted) {
+            res.status(404).json({ error: 'NOT_FOUND', message: 'Character not found' });
+            return;
+        }
+
+        res.json({ ok: true });
+    } catch (err) {
+        next(err);
+    }
+}
+
+/**
+ * 管理员 - 编辑指定用户的指定角色
+ * POST /api/characters/admin-edit
+ */
+export async function adminEditCharacter(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+        const { handle, avatar_url, name, tags } = req.body as {
+            handle?: string; avatar_url?: string;
+            name?: string; tags?: string[];
+        };
+
+        if (!handle || !avatar_url) {
+            res.status(400).json({ error: 'BAD_REQUEST', message: 'Missing required fields: handle, avatar_url' });
+            return;
+        }
+
+        const config = getConfig();
+        const dirs = getUserDirectories(config.dataRoot, handle);
+
+        // 读取完整角色数据
+        const fullChar = processCharacter(avatar_url, dirs.characters, dirs.chats, false);
+        if (!fullChar) {
+            res.status(404).json({ error: 'NOT_FOUND', message: 'Character not found' });
+            return;
+        }
+
+        // 更新字段（Record<string, unknown> 类型字段用索引访问）
+        if (name !== undefined) {
+            fullChar['name'] = name;
+            const data = fullChar['data'] as Record<string, unknown> | undefined;
+            if (data) data['name'] = name;
+        }
+        if (tags !== undefined) {
+            fullChar['tags'] = tags;
+            const data = fullChar['data'] as Record<string, unknown> | undefined;
+            if (data) data['tags'] = tags;
+        }
+
+        editCharacter(avatar_url, dirs.characters, fullChar);
+        res.json({ ok: true });
+    } catch (err) {
+        next(err);
+    }
+}
+
+/**
+ * 管理员 - 删除指定用户的发布角色
+ * POST /api/characters/admin-delete-published
+ */
+export async function adminDeletePublishedCharacter(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+        const { handle, characterId } = req.body as { handle?: string; characterId?: string };
+
+        if (!handle || !characterId) {
+            res.status(400).json({ error: 'BAD_REQUEST', message: 'Missing required fields: handle, characterId' });
+            return;
+        }
+
+        const deleted = await deleteUserCharacter(handle, characterId);
+        if (!deleted) {
+            res.status(404).json({ error: 'NOT_FOUND', message: 'Published character not found' });
+            return;
+        }
+
+        res.json({ ok: true });
+    } catch (err) {
+        next(err);
+    }
+}

@@ -1,4 +1,3 @@
-import React from 'react';
 import { ScreenId } from '../types';
 import { X, Zap, Edit, Sparkles } from 'lucide-react';
 
@@ -23,7 +22,7 @@ export default function CreateChoiceScreen({ onNavigate }: CreateChoiceScreenPro
         >
           <X className="w-3.5 h-3.5 text-accent-pink group-hover/back:rotate-90 transition-transform duration-200" />
           <img
-            src="https://lh3.googleusercontent.com/aida-public/AB6AXuBNJkIhL5VgrhIzVuQ-pQ9KjmstVrmxacrtGuB0W8LG1Wuj4MsAGn2nzXGu37GIac8AMsRYcOSrQ_BDfkoOxhF0_SX5zJ9vH8F2UKfZuX97jvw5ZC877pAQelU8AKYQSJKeSw49A3iQEM_3kaz6lGI4QuKTsB2J7p5GIVykxFsz_YHCd4FJ8Vos12aPC8BXhAOK86roItVXfexuUZM7tBC73wfLoRPLcCRbsfxlOWSwDiq5jkoo4VyvLzbLti0o-zgXjsJkOZV8JQ"
+            src="/yuzuai_logo.png"
             alt="Yuzu AI Logo"
             referrerPolicy="no-referrer"
             className="w-4 h-4 rounded-full object-cover border border-accent-pink/40"

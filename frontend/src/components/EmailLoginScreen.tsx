@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { ScreenId } from '../types';
-import { ArrowLeft, Zap, GitBranch, Terminal, ChevronLeft } from 'lucide-react';
+import { Zap, GitBranch, Terminal, ChevronLeft } from 'lucide-react';
 
 interface EmailLoginScreenProps {
   onNavigate: (screen: ScreenId) => void;
@@ -34,7 +34,7 @@ export default function EmailLoginScreen({ onNavigate, onLogin }: EmailLoginScre
         >
           <ChevronLeft className="w-3.5 h-3.5 text-accent-pink group-hover/back:-translate-x-0.5 transition-transform" />
           <img
-            src="https://lh3.googleusercontent.com/aida-public/AB6AXuBNJkIhL5VgrhIzVuQ-pQ9KjmstVrmxacrtGuB0W8LG1Wuj4MsAGn2nzXGu37GIac8AMsRYcOSrQ_BDfkoOxhF0_SX5zJ9vH8F2UKfZuX97jvw5ZC877pAQelU8AKYQSJKeSw49A3iQEM_3kaz6lGI4QuKTsB2J7p5GIVykxFsz_YHCd4FJ8Vos12aPC8BXhAOK86roItVXfexuUZM7tBC73wfLoRPLcCRbsfxlOWSwDiq5jkoo4VyvLzbLti0o-zgXjsJkOZV8JQ"
+            src="/yuzuai_logo.png"
             alt="Yuzu AI Logo"
             referrerPolicy="no-referrer"
             className="w-4 h-4 rounded-full object-cover border border-accent-pink/40"
@@ -55,7 +55,7 @@ export default function EmailLoginScreen({ onNavigate, onLogin }: EmailLoginScre
               alt="Yuzu AI Avatar active"
               referrerPolicy="no-referrer"
               className="w-full h-full object-cover rounded-full"
-              src="https://lh3.googleusercontent.com/aida-public/AB6AXuBNJkIhL5VgrhIzVuQ-pQ9KjmstVrmxacrtGuB0W8LG1Wuj4MsAGn2nzXGu37GIac8AMsRYcOSrQ_BDfkoOxhF0_SX5zJ9vH8F2UKfZuX97jvw5ZC877pAQelU8AKYQSJKeSw49A3iQEM_3kaz6lGI4QuKTsB2J7p5GIVykxFsz_YHCd4FJ8Vos12aPC8BXhAOK86roItVXfexuUZM7tBC73wfLoRPLcCRbsfxlOWSwDiq5jkoo4VyvLzbLti0o-zgXjsJkOZV8JQ"
+              src="/yuzuai_logo.png"
             />
           </div>
           <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 bg-accent-pink px-3 py-0.5 rounded-full shadow-lg">

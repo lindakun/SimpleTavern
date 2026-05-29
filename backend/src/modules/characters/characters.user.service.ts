@@ -86,3 +86,18 @@ export async function getUserCharacter(handle: string, characterId: string): Pro
         return null;
     }
 }
+
+/**
+ * 删除用户发布角色
+ */
+export async function deleteUserCharacter(handle: string, characterId: string): Promise<boolean> {
+    try {
+        const key = `userchar:${handle}:${characterId}`;
+        const exists = await storage.getItem(key);
+        if (!exists) return false;
+        await storage.removeItem(key);
+        return true;
+    } catch {
+        return false;
+    }
+}

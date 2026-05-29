@@ -1,4 +1,3 @@
-import React from 'react';
 import { ScreenId } from '../types';
 import { Mail } from 'lucide-react';
 
@@ -17,7 +16,7 @@ export default function WelcomeScreen({ onNavigate }: WelcomeScreenProps) {
       <header className="flex justify-between items-center h-16 relative z-10">
         <div className="flex items-center gap-2.5">
           <img
-            src="https://lh3.googleusercontent.com/aida-public/AB6AXuBNJkIhL5VgrhIzVuQ-pQ9KjmstVrmxacrtGuB0W8LG1Wuj4MsAGn2nzXGu37GIac8AMsRYcOSrQ_BDfkoOxhF0_SX5zJ9vH8F2UKfZuX97jvw5ZC877pAQelU8AKYQSJKeSw49A3iQEM_3kaz6lGI4QuKTsB2J7p5GIVykxFsz_YHCd4FJ8Vos12aPC8BXhAOK86roItVXfexuUZM7tBC73wfLoRPLcCRbsfxlOWSwDiq5jkoo4VyvLzbLti0o-zgXjsJkOZV8JQ"
+            src="/yuzuai_logo.png"
             alt="Yuzu AI Logo"
             referrerPolicy="no-referrer"
             className="w-8 h-8 rounded-full border border-accent-pink/40 object-cover shadow-[0_0_10px_rgba(232,121,199,0.3)] animate-pulse"

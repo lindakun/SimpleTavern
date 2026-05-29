@@ -7,9 +7,11 @@ import fs from 'node:fs';
 import crypto from 'node:crypto';
 import { createCorsMiddleware } from './shared/middleware/cors.js';
 import { errorHandler } from './shared/middleware/error-handler.js';
-import { requireLogin } from './shared/middleware/auth-guard.js';
+import { requireLogin, requireAdmin } from './shared/middleware/auth-guard.js';
 import { createPublicAuthRoutes, createPrivateAuthRoutes } from './modules/auth/auth.routes.js';
 import { createCharacterRoutes } from './modules/characters/characters.routes.js';
+import { createAdminCharacterRoutes } from './modules/characters/admin-characters.routes.js';
+import { createPublicWorldRoutes, createAdminWorldRoutes } from './modules/worlds/worlds.routes.js';
 import { createChatRoutes } from './modules/chats/chats.routes.js';
 import { createChatRoutes as createAiChatRoutes } from './modules/backends/chat-completions/chat-completions.routes.js';
 import { createDiscoverRoutes } from './modules/characters/discover.routes.js';
@@ -104,9 +106,18 @@ export function createApp(config: ServerConfig): express.Express {
     // ---- 私有路由（需登录） ----
     app.use('/api', createPrivateAuthRoutes(config));
 
+    // ---- 世界书列表接口（用户端可用，需登录） ----
+    app.use('/api/worlds', createPublicWorldRoutes());
+
     // ---- 角色和聊天路由 ----
     app.use('/api/characters', createCharacterRoutes());
     app.use('/api/chats', createChatRoutes());
+
+    // ---- 管理员角色路由（需 Admin 权限） ----
+    app.use('/api/characters', requireAdmin, createAdminCharacterRoutes());
+
+    // ---- 世界书管理路由（需 Admin 权限） ----
+    app.use('/api/worlds', requireAdmin, createAdminWorldRoutes());
 
     // ---- AI 聊天接口 ----
     app.use('/api', createAiChatRoutes());
