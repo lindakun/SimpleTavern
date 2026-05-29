@@ -433,7 +433,7 @@ export async function googleLogin(req: Request, res: Response, next: NextFunctio
         }
 
         const profile = await googleService.verifyGoogleIdToken(idToken);
-        const user = await googleService.findOrCreateGoogleUser(profile);
+        const { user, isNewUser } = await googleService.findOrCreateGoogleUser(profile);
         const result = googleService.getGoogleLoginResult(user);
 
         const session = req.session as Record<string, any>;
@@ -441,7 +441,7 @@ export async function googleLogin(req: Request, res: Response, next: NextFunctio
         session.version = result.version;
         session.admin = result.admin;
 
-        res.json({ handle: result.handle });
+        res.json({ handle: result.handle, isNewUser });
     } catch (err) {
         next(err);
     }

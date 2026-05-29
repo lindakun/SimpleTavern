@@ -474,7 +474,7 @@ export default function App() {
           className="flex-grow flex flex-col"
         >
           {currentScreen === ScreenId.WELCOME && (
-            <WelcomeScreen onNavigate={handleNavigate} />
+            <WelcomeScreen onNavigate={handleNavigate} onGoogleLogin={handleGoogleLogin} />
           )}
 
           {currentScreen === ScreenId.EMAIL_LOGIN && (

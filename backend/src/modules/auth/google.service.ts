@@ -47,15 +47,20 @@ export async function verifyGoogleIdToken(idToken: string): Promise<GoogleUserPr
     }
 }
 
+export interface GoogleLoginResult {
+    user: User;
+    isNewUser: boolean;
+}
+
 /**
  * 通过 Google profile 查找或创建用户
  */
-export async function findOrCreateGoogleUser(profile: GoogleUserProfile): Promise<User> {
+export async function findOrCreateGoogleUser(profile: GoogleUserProfile): Promise<GoogleLoginResult> {
     // 1. 先通过 googleId 映射查找
     const existingHandle = await getHandleByGoogleId(profile.sub);
     if (existingHandle) {
         const user = await getUserByGoogleId(profile.sub);
-        if (user) return user;
+        if (user) return { user, isNewUser: false };
     }
 
     // 2. 通过邮箱查找已有账号，关联 Google ID
@@ -68,7 +73,7 @@ export async function findOrCreateGoogleUser(profile: GoogleUserProfile): Promis
             await saveUser(existing);
             await saveGoogleIdMapping(profile.sub, existing.handle);
             logger.info(`Google 账号关联到已有用户: ${existing.handle}`);
-            return existing;
+            return { user: existing, isNewUser: false };
         }
     }
 
@@ -107,7 +112,7 @@ export async function findOrCreateGoogleUser(profile: GoogleUserProfile): Promis
     }
 
     logger.info(`通过 Google 创建新用户: ${handle}`);
-    return user;
+    return { user, isNewUser: true };
 }
 
 /**
