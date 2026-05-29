@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import * as authService from './auth.service.js';
+import * as googleService from './google.service.js';
 import { BadRequestError } from '../../common/errors.js';
 import { slugify } from '../../common/utils.js';
 import { getUserByHandle, saveUser, deleteUser, createUserDirectories, removeUserDirectories, userExists, saveEmailMapping } from '../users/users.repository.js';
@@ -416,6 +417,31 @@ export async function adminToggleUser(req: Request, res: Response, next: NextFun
 
         await saveUser(user);
         res.status(204).send();
+    } catch (err) {
+        next(err);
+    }
+}
+
+/**
+ * POST /api/users/google-login
+ */
+export async function googleLogin(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+        const { idToken } = req.body;
+        if (!idToken) {
+            throw new BadRequestError('idToken is required');
+        }
+
+        const profile = await googleService.verifyGoogleIdToken(idToken);
+        const user = await googleService.findOrCreateGoogleUser(profile);
+        const result = googleService.getGoogleLoginResult(user);
+
+        const session = req.session as Record<string, any>;
+        session.handle = result.handle;
+        session.version = result.version;
+        session.admin = result.admin;
+
+        res.json({ handle: result.handle });
     } catch (err) {
         next(err);
     }

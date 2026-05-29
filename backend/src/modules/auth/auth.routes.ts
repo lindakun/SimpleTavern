@@ -14,6 +14,7 @@ export function createPublicAuthRoutes(config: ServerConfig): Router {
     router.post('/users/register', authController.publicRegisterUser);
     router.post('/users/recover-step1', authController.recoverStep1);
     router.post('/users/recover-step2', authController.recoverStep2);
+    router.post('/users/google-login', authController.googleLogin);
 
     return router;
 }

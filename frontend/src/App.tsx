@@ -5,6 +5,7 @@ import { FAQS } from './data';
 import { useToast } from './components/Toast.tsx';
 
 // Import our modular screens
+import GoogleCallback from './components/GoogleCallback';
 import WelcomeScreen from './components/WelcomeScreen';
 import EmailLoginScreen from './components/EmailLoginScreen';
 import RegisterScreen from './components/RegisterScreen';
@@ -21,6 +22,11 @@ import SettingsScreen from './components/SettingsScreen';
 import HelpFeedbackScreen from './components/HelpFeedbackScreen';
 
 export default function App() {
+  // Google OAuth 回调路由 — 弹窗中独立渲染
+  if (window.location.pathname === '/auth/google/callback') {
+    return <GoogleCallback />;
+  }
+
   const [currentScreen, setCurrentScreen] = useState<ScreenId>(ScreenId.WELCOME);
   const [activeCharacterId, setActiveCharacterId] = useState<string>('yuki');
   const [editingCharacter, setEditingCharacter] = useState<Character | null>(null);
@@ -94,6 +100,29 @@ export default function App() {
         username: displayName || '特工_Pilot',
         email: input.includes('@') ? input : `${displayName}@yuzu.ai`,
       });
+    }
+  }, [showToast]);
+
+  // Google OAuth 登录
+  const handleGoogleLogin = useCallback(async (idToken: string) => {
+    try {
+      const res = await fetch('/api/users/google-login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idToken }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.message || err.error || 'Google login failed');
+      }
+      const data = await res.json();
+      setUser({
+        username: data.handle,
+        email: `${data.handle}@yuzu.ai`,
+      });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : '未知错误';
+      showToast(`Google 登录失败: ${message}`, 'error');
     }
   }, [showToast]);
 
@@ -449,11 +478,11 @@ export default function App() {
           )}
 
           {currentScreen === ScreenId.EMAIL_LOGIN && (
-            <EmailLoginScreen onNavigate={handleNavigate} onLogin={handleLogin} />
+            <EmailLoginScreen onNavigate={handleNavigate} onLogin={handleLogin} onGoogleLogin={handleGoogleLogin} />
           )}
 
           {currentScreen === ScreenId.REGISTER && (
-            <RegisterScreen onNavigate={handleNavigate} onRegister={handleRegister} />
+            <RegisterScreen onNavigate={handleNavigate} onRegister={handleRegister} onGoogleLogin={handleGoogleLogin} />
           )}
 
           {currentScreen === ScreenId.DISCOVER && (

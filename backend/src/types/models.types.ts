@@ -11,6 +11,7 @@ export interface User {
     salt: string;
     enabled: boolean;
     admin: boolean;
+    googleId?: string; // Google OAuth subject id
 }
 
 export interface UserViewModel {

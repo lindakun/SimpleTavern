@@ -83,6 +83,23 @@ export async function getHandleByEmail(email: string): Promise<string | null> {
     }
 }
 
+export async function getUserByGoogleId(googleId: string): Promise<User | null> {
+    await ensureInitialized();
+    try {
+        const keys = await storage.keys();
+        const userKeys = keys.filter((k: string) => k.startsWith('user:'));
+        for (const key of userKeys) {
+            const user: User = await storage.getItem(key);
+            if (user && user.googleId === googleId) {
+                return user;
+            }
+        }
+        return null;
+    } catch {
+        return null;
+    }
+}
+
 export async function saveUser(user: User): Promise<void> {
     await ensureInitialized();
     await storage.setItem(`user:${user.handle}`, user);
@@ -182,4 +199,25 @@ export function removeUserDirectories(dataRoot: string, handle: string): void {
 export async function userExists(handle: string): Promise<boolean> {
     const user = await getUserByHandle(handle);
     return user !== null;
+}
+
+/**
+ * 保存 Google ID → handle 映射
+ */
+export async function saveGoogleIdMapping(googleId: string, handle: string): Promise<void> {
+    await ensureInitialized();
+    await storage.setItem(`google:${googleId}`, handle);
+}
+
+/**
+ * 通过 Google ID 映射获取 handle
+ */
+export async function getHandleByGoogleId(googleId: string): Promise<string | null> {
+    await ensureInitialized();
+    try {
+        const handle = await storage.getItem(`google:${googleId}`);
+        return handle || null;
+    } catch {
+        return null;
+    }
 }
