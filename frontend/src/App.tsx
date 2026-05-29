@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ScreenId, Character, ChatThread, ChatMessage } from './types';
 import { FAQS } from './data';
@@ -57,7 +57,7 @@ export default function App() {
         if (Array.isArray(data) && data.length > 0) {
           setCharacters(prev => {
             const existingIds = new Set(prev.map(c => c.id));
-            const newChars = data.filter((c: any) => !existingIds.has(c.id));
+            const newChars = data.filter((c: Character) => !existingIds.has(c.id));
             return [...prev, ...newChars];
           });
         }
@@ -66,11 +66,11 @@ export default function App() {
   }, []);
 
   // Nav routing switch
-  const handleNavigate = (screen: ScreenId) => {
+  const handleNavigate = useCallback((screen: ScreenId) => {
     setCurrentScreen(screen);
-  };
+  }, []);
 
-  const handleLogin = async (input: string, password?: string) => {
+  const handleLogin = useCallback(async (input: string, password?: string) => {
     try {
       const res = await fetch('/api/users/login', {
         method: 'POST',
@@ -86,17 +86,18 @@ export default function App() {
         username: data.handle || input,
         email: input.includes('@') ? input : `${data.handle}@yuzu.ai`,
       });
-    } catch (err: any) {
-      showToast('登录失败，以离线模式进入', 'error');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : '未知错误';
+      showToast(`登录失败: ${message}，以离线模式进入`, 'error');
       const displayName = input.includes('@') ? input.split('@')[0] : input;
       setUser({
         username: displayName || '特工_Pilot',
         email: input.includes('@') ? input : `${displayName}@yuzu.ai`,
       });
     }
-  };
+  }, [showToast]);
 
-  const handleRegister = async (username: string, email: string, password?: string) => {
+  const handleRegister = useCallback(async (username: string, email: string, password?: string) => {
     try {
       const res = await fetch('/api/users/register', {
         method: 'POST',
@@ -111,9 +112,9 @@ export default function App() {
       // Fallback
       setUser({ username, email });
     }
-  };
+  }, []);
 
-  const handleLogout = () => {
+  const handleLogout = useCallback(() => {
     fetch('/api/users/logout', { method: 'POST' }).catch(() => {});
     setUser(null);
     setFavoriteIds([]);
@@ -125,10 +126,10 @@ export default function App() {
         if (Array.isArray(data)) setCharacters(data);
       })
       .catch(() => {});
-  };
+  }, []);
 
   // Toggle character in favorites
-  const handleToggleFavorite = async (characterId: string) => {
+  const handleToggleFavorite = useCallback(async (characterId: string) => {
     const isFav = favoriteIds.includes(characterId);
     // 乐观更新 UI
     setFavoriteIds(isFav
@@ -152,28 +153,49 @@ export default function App() {
         : favoriteIds.filter((id) => id !== characterId)
       );
     }
-  };
+  }, [favoriteIds]);
 
-  // Publish newly customized cyber persona
-  const handlePublishCharacter = async (newChar: Character) => {
+  // Publish newly customized cyber persona (or update existing one)
+  const handlePublishCharacter = useCallback(async (newChar: Character) => {
+    const isEdit = !!editingCharacter;
     try {
-      const res = await fetch('/api/characters/publish', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newChar),
-      });
-      if (res.ok) {
-        const saved = await res.json();
-        setCharacters(prev => [saved, ...prev]);
-        return;
+      if (isEdit) {
+        // Update existing character
+        const res = await fetch('/api/characters/edit', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ avatar_url: newChar.id, ...newChar }),
+        });
+        if (res.ok) {
+          setCharacters(prev => prev.map(c => c.id === newChar.id ? newChar : c));
+          setEditingCharacter(null);
+          return;
+        }
+      } else {
+        // Create new character
+        const res = await fetch('/api/characters/publish', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(newChar),
+        });
+        if (res.ok) {
+          const saved = await res.json();
+          setCharacters(prev => [saved, ...prev]);
+          return;
+        }
       }
-    } catch {}
+    } catch { /* fallback below */ }
     // fallback
-    setCharacters(prev => [newChar, ...prev]);
-  };
+    if (isEdit) {
+      setCharacters(prev => prev.map(c => c.id === newChar.id ? newChar : c));
+      setEditingCharacter(null);
+    } else {
+      setCharacters(prev => [newChar, ...prev]);
+    }
+  }, [editingCharacter]);
 
   // Append reviews via backend API
-  const handleAddReview = async (characterId: string, review: any) => {
+  const handleAddReview = useCallback(async (characterId: string, review: Character['reviews'] extends (infer R)[] | undefined ? R : never) => {
     try {
       const res = await fetch(`/api/discover/${characterId}/reviews`, {
         method: 'POST',
@@ -187,7 +209,7 @@ export default function App() {
         );
         return;
       }
-    } catch {}
+    } catch { /* fallback below */ }
     // Fallback: 本地更新
     setCharacters((prev) =>
       prev.map((c) => {
@@ -202,10 +224,10 @@ export default function App() {
         return c;
       })
     );
-  };
+  }, []);
 
   // Messaging dispatcher calling backend
-  const handleSendMessage = async (characterId: string, text: string) => {
+  const handleSendMessage = useCallback(async (characterId: string, text: string) => {
     const userMsg: ChatMessage = {
       id: 'msg_user_' + Date.now(),
       role: 'user',
@@ -230,6 +252,10 @@ export default function App() {
     }));
 
     const chatCharacter = characters.find((c) => c.id === characterId) || characters[0];
+    if (!chatCharacter) {
+      showToast('角色不存在', 'error');
+      return;
+    }
 
     try {
       const response = await fetch('/api/chat', {
@@ -273,7 +299,7 @@ export default function App() {
           chat: finalMessages,
         }),
       }).catch(() => {});
-    } catch (err) {
+    } catch {
       showToast('消息发送失败，请检查网络连接', 'error');
       const errorMsg: ChatMessage = {
         id: 'msg_err_' + Date.now(),
@@ -289,10 +315,10 @@ export default function App() {
         },
       }));
     }
-  };
+  }, [chatThreads, characters, showToast]);
 
   // 删除角色
-  const handleDeleteCharacter = async (characterId: string) => {
+  const handleDeleteCharacter = useCallback(async (characterId: string) => {
     const char = characters.find(c => c.id === characterId);
     if (!char) return;
     try {
@@ -308,7 +334,7 @@ export default function App() {
     } catch {
       showToast('删除失败', 'error');
     }
-  };
+  }, [characters, showToast]);
 
   // 加载聊天线程（仅在挂载和无用户时加载）
   useEffect(() => {
@@ -319,9 +345,11 @@ export default function App() {
         if (Array.isArray(data) && data.length > 0) {
           setChatThreads(prev => {
             const merged = { ...prev };
-            for (const thread of data) {
-              if (!merged[thread.characterId]) {
-                merged[thread.characterId] = thread;
+            if (Array.isArray(data)) {
+              for (const thread of data) {
+                if (!merged[thread.characterId]) {
+                  merged[thread.characterId] = thread;
+                }
               }
             }
             return merged;
@@ -329,7 +357,7 @@ export default function App() {
         }
       })
       .catch(() => {});
-  }, []);
+  }, [user]);
 
   // 用户登录/登出时重新加载个人数据
   useEffect(() => {
@@ -346,7 +374,7 @@ export default function App() {
         if (Array.isArray(data) && data.length > 0) {
           setCharacters(prev => {
             const existingIds = new Set(prev.map(c => c.id));
-            const newChars = data.filter((c: any) => !existingIds.has(c.id));
+            const newChars = data.filter((c: Character) => !existingIds.has(c.id));
             return [...prev, ...newChars];
           });
         }
@@ -358,7 +386,7 @@ export default function App() {
       .then(res => res.json())
       .then(data => {
         if (Array.isArray(data)) {
-          const threads: Record<string, any> = {};
+          const threads: Record<string, ChatThread> = {};
           for (const thread of data) {
             threads[thread.characterId] = thread;
           }
@@ -392,7 +420,18 @@ export default function App() {
       .catch(() => {});
   }, [currentScreen, activeCharacterId]);
 
-  const currentCharacter = characters.find((c) => c.id === activeCharacterId) || characters[0];
+  const currentCharacter = characters.find((c) => c.id === activeCharacterId) || characters[0] || null;
+
+  if (!currentCharacter) {
+    return (
+      <div className="min-h-screen w-full bg-[#090A0F] text-[#E0E0E6] flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <div className="text-4xl">🔄</div>
+          <p className="text-sm text-on-surface-variant">加载中...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen w-full bg-[#090A0F] text-[#E0E0E6] flex flex-col justify-self-center overflow-x-hidden max-w-lg mx-auto shadow-[0_0_80px_rgba(9,10,15,0.95)] border-x border-white/5 relative">
@@ -493,7 +532,7 @@ export default function App() {
               onSelectCharacter={setActiveCharacterId}
               onEditCharacter={(char) => setEditingCharacter(char)}
               onDeleteCharacter={handleDeleteCharacter}
-              currentUser={user?.username}
+              currentUser={user?.username || ''}
             />
           )}
 

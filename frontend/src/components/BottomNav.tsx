@@ -1,10 +1,10 @@
-import React from 'react';
+import type { ReactNode } from 'react';
 import { ScreenId } from '../types';
 import { Compass, MessageSquare, PlusCircle, UserCircle } from 'lucide-react';
 
 interface TabConfig {
   screen: ScreenId;
-  icon: React.ReactNode;
+  icon: ReactNode;
   label: string;
 }
 
@@ -14,15 +14,6 @@ const TABS: TabConfig[] = [
   { screen: ScreenId.CREATE_CHOICE, icon: <PlusCircle className="w-5 h-5" />, label: '创建' },
   { screen: ScreenId.PROFILE, icon: <UserCircle className="w-5 h-5" />, label: '我的' },
 ];
-
-const NAV_SCREENS = new Set<ScreenId>([
-  ScreenId.DISCOVER,
-  ScreenId.CHARACTER_DETAIL,
-  ScreenId.CHAT,
-  ScreenId.CREATE_CHARACTER,
-  ScreenId.MESSAGE_CENTER,
-  ScreenId.PROFILE,
-]);
 
 /**
  * Find the nearest nav tab for a given screen.
@@ -39,13 +30,18 @@ interface BottomNavProps {
   currentScreen: ScreenId;
   onNavigate: (screen: ScreenId) => void;
   unreadCount?: number;
+  inline?: boolean;
 }
 
-export default function BottomNav({ currentScreen, onNavigate, unreadCount }: BottomNavProps) {
+export default function BottomNav({ currentScreen, onNavigate, unreadCount, inline }: BottomNavProps) {
   const activeTab = resolveActiveTab(currentScreen);
 
+  const navClass = inline
+    ? 'flex-shrink-0 w-full bg-surface-elevated/90 backdrop-blur-xl border-t border-outline-variant/40'
+    : 'fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-lg z-50 bg-surface-elevated/90 backdrop-blur-xl border-t border-outline-variant/40';
+
   return (
-    <nav className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-lg z-50 bg-surface-elevated/90 backdrop-blur-xl border-t border-outline-variant/40">
+    <nav className={navClass}>
       <div className="flex h-16 items-center justify-around px-2">
         {TABS.map((tab) => {
           const isActive = activeTab === tab.screen;

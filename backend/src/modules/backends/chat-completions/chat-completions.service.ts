@@ -62,7 +62,7 @@ async function callLlmApi(config: LlmConfig, messages: ChatMessage[]): Promise<s
             model: config.model,
             messages,
             temperature: 0.9,
-            max_tokens: 1024,
+            max_tokens: 8192,
         }),
     });
 
@@ -73,11 +73,21 @@ async function callLlmApi(config: LlmConfig, messages: ChatMessage[]): Promise<s
 
     const data = await response.json() as any;
 
+    logger.debug(`LLM 原始响应: ${JSON.stringify(data)}`);
+
     if (!data.choices || data.choices.length === 0) {
-        throw new Error('LLM API 返回空响应');
+        throw new Error(`LLM API 返回空响应, 原始数据: ${JSON.stringify(data)}`);
     }
 
-    return data.choices[0].message?.content || '';
+    const firstChoice = data.choices[0];
+    const finishReason = firstChoice.finish_reason;
+    const content = firstChoice.message?.content ?? firstChoice.delta?.content;
+
+    if (finishReason && finishReason !== 'stop') {
+        logger.warn(`LLM 非正常结束, finish_reason=${finishReason}, content=${JSON.stringify(content)}`);
+    }
+
+    return content || '';
 }
 
 /**

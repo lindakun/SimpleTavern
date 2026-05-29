@@ -1,6 +1,6 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { ScreenId, Character } from '../types';
-import { ChevronLeft, BookOpen, ChevronRight, Volume2, Check } from 'lucide-react';
+import { ChevronLeft, BookOpen, ChevronRight, Volume2, Check, Globe } from 'lucide-react';
 import BottomNav from './BottomNav';
 
 interface CreateCharacterScreenProps {
@@ -18,6 +18,33 @@ export default function CreateCharacterScreen({ onNavigate, onPublish, editChara
   const [avatar, setAvatar] = useState(editCharacter?.avatar || 'https://picsum.photos/seed/cyber_custom/300/300');
   const [selectedTags, setSelectedTags] = useState<string[]>(editCharacter?.tags || ['高冷', '毒舌']);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // 世界书列表
+  const [worldList, setWorldList] = useState<{ file_id: string; name: string }[]>([]);
+  const [selectedWorldFile, setSelectedWorldFile] = useState('');
+
+  useEffect(() => {
+    fetch('/api/worlds/list', { method: 'POST', credentials: 'include' })
+      .then((r) => r.json())
+      .then((data) => {
+        setWorldList(Array.isArray(data) ? data : []);
+      })
+      .catch(() => { /* 世界书功能不可用时静默失败 */ });
+
+    // 编辑模式：如果已有 worldBook 且匹配某个世界书名称，预选
+    if (editCharacter?.worldBook) {
+      setSelectedWorldFile(editCharacter.worldBook);
+    }
+  }, [editCharacter]);
+
+  const handleWorldSelect = (fileId: string) => {
+    setSelectedWorldFile(fileId);
+    if (fileId) {
+      setWorldBook(fileId);  // 选择已有世界书，存储其名称
+    } else if (!fileId && !editCharacter?.worldBook) {
+      setWorldBook('');
+    }
+  };
   const allTags = ['高冷', '毒舌', '傲娇', '治愈', '活泼', '纯欲', '慵懒', '娇憨', '御姐', '野性', '含蓄', '撩人', '娇软', '知性熟韵', '随性浪']; // prettier-ignore
 
   const toggleTag = (tag: string) => {
@@ -63,12 +90,12 @@ export default function CreateCharacterScreen({ onNavigate, onPublish, editChara
       {/* Top action header conforming with: //button[.//span[text()='chevron_left']] */}
       <header className="sticky top-0 z-40 bg-[#0F111A]/90 backdrop-blur-md px-6 h-16 flex items-center justify-between border-b border-white/5">
         <button
-          onClick={() => onNavigate(ScreenId.CREATE_CHOICE)}
+          onClick={() => onNavigate(editCharacter ? ScreenId.MY_CHARACTERS : ScreenId.CREATE_CHOICE)}
           className="flex items-center gap-1.5 pl-2 pr-3 py-1.5 rounded-full bg-surface-container/60 hover:bg-surface-elevated border border-accent-pink/30 hover:border-accent-pink/60 transition-all duration-200 cursor-pointer text-white shadow-[0_0_10px_rgba(232,121,199,0.1)] group/back"
         >
           <ChevronLeft className="w-3.5 h-3.5 text-accent-pink group-hover/back:-translate-x-0.5 transition-transform" />
           <img
-            src="https://lh3.googleusercontent.com/aida-public/AB6AXuBNJkIhL5VgrhIzVuQ-pQ9KjmstVrmxacrtGuB0W8LG1Wuj4MsAGn2nzXGu37GIac8AMsRYcOSrQ_BDfkoOxhF0_SX5zJ9vH8F2UKfZuX97jvw5ZC877pAQelU8AKYQSJKeSw49A3iQEM_3kaz6lGI4QuKTsB2J7p5GIVykxFsz_YHCd4FJ8Vos12aPC8BXhAOK86roItVXfexuUZM7tBC73wfLoRPLcCRbsfxlOWSwDiq5jkoo4VyvLzbLti0o-zgXjsJkOZV8JQ"
+            src="/yuzuai_logo.png"
             alt="Yuzu AI Logo"
             referrerPolicy="no-referrer"
             className="w-4 h-4 rounded-full object-cover border border-accent-pink/40"
@@ -183,28 +210,55 @@ export default function CreateCharacterScreen({ onNavigate, onPublish, editChara
             <label className="text-xs font-semibold text-on-surface-variant ml-1">世界书 (Worldbook)</label>
             <div className="bg-surface-container border border-outline-variant/30 rounded-xl p-4 space-y-3">
               <div className="flex items-center justify-between text-xs text-on-surface-variant">
-                <span>为角色设定详细的世界观、背景知识或特定术语库。</span>
+                <span>选择管理员已创建的世界书，或自定义世界观设定。</span>
               </div>
 
-              {/* Click triggers editing details inside worldbook */}
-              <div className="bg-surface-elevated/40 border border-outline-variant/20 p-3 rounded-lg flex items-center justify-between hover:border-accent-pink transition-colors">
+              {/* 已有世界书下拉选择 */}
+              {worldList.length > 0 && (
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-semibold text-on-surface-variant/60 ml-1">从已有世界书中选择</label>
+                  <div className="relative">
+                    <Globe className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant/40 pointer-events-none" />
+                    <select
+                      value={selectedWorldFile}
+                      onChange={(e) => handleWorldSelect(e.target.value)}
+                      className="w-full bg-surface-elevated/60 border border-outline-variant/20 rounded-xl pl-9 pr-3 py-2.5 text-xs text-white outline-none appearance-none cursor-pointer focus:border-accent-pink transition-colors"
+                    >
+                      <option value="">不使用世界书</option>
+                      {worldList.map((w) => (
+                        <option key={w.file_id} value={w.file_id}>{w.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              )}
+
+              <div className="bg-surface-elevated/40 border border-outline-variant/20 p-3 rounded-lg flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <BookOpen className="w-4 h-4 text-accent-pink" />
                   <div>
-                    <h4 className="text-xs font-bold text-white leading-tight">添加世界观/设定</h4>
-                    <span className="text-[10px] text-on-surface-variant/80">让角色的回答更符合背景设定</span>
+                    <h4 className="text-xs font-bold text-white leading-tight">
+                      {selectedWorldFile
+                        ? `已绑定: ${worldList.find((w) => w.file_id === selectedWorldFile)?.name || selectedWorldFile}`
+                        : '自定义世界观/设定'}
+                    </h4>
+                    <span className="text-[10px] text-on-surface-variant/80">
+                      {selectedWorldFile ? '世界书将在对话中自动激活' : '让角色的回答更符合背景设定'}
+                    </span>
                   </div>
                 </div>
                 <ChevronRight className="w-4 h-4 text-on-surface-variant" />
               </div>
 
-              <textarea
-                value={worldBook}
-                onChange={(e) => setWorldBook(e.target.value)}
-                placeholder="在此处为您的角色注入深层世界书（如：地名、世界秩序、技能表配偶树、敏感禁词词库等）..."
-                rows={3}
-                className="w-full bg-surface-elevated/80 border border-outline-variant/20 rounded-xl p-3 text-[11px] text-[#ffade2] placeholder:text-on-surface-variant/30 outline-none resize-none"
-              />
+              {!selectedWorldFile && (
+                <textarea
+                  value={worldBook}
+                  onChange={(e) => setWorldBook(e.target.value)}
+                  placeholder="在此处为您的角色注入深层世界书（如：地名、世界秩序、技能表、敏感禁词词库等）..."
+                  rows={3}
+                  className="w-full bg-surface-elevated/80 border border-outline-variant/20 rounded-xl p-3 text-[11px] text-[#ffade2] placeholder:text-on-surface-variant/30 outline-none resize-none"
+                />
+              )}
             </div>
           </div>
 

@@ -45,20 +45,20 @@ export default function ChatScreen({
   };
 
   return (
-    <div className="relative min-h-screen bg-background-deep text-white flex flex-col justify-between">
+    <div className="relative h-screen max-w-lg mx-auto bg-background-deep text-white flex flex-col overflow-hidden">
       {/* Glow */}
       <div className="absolute top-1/6 -left-20 w-72 h-72 bg-accent-pink/5 rounded-full blur-[100px] pointer-events-none" />
       <div className="absolute bottom-1/6 -right-20 w-72 h-72 bg-accent-purple/5 rounded-full blur-[100px] pointer-events-none" />
 
       {/* Header bar - wrapping image in clickable button to satisfy validation xpath: //header//img/.. */}
-      <header className="sticky top-0 z-40 bg-[#0F111A]/95 backdrop-blur-md h-16 px-4 flex items-center justify-between border-b border-white/5">
+      <header className="flex-shrink-0 z-40 bg-[#0F111A]/95 backdrop-blur-md h-16 px-4 flex items-center justify-between border-b border-white/5">
         <button
           onClick={() => onNavigate(ScreenId.MESSAGE_CENTER)}
           className="flex items-center gap-1.5 pl-2 pr-3 py-1.5 rounded-full bg-surface-container/60 hover:bg-surface-elevated border border-accent-pink/30 hover:border-accent-pink/60 transition-all duration-200 cursor-pointer text-white shadow-[0_0_10px_rgba(232,121,199,0.1)] group/back"
         >
           <ChevronLeft className="w-3.5 h-3.5 text-accent-pink group-hover/back:-translate-x-0.5 transition-transform" />
           <img
-            src="https://lh3.googleusercontent.com/aida-public/AB6AXuBNJkIhL5VgrhIzVuQ-pQ9KjmstVrmxacrtGuB0W8LG1Wuj4MsAGn2nzXGu37GIac8AMsRYcOSrQ_BDfkoOxhF0_SX5zJ9vH8F2UKfZuX97jvw5ZC877pAQelU8AKYQSJKeSw49A3iQEM_3kaz6lGI4QuKTsB2J7p5GIVykxFsz_YHCd4FJ8Vos12aPC8BXhAOK86roItVXfexuUZM7tBC73wfLoRPLcCRbsfxlOWSwDiq5jkoo4VyvLzbLti0o-zgXjsJkOZV8JQ"
+            src="/yuzuai_logo.png"
             alt="Yuzu AI Logo"
             referrerPolicy="no-referrer"
             className="w-4 h-4 rounded-full object-cover border border-accent-pink/40"
@@ -94,7 +94,7 @@ export default function ChatScreen({
       </header>
 
       {/* Messages Scroll Area */}
-      <main ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-6 space-y-4 max-h-[calc(100vh-144px)] select-text mb-20 scrollbar-thin">
+      <main ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-6 space-y-4 select-text scrollbar-thin">
         {/* Default Greeting */}
         <div className="flex items-start gap-2.5 animate-subtle-fadeIn">
           <img
@@ -174,8 +174,8 @@ export default function ChatScreen({
         )}
       </main>
 
-      {/* Input controls sticky drawer */}
-      <div className="fixed bottom-16 left-1/2 -translate-x-1/2 w-full max-w-lg bg-[#0B0720]/95 border-t border-outline-variant/20 p-3 z-30 flex items-center gap-2">
+      {/* Input controls */}
+      <div className="flex-shrink-0 w-full bg-[#0B0720]/95 border-t border-outline-variant/20 p-3 flex items-center gap-2">
         <form onSubmit={handleSend} className="w-full flex items-center gap-2 p-1.5 bg-surface-container/80 rounded-xl border border-outline-variant/40 backdrop-blur-md">
           {/* Quick voice option simulation */}
           <button
@@ -209,7 +209,7 @@ export default function ChatScreen({
         </form>
       </div>
 
-      <BottomNav currentScreen={ScreenId.CHAT} onNavigate={onNavigate} />
+      <BottomNav currentScreen={ScreenId.CHAT} onNavigate={onNavigate} inline />
     </div>
   );
 }
