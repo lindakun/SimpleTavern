@@ -270,6 +270,67 @@ App.tsx ← 14 个 Screen 组件
 | 5 | 图像与语音模块 | 待开始 |
 | 6 | 收尾与清理 | 待开始 |
 
+## 生产环境部署
+
+### 服务器信息
+- **域名**: https://chat.hhxxttxs.icu
+- **服务器 IP**: 129.146.164.152 (Oracle Cloud)
+- **部署目录**: `/opt/simpletavern`
+- **部署脚本**: `/opt/deploy-simpletavern.sh`
+
+### 部署流程
+```bash
+# 1. 本地提交代码到 GitHub
+git add -A
+git commit -m "feat: xxx"
+git push origin main
+
+# 2. 服务器执行部署脚本
+ssh ubuntu@129.146.164.152
+sudo /opt/deploy-simpletavern.sh
+```
+
+### 部署脚本功能
+- 备份数据目录 (`/opt/simpletavern/data`)
+- 保存环境变量配置 (backend/.env, frontend/.env)
+- 从 GitHub 拉取最新代码
+- 恢复环境变量和数据
+- 重建并启动 Docker 容器
+- 健康检查
+
+### Docker 服务
+| 容器 | 端口 | 说明 |
+|------|------|------|
+| simple-tavern-backend | 8001 | TypeScript/Express API |
+| simple-tavern-frontend | 3000 | React 前端 (Nginx) |
+| simple-tavern-admin | 3002 | 管理后台 |
+
+### 环境变量配置
+生产环境敏感信息通过 `.env` 文件配置（不提交到 Git）：
+- `backend/.env`: `SIMPLE_TAVERN_GOOGLE_CLIENT_ID`, `SIMPLE_TAVERN_GOOGLE_CLIENT_SECRET`
+- `frontend/.env`: `VITE_GOOGLE_CLIENT_ID`
+
+### Nginx 配置
+- 配置文件: `/etc/nginx/sites-available/chat.hhxxttxs.icu`
+- SSL 证书: `/etc/letsencrypt/live/chat.hhxxttxs.icu/`
+- 前端代理: `/` → `127.0.0.1:3000`
+- API 代理: `/api/` → `127.0.0.1:8001`
+
+### 常用命令
+```bash
+# 查看容器状态
+docker ps
+
+# 查看后端日志
+docker logs -f simple-tavern-backend
+
+# 重启服务
+cd /opt/simpletavern && docker compose restart
+
+# 手动拉取最新代码
+cd /opt/simpletavern && git pull origin main
+```
+
 ## 参考文档
 
 - `refactor/architecture-reference.md` — 原项目架构问题分析 + 完整 API 接口清单
