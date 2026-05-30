@@ -8,28 +8,11 @@ export function registerServiceWorker() {
   if (import.meta.env.DEV) return;
 
   if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-      navigator.serviceWorker
-        .register('/sw.js')
-        .then((reg) => {
-          // 检查是否有新版本待激活
-          reg.addEventListener('updatefound', () => {
-            const newWorker = reg.installing;
-            if (newWorker) {
-              newWorker.addEventListener('statechange', () => {
-                if (
-                  newWorker.state === 'activated' &&
-                  navigator.serviceWorker.controller
-                ) {
-                  // 新 SW 已激活，可提示用户刷新（暂不实现）
-                }
-              });
-            }
-          });
-        })
-        .catch((err) => {
-          console.warn('SW 注册失败:', err);
-        });
-    });
+    // 页面可能已加载完毕，直接注册而非等 load 事件
+    navigator.serviceWorker
+      .register('/sw.js')
+      .catch((err) => {
+        console.warn('SW 注册失败:', err);
+      });
   }
 }
