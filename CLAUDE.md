@@ -389,7 +389,7 @@ location /sw.js {
 - **域名**: https://chat.hhxxttxs.icu
 - **服务器 IP**: 129.146.164.152 (Oracle Cloud)
 - **部署目录**: `/opt/simpletavern`
-- **部署脚本**: `/opt/deploy-simpletavern.sh`
+- **部署脚本**: `deploy-prd.sh（仓库根目录，自动递增SW版本号）`
 
 ### 部署流程
 ```bash
@@ -398,20 +398,20 @@ git add -A
 git commit -m "feat: xxx"
 git push origin main
 
-# 2. 服务器拉取并重建
+# 2. 服务器上运行一键部署脚本
 ssh ubuntu@129.146.164.152
-cd /opt/simpletavern && sudo git pull origin main && sudo docker compose up -d --build
+cd /opt/simpletavern && sudo bash deploy-prd.sh
 ```
 
-> ⚠️ **注意**：服务器上 `git pull` 和 `docker compose` 需要 `sudo` 权限。
+> ⚠️ **注意**：部署脚本会自动拉取代码、备份数据、递增 SW 版本号、重建容器、检查健康状态。
 
 ### 部署脚本功能
-- 备份数据目录 (`/opt/simpletavern/data`)
-- 保存环境变量配置 (backend/.env, frontend/.env)
+- 备份数据目录及环境变量
+- 自动递增 SW 缓存版本号（BUILD_VERSION）
 - 从 GitHub 拉取最新代码
-- 恢复环境变量和数据
-- 重建并启动 Docker 容器
-- 健康检查
+- 恢复环境变量配置和备份数据
+- 重建并启动 Docker 容器（支持 --skip-build 跳过构建）
+- 多端点健康检查 + 失败回滚指引
 
 ### Docker 服务
 | 容器 | 端口 | 说明 |
