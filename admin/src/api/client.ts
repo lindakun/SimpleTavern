@@ -27,7 +27,8 @@ export async function apiRequest<T>(
   const { timeout = DEFAULT_TIMEOUT, ...fetchConfig } = config;
 
   const headers = new Headers(fetchConfig.headers);
-  if (!headers.has('Content-Type') && fetchConfig.body) {
+  // FormData 由浏览器自动设置 Content-Type（含 boundary），不可手动覆盖
+  if (!headers.has('Content-Type') && fetchConfig.body && !(fetchConfig.body instanceof FormData)) {
     headers.set('Content-Type', 'application/json');
   }
 
@@ -92,8 +93,6 @@ export const api = {
     return apiRequest<T>(url, {
       method: 'POST',
       body: formData,
-      // 不设置 Content-Type，让浏览器自动加 boundary
-      headers: {},
     });
   },
 };
