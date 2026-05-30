@@ -1,6 +1,4 @@
 import { Router } from 'express';
-import multer from 'multer';
-import path from 'node:path';
 import {
     adminListWorlds,
     adminGetWorld,
@@ -21,19 +19,8 @@ export function createAdminWorldRoutes(): Router {
     router.post('/admin-save', adminSaveWorld);
     router.post('/admin-delete', adminDeleteWorld);
 
-    // 文件上传导入（multer 单文件字段名为 "file"）
-    const upload = multer({
-        dest: path.join('/tmp', 'world-uploads'),
-        limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
-        fileFilter: (_req, file, cb) => {
-            if (file.mimetype === 'application/json' || file.originalname.endsWith('.json')) {
-                cb(null, true);
-            } else {
-                cb(new Error('只支持 .json 文件'));
-            }
-        },
-    });
-    router.post('/admin-import', upload.single('file'), adminImportWorld);
+    // 文件上传导入：multer 在 controller 内部处理（memoryStorage）
+    router.post('/admin-import', adminImportWorld);
 
     return router;
 }

@@ -1,6 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
 import path from 'node:path';
-import fs from 'node:fs';
 import multer from 'multer';
 import { getConfig } from '../../config/index.js';
 import { listWorlds, getWorld, saveWorld, deleteWorld, getWorldsDir, sanitizeWorldName } from './worlds.service.js';
@@ -10,9 +9,74 @@ import { WorldInfo } from './worlds.types.js';
 let uploadInstance: multer.Multer | undefined;
 function getUpload(): multer.Multer {
     if (!uploadInstance) {
-        uploadInstance = multer({ storage: multer.memoryStorage() });
+        uploadInstance = multer({
+            storage: multer.memoryStorage(),
+            limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+            fileFilter: (_req, file, cb) => {
+                if (file.mimetype === 'application/json' || file.originalname.endsWith('.json')) {
+                    cb(null, true);
+                } else {
+                    cb(new Error('只支持 .json 文件'));
+                }
+            },
+        });
     }
     return uploadInstance;
+}
+
+/**
+ * 将 entries 数组格式转换为 SillyTavern 内部的 Record<string, WorldInfoEntry> 格式
+ * 兼容 V2/V3 角色卡导出格式（entries 为数组）和 SillyTavern 内部格式（entries 为对象）
+ */
+function normalizeEntries(worldData: any): WorldInfo {
+    if (Array.isArray(worldData.entries)) {
+        const entries: Record<string, any> = {};
+        for (let i = 0; i < worldData.entries.length; i++) {
+            const entry = worldData.entries[i];
+            const uid = entry.uid ?? i;
+            // 映射 V2/V3 字段名到 SillyTavern 内部字段名
+            entries[String(uid)] = {
+                uid,
+                key: entry.keys ?? entry.key ?? [],
+                keysecondary: entry.secondaryKeys ?? entry.keysecondary ?? [],
+                content: entry.content ?? '',
+                comment: entry.comment ?? '',
+                constant: entry.constant ?? false,
+                selective: entry.selective ?? false,
+                order: entry.insertionOrder ?? entry.order ?? 100,
+                position: entry.position ?? 0,
+                disable: !(entry.enabled ?? true),
+                depth: entry.depth ?? 4,
+                probability: entry.probability ?? 100,
+                useProbability: entry.useProbability ?? true,
+                vectorized: entry.vectorized ?? false,
+                selectiveLogic: entry.selectiveLogic ?? 0,
+                addMemo: entry.addMemo ?? false,
+                ignoreBudget: entry.ignoreBudget ?? false,
+                excludeRecursion: entry.excludeRecursion ?? false,
+                preventRecursion: entry.preventRecursion ?? false,
+                delayUntilRecursion: entry.delayUntilRecursion ?? 0,
+                group: entry.group ?? '',
+                groupOverride: entry.groupOverride ?? false,
+                groupWeight: entry.groupWeight ?? 100,
+                scanDepth: entry.scanDepth ?? null,
+                caseSensitive: entry.caseSensitive ?? null,
+                matchWholeWords: entry.matchWholeWords ?? null,
+                useGroupScoring: entry.useGroupScoring ?? null,
+                automationId: entry.automationId ?? '',
+                role: entry.role ?? 0,
+                sticky: entry.sticky ?? null,
+                cooldown: entry.cooldown ?? null,
+                delay: entry.delay ?? null,
+                outletName: entry.outletName ?? '',
+            };
+        }
+        return {
+            ...worldData,
+            entries,
+        };
+    }
+    return worldData;
 }
 
 /**
@@ -131,7 +195,8 @@ export async function adminImportWorld(req: Request, res: Response, next: NextFu
             // 从内存中读取文件内容（memoryStorage）
             let worldData: WorldInfo;
             try {
-                worldData = JSON.parse(req.file.buffer.toString('utf-8'));
+                const raw = JSON.parse(req.file.buffer.toString('utf-8'));
+                worldData = normalizeEntries(raw);
             } catch {
                 res.status(400).json({ error: 'BAD_REQUEST', message: '文件不是有效的 JSON 格式' });
                 return;
