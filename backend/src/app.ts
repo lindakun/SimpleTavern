@@ -49,8 +49,8 @@ export function createApp(config: ServerConfig): express.Express {
     // ---- 压缩 ----
     app.use(compression());
 
-    // ---- 请求体解析 ----
-    app.use(express.json({ limit: '500mb' }));
+    // ---- 请求体解析（跳过 multipart/form-data，由 multer 处理） ----
+    app.use(express.json({ limit: '500mb', type: ['application/json', 'application/csp-report'] }));
     app.use(express.urlencoded({ extended: true, limit: '500mb' }));
 
     // ---- CORS ----
