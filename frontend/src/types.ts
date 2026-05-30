@@ -51,6 +51,9 @@ export interface Character {
   tagline?: string;
   worldBook?: string;
   voiceType?: 'sweet' | 'mature';
+
+  // 世界书名称（用于详情页展示）
+  worldBookName?: string;
 }
 
 export interface Review {

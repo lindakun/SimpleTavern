@@ -27,6 +27,7 @@ interface CharacterForm {
   creator: string;
   character_version: string;
   worldBook: string;
+  voiceType: 'sweet' | 'mature';
 }
 
 const defaultForm: CharacterForm = {
@@ -44,6 +45,7 @@ const defaultForm: CharacterForm = {
   creator: '',
   character_version: '1.0',
   worldBook: '',
+  voiceType: 'sweet',
 };
 
 function formFromCharacter(c: Character | null | undefined): CharacterForm {
@@ -63,6 +65,7 @@ function formFromCharacter(c: Character | null | undefined): CharacterForm {
     creator: c.creator || '',
     character_version: c.character_version || '1.0',
     worldBook: c.worldBook || '',
+    voiceType: c.voiceType || 'sweet',
   };
 }
 
@@ -216,6 +219,7 @@ export default function CreateCharacterScreen({ onNavigate, onPublish, editChara
       alternate_greetings: form.alternate_greetings.length > 0 ? form.alternate_greetings : undefined,
       character_version: form.character_version || '1.0',
       worldBook: form.worldBook || undefined,
+      voiceType: form.voiceType || undefined,
       status: editCharacter?.status || 'online',
       reviews: editCharacter?.reviews || [],
     };
@@ -488,6 +492,38 @@ export default function CreateCharacterScreen({ onNavigate, onPublish, editChara
           ) : (
             <p className="text-[11px] text-on-surface-variant/50">暂无可用世界书，需管理员先创建</p>
           )}
+        </Section>
+
+        {/* 配音方案 */}
+        <Section title="配音方案" subtitle="Voice Type">
+          <div className="flex gap-3">
+            <button
+              type="button"
+              onClick={() => updateForm('voiceType', 'sweet')}
+              className={`flex-1 p-3 rounded-xl border text-center transition-all cursor-pointer ${
+                form.voiceType === 'sweet'
+                  ? 'border-accent-pink/60 bg-accent-pink/15 text-[#ffade2]'
+                  : 'border-outline-variant/20 bg-surface-elevated/40 text-on-surface-variant hover:border-accent-pink/30'
+              }`}
+            >
+              <span className="text-lg block mb-1">🎵</span>
+              <span className="text-xs font-bold block">甜美少女</span>
+              <span className="text-[10px] text-on-surface-variant/60">Sweet</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => updateForm('voiceType', 'mature')}
+              className={`flex-1 p-3 rounded-xl border text-center transition-all cursor-pointer ${
+                form.voiceType === 'mature'
+                  ? 'border-accent-purple/60 bg-accent-purple/15 text-accent-purple'
+                  : 'border-outline-variant/20 bg-surface-elevated/40 text-on-surface-variant hover:border-accent-purple/30'
+              }`}
+            >
+              <span className="text-lg block mb-1">🎙️</span>
+              <span className="text-xs font-bold block">成熟御姐</span>
+              <span className="text-[10px] text-on-surface-variant/60">Mature</span>
+            </button>
+          </div>
         </Section>
 
         {/* 创作者信息 */}

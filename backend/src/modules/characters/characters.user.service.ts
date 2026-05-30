@@ -2,6 +2,14 @@ import storage from 'node-persist';
 import { v4 as uuidv4 } from 'uuid';
 import { logger } from '../../common/logger.js';
 
+interface Review {
+    id: string;
+    username: string;
+    rating: number;
+    comment: string;
+    date: string;
+}
+
 interface UserCharacter {
     id: string;
     name: string;
@@ -12,6 +20,7 @@ interface UserCharacter {
     reviewCount: number;
     status: 'online' | 'private' | 'draft';
     tags: string[];
+    reviews: Review[];
 
     // V3 角色卡 data 字段
     description: string;
@@ -89,6 +98,7 @@ export async function publishCharacter(
         reviewCount: 0,
         status: 'online',
         tags: data.tags || [],
+        reviews: [],
 
         // V3 字段
         description: data.description || '',
@@ -170,6 +180,30 @@ export async function updateUserCharacter(
         await storage.setItem(key, updated);
         logger.info(`用户 ${handle} 更新了角色: ${updated.name} (${characterId})`);
         return updated;
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * 给用户创建的角色添加评论
+ */
+export async function addReviewToUserCharacter(handle: string, characterId: string, review: Review): Promise<UserCharacter | null> {
+    try {
+        const key = `userchar:${handle}:${characterId}`;
+        const existing = await storage.getItem(key) as UserCharacter | undefined;
+        if (!existing) return null;
+
+        if (!existing.reviews) existing.reviews = [];
+        existing.reviews = [review, ...existing.reviews];
+
+        // 重新计算评分
+        const totalRating = existing.reviews.reduce((sum, r) => sum + r.rating, 0);
+        existing.rating = parseFloat((totalRating / existing.reviews.length).toFixed(1));
+        existing.reviewCount = existing.reviews.length;
+
+        await storage.setItem(key, existing);
+        return existing;
     } catch {
         return null;
     }

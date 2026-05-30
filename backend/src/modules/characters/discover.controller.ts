@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import path from 'node:path';
 import fs from 'node:fs';
 import * as seedService from './seed.service.js';
+import * as userCharacterService from './characters.user.service.js';
 import { readCharacterCardFromFile } from './characters.parser.js';
 import { BadRequestError } from '../../common/errors.js';
 import { getConfig } from '../../config/index.js';
@@ -97,7 +98,7 @@ export function getDiscoverCharacter(req: Request, res: Response): void {
 
 /**
  * POST /api/discover/:id/reviews
- * 添加角色评价
+ * 添加角色评价（支持种子角色、导入 PNG 角色、用户创建角色）
  */
 export function addReview(req: Request, res: Response, next: NextFunction): void {
     try {
@@ -116,13 +117,96 @@ export function addReview(req: Request, res: Response, next: NextFunction): void
             date: new Date().toISOString().split('T')[0],
         };
 
-        const updated = seedService.addReviewToCharacter(id, review);
-        if (!updated) {
+        // 1. 先查种子角色
+        const seedUpdated = seedService.addReviewToCharacter(id, review);
+        if (seedUpdated) {
+            res.json(seedUpdated);
+            return;
+        }
+
+        // 2. 再查导入的 PNG 角色（内存中追加评论）
+        const importedChars = getImportedCharacters();
+        const importedChar = importedChars.find(c => c.id === id);
+        if (importedChar) {
+            if (!importedChar.reviews) importedChar.reviews = [];
+            importedChar.reviews = [review, ...importedChar.reviews];
+            const totalRating = importedChar.reviews.reduce((sum: number, r: any) => sum + r.rating, 0);
+            importedChar.rating = parseFloat((totalRating / importedChar.reviews.length).toFixed(1));
+            importedChar.reviewCount = importedChar.reviews.length;
+            res.json(importedChar);
+            return;
+        }
+
+        // 3. PNG 角色卡（id 以 .png 结尾，如 "奥利弗.png"）
+        if (id.endsWith('.png')) {
+            const handle = (req as any).session?.handle;
+            if (handle) {
+                const config = getConfig();
+                const charactersDir = path.join(config.dataRoot, handle, 'characters');
+                const filePath = path.join(charactersDir, id);
+                if (fs.existsSync(filePath)) {
+                    const imgData = readCharacterCardFromFile(filePath);
+                    if (imgData) {
+                        const jsonData = JSON.parse(imgData);
+                        const charData = jsonData.data || jsonData;
+                        // PNG 角色卡评论存入 extensions 中（非持久，内存中）
+                        const reviews = Array.isArray(charData?.extensions?.reviews)
+                            ? charData.extensions.reviews
+                            : [];
+                        reviews.unshift(review);
+                        // 更新评分
+                        const totalRating = reviews.reduce((sum: number, r: any) => sum + r.rating, 0);
+                        const avgRating = parseFloat((totalRating / reviews.length).toFixed(1));
+
+                        res.json({
+                            id,
+                            name: charData?.name || '',
+                            avatar: '',
+                            creator: charData?.creator || 'Imported',
+                            rating: avgRating,
+                            reviewCount: reviews.length,
+                            tags: Array.isArray(charData?.tags) ? charData.tags : [],
+                            description: charData?.description || '',
+                            personality: charData?.personality || '',
+                            scenario: charData?.scenario || '',
+                            first_mes: charData?.first_mes || '',
+                            mes_example: charData?.mes_example || '',
+                            creator_notes: charData?.creator_notes || '',
+                            system_prompt: charData?.system_prompt || '',
+                            post_history_instructions: charData?.post_history_instructions || '',
+                            alternate_greetings: Array.isArray(charData?.alternate_greetings) ? charData.alternate_greetings : [],
+                            character_version: charData?.character_version || '1.0',
+                            extensions: charData?.extensions || {},
+                            tagline: '',
+                            worldBook: charData?.extensions?.world || '',
+                            voiceType: 'sweet',
+                            status: 'online',
+                            reviews,
+                        });
+                        return;
+                    }
+                }
+            }
             res.status(404).json({ error: 'Character not found' });
             return;
         }
 
-        res.json(updated);
+        // 4. 用户创建的角色（custom_ 前缀）
+        const handle = (req as any).session?.handle;
+        if (handle && id.startsWith('custom_')) {
+            userCharacterService.addReviewToUserCharacter(handle, id, review)
+                .then(updated => {
+                    if (updated) {
+                        res.json(updated);
+                    } else {
+                        res.status(404).json({ error: 'Character not found' });
+                    }
+                })
+                .catch(() => res.status(404).json({ error: 'Character not found' }));
+            return;
+        }
+
+        res.status(404).json({ error: 'Character not found' });
     } catch (err) {
         next(err);
     }

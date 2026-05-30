@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { ScreenId, Character, Review } from '../types';
-import { ChevronLeft } from 'lucide-react';
+import { ChevronLeft, BookOpen } from 'lucide-react';
 import BottomNav from './BottomNav';
 import LazyImage from './LazyImage';
+import { useWorldApi, WorldListItem } from '../api/worlds';
 
 interface CharacterDetailScreenProps {
   character: Character;
@@ -26,6 +27,25 @@ export default function CharacterDetailScreen({
   const [commentText, setCommentText] = useState('');
   const [userRating, setUserRating] = useState(5);
   const [newReviews, setNewReviews] = useState<Review[]>(character.reviews || []);
+  const [worldList, setWorldList] = useState<WorldListItem[]>([]);
+  const worldApi = useWorldApi();
+
+  // 加载世界书列表，用于解析 worldBook file_id
+  useEffect(() => {
+    worldApi.listWorlds()
+      .then((data) => setWorldList(Array.isArray(data) ? data : []))
+      .catch(() => {});
+  }, []);
+
+  // 判断 worldBook 是否为世界书的 file_id（而非文本内容）
+  const worldInfo = useMemo(() => {
+    if (!character.worldBook) return null;
+    const matched = worldList.find(w => w.file_id === character.worldBook);
+    if (matched) {
+      return { name: matched.name, isFileId: true as const };
+    }
+    return { name: character.worldBook, isFileId: false as const };
+  }, [character.worldBook, worldList]);
 
   const isFavorite = favoriteIds.includes(character.id);
 
@@ -113,13 +133,13 @@ export default function CharacterDetailScreen({
           <div className="bg-surface-container/40 border border-outline-variant/20 p-3 rounded-xl backdrop-blur-md">
             <span className="text-[10px] text-on-surface-variant uppercase tracking-wider font-mono block mb-1">配音方案</span>
             <span className="text-sm font-bold text-[#ffade2]">
-              {character.voiceType === 'sweet' ? '甜美少女' : '成熟御姐'}
+              {character.voiceType === 'sweet' ? '甜美少女' : character.voiceType === 'mature' ? '成熟御姐' : '未设置'}
             </span>
           </div>
           <div className="bg-surface-container/40 border border-outline-variant/20 p-3 rounded-xl backdrop-blur-md">
             <span className="text-[10px] text-on-surface-variant uppercase tracking-wider font-mono block mb-1">世界树条目</span>
             <span className="text-sm font-bold text-accent-purple font-mono">
-              {character.worldBook ? '已注入' : '缺省'}
+              {worldInfo ? (worldInfo.isFileId ? worldInfo.name : '已注入') : '缺省'}
             </span>
           </div>
         </div>
@@ -133,15 +153,27 @@ export default function CharacterDetailScreen({
         </div>
 
         {/* World Book Detailed Panel */}
-        {character.worldBook && (
+        {worldInfo && (
           <div className="space-y-3">
             <div className="flex items-center gap-2">
-              <span className="font-mono text-xs text-accent-pink">book</span>
-              <h3 className="text-sm font-bold text-[#ffd8ee] uppercase tracking-wider font-mono">世界书 (Worldbook) 配置</h3>
+              <BookOpen className="w-4 h-4 text-accent-pink" />
+              <h3 className="text-sm font-bold text-[#ffd8ee] uppercase tracking-wider font-mono">世界书 (Worldbook)</h3>
             </div>
-            <div className="bg-surface-container/50 border border-outline-variant/30 p-4 rounded-xl space-y-2 text-xs leading-relaxed text-on-surface-variant whitespace-pre-wrap">
-              {character.worldBook}
-            </div>
+            {worldInfo.isFileId ? (
+              <div className="bg-surface-container/50 border border-accent-purple/30 p-4 rounded-xl flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-accent-purple/20 flex items-center justify-center">
+                  <BookOpen className="w-5 h-5 text-accent-purple" />
+                </div>
+                <div>
+                  <p className="text-sm font-bold text-white">{worldInfo.name}</p>
+                  <p className="text-[10px] text-on-surface-variant">绑定世界书 · 聊天时自动注入</p>
+                </div>
+              </div>
+            ) : (
+              <div className="bg-surface-container/50 border border-outline-variant/30 p-4 rounded-xl space-y-2 text-xs leading-relaxed text-on-surface-variant whitespace-pre-wrap">
+                {character.worldBook}
+              </div>
+            )}
           </div>
         )}
 
