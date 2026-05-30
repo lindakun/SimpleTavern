@@ -63,6 +63,9 @@ export default function CreateCharacterScreen({ onNavigate, onPublish, editChara
   };
   const allTags = ['高冷', '毒舌', '傲娇', '治愈', '活泼', '纯欲', '慵懒', '娇憨', '御姐', '野性', '含蓄', '撩人', '娇软', '知性熟韵', '随性浪']; // prettier-ignore
 
+  // 合并预设标签和角色已有的标签（用于显示导入角色卡的所有标签）
+  const displayTags = [...new Set([...allTags, ...selectedTags])];
+
   const toggleTag = (tag: string) => {
     if (selectedTags.includes(tag)) {
       setSelectedTags(selectedTags.filter((t) => t !== tag));
@@ -303,7 +306,7 @@ export default function CreateCharacterScreen({ onNavigate, onPublish, editChara
           <div className="space-y-2">
             <label className="text-xs font-semibold text-on-surface-variant ml-1">性格标签</label>
             <div className="flex flex-wrap gap-2">
-              {allTags.map((tag) => {
+              {displayTags.map((tag) => {
                 const isActive = selectedTags.includes(tag);
                 return (
                   <button
