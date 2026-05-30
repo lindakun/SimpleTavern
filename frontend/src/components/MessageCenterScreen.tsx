@@ -7,6 +7,18 @@ import { useToast } from './Toast.tsx';
 import { useChatThreads, useBatchDeleteChats, useTogglePinChat, chatKeys } from '../hooks/useChat';
 import { useQueryClient } from '@tanstack/react-query';
 
+interface ThreadItem {
+  characterId: string;
+  characterName: string;
+  avatar: string;
+  lastMessageText: string;
+  lastActive: string;
+  messageCount: number;
+  pinned: boolean;
+  // 对应的 Character（可能找到也可能找不到）
+  character?: Character;
+}
+
 interface MessageCenterScreenProps {
   characters: Character[];
   chatThreads: Record<string, ChatThread>;
@@ -14,6 +26,17 @@ interface MessageCenterScreenProps {
   onSelectCharacter: (id: string) => void;
   onDeleteChatThreads?: (characterIds: string[]) => void;
   onTogglePinChat?: (characterId: string, pinned: boolean) => void;
+}
+
+/**
+ * 根据 characterId（聊天目录名，如"奥利弗"）在角色列表中查找匹配的角色
+ * 匹配规则：角色 id 去 .png 后缀等于 characterId
+ */
+function findCharacter(characters: Character[], characterId: string): Character | undefined {
+  return characters.find(c => {
+    const cid = c.id.replace(/\.png$/, '');
+    return cid === characterId;
+  });
 }
 
 export default function MessageCenterScreen({
@@ -26,7 +49,7 @@ export default function MessageCenterScreen({
 }: MessageCenterScreenProps) {
   const { showToast } = useToast();
   const queryClient = useQueryClient();
-  const { data: _threadList = [], refetch: refetchThreads } = useChatThreads();
+  const { data: threadList = [], refetch: refetchThreads } = useChatThreads();
   const batchDelete = useBatchDeleteChats();
   const togglePin = useTogglePinChat();
 
@@ -44,20 +67,26 @@ export default function MessageCenterScreen({
     }
   };
 
-  // 只显示有聊天记录的活跃会话
-  const activeChatIds = new Set(Object.keys(chatThreads));
-  const chatList = useMemo(() => {
-    return characters
-      .filter((c) => c.id !== 'ai_broadcast' && activeChatIds.has(c.id))
-      .sort((a, b) => {
-        const aPinned = chatThreads[a.id]?.pinned ? 1 : 0;
-        const bPinned = chatThreads[b.id]?.pinned ? 1 : 0;
-        if (aPinned !== bPinned) return bPinned - aPinned;
-        const aTime = chatThreads[a.id]?.updatedAt || '';
-        const bTime = chatThreads[b.id]?.updatedAt || '';
-        return bTime.localeCompare(aTime);
-      });
-  }, [characters, chatThreads, activeChatIds]);
+  // 合并后端线程数据和本地角色数据
+  const chatList = useMemo<ThreadItem[]>(() => {
+    return threadList.map(thread => {
+      const character = findCharacter(characters, thread.characterId);
+      // 补充 App.tsx 中 chatThreads prop 的本地状态（如 messages）
+      const localThread = chatThreads[thread.characterId]
+        ?? chatThreads[thread.characterId + '.png'];
+
+      return {
+        characterId: thread.characterId,
+        characterName: thread.characterName || character?.name || thread.characterId,
+        avatar: character?.avatar || '',
+        lastMessageText: thread.lastMessageText || localThread?.lastMessageText || '',
+        lastActive: thread.lastActive || '',
+        messageCount: thread.messageCount || 0,
+        pinned: thread.pinned || false,
+        character,
+      };
+    });
+  }, [threadList, characters, chatThreads]);
 
   // 选择模式操作
   const enterSelectionMode = (characterId: string) => {
@@ -86,7 +115,7 @@ export default function MessageCenterScreen({
     if (selectedIds.size === chatList.length) {
       setSelectedIds(new Set());
     } else {
-      setSelectedIds(new Set(chatList.map(c => c.id)));
+      setSelectedIds(new Set(chatList.map(t => t.characterId)));
     }
   };
 
@@ -97,7 +126,6 @@ export default function MessageCenterScreen({
     const idsToDelete = Array.from(selectedIds);
     try {
       await batchDelete.mutateAsync(idsToDelete);
-      // 同步清除本地状态
       if (onDeleteChatThreads) {
         onDeleteChatThreads(idsToDelete);
       }
@@ -216,46 +244,38 @@ export default function MessageCenterScreen({
             <div className="py-12 text-center text-on-surface-variant text-xs">
               暂无聊天记录，去发现页面选择一个角色开始对话吧
             </div>
-          ) : chatList.map((c) => {
-            const thread = chatThreads[c.id];
-            const isPinned = thread?.pinned || false;
-            const isSelected = selectedIds.has(c.id);
-            
-            // Get last message text: prefer thread summary, then latest message, then tagline
-            const lastMsgText = thread?.lastMessageText
-              ?? (thread?.messages?.length ? thread.messages[thread.messages.length - 1]?.text : null)
-              ?? c.tagline
-              ?? c.description?.slice(0, 40);
-
-            const unreadCount = thread?.unreadCount || 0;
+          ) : chatList.map((item) => {
+            const isSelected = selectedIds.has(item.characterId);
+            // 点击时使用角色的完整 ID（含 .png），以便后续 API 调用
+            const selectId = item.character?.id || item.characterId;
             
             return (
               <div
-                key={c.id}
+                key={item.characterId}
                 onClick={() => {
                   if (isSelectionMode) {
-                    toggleSelect(c.id);
+                    toggleSelect(item.characterId);
                   } else {
-                    onSelectCharacter(c.id);
+                    onSelectCharacter(selectId);
                     onNavigate(ScreenId.CHAT);
                   }
                 }}
                 onContextMenu={(e) => {
                   e.preventDefault();
                   if (!isSelectionMode) {
-                    enterSelectionMode(c.id);
+                    enterSelectionMode(item.characterId);
                   }
                 }}
                 className={`bg-surface-container/40 hover:bg-surface-container border p-4 rounded-xl flex items-center gap-4 cursor-pointer transition-all duration-200 ${
                   isSelected
                     ? 'border-accent-pink/60 bg-accent-pink/5'
                     : 'border-outline-variant/20 hover:border-accent-pink/30'
-                } ${isPinned ? 'border-l-2 border-l-accent-pink/60' : ''}`}
+                } ${item.pinned ? 'border-l-2 border-l-accent-pink/60' : ''}`}
               >
                 {/* 选择模式复选框 */}
                 {isSelectionMode && (
                   <button
-                    onClick={(e) => { e.stopPropagation(); toggleSelect(c.id); }}
+                    onClick={(e) => { e.stopPropagation(); toggleSelect(item.characterId); }}
                     className="flex-shrink-0 cursor-pointer"
                   >
                     {isSelected ? (
@@ -268,18 +288,19 @@ export default function MessageCenterScreen({
 
                 {/* Avatar with unread indicator badge */}
                 <div className="relative">
-                  <LazyImage
-                    src={c.avatar}
-                    alt={c.name}
-                    referrerPolicy="no-referrer"
-                    className="w-12 h-12 rounded-full object-cover border border-outline-variant/30"
-                  />
-                  {unreadCount > 0 && (
-                    <span className="absolute -top-1 -right-1 bg-accent-pink text-white font-bold leading-none w-5 h-5 rounded-full flex items-center justify-center text-[10px] border border-background-deep animate-pulse">
-                      {unreadCount}
-                    </span>
+                  {item.avatar ? (
+                    <LazyImage
+                      src={item.avatar}
+                      alt={item.characterName}
+                      referrerPolicy="no-referrer"
+                      className="w-12 h-12 rounded-full object-cover border border-outline-variant/30"
+                    />
+                  ) : (
+                    <div className="w-12 h-12 rounded-full bg-accent-pink/20 flex items-center justify-center text-accent-pink font-bold text-sm border border-outline-variant/30">
+                      {item.characterName.charAt(0)}
+                    </div>
                   )}
-                  {c.status === 'online' && (
+                  {item.character?.status === 'online' && (
                     <span className="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-green-400 border border-background-deep" />
                   )}
                 </div>
@@ -289,20 +310,20 @@ export default function MessageCenterScreen({
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-1.5 min-w-0">
                       <span className="font-bold text-sm text-white hover:text-accent-pink truncate">
-                        {c.id === 'yuki' ? '柚姬' : c.name}
+                        {item.characterName}
                       </span>
-                      {isPinned && !isSelectionMode && (
+                      {item.pinned && !isSelectionMode && (
                         <Pin className="w-3 h-3 text-accent-pink flex-shrink-0" />
                       )}
                     </div>
                     <span className="text-[10px] text-on-surface-variant/40 font-mono flex-shrink-0">
-                      {thread?.updatedAt
-                        ? new Date(thread.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                        : (c.lastActiveLabel || '')}
+                      {item.lastActive
+                        ? new Date(item.lastActive).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                        : ''}
                     </span>
                   </div>
                   <p className="text-xs text-on-surface-variant line-clamp-1">
-                    {lastMsgText}
+                    {item.lastMessageText || item.character?.tagline || item.character?.description?.slice(0, 40)}
                   </p>
                 </div>
 
@@ -310,11 +331,11 @@ export default function MessageCenterScreen({
                 {!isSelectionMode && (
                   <div className="flex flex-col gap-1.5 flex-shrink-0">
                     <button
-                      onClick={(e) => { e.stopPropagation(); handleTogglePin(c.id, isPinned); }}
+                      onClick={(e) => { e.stopPropagation(); handleTogglePin(item.characterId, item.pinned); }}
                       className="p-1.5 rounded-lg hover:bg-surface-container/80 transition-colors cursor-pointer"
-                      title={isPinned ? '取消置顶' : '置顶'}
+                      title={item.pinned ? '取消置顶' : '置顶'}
                     >
-                      {isPinned ? (
+                      {item.pinned ? (
                         <PinOff className="w-4 h-4 text-accent-pink" />
                       ) : (
                         <Pin className="w-4 h-4 text-on-surface-variant/40 hover:text-accent-pink" />
