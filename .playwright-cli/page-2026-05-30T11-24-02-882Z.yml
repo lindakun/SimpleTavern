@@ -1,0 +1,40 @@
+- generic [ref=e44]:
+  - banner [ref=e45]:
+    - button "Yuzu AI Logo 返回" [ref=e46] [cursor=pointer]:
+      - img [ref=e47]
+      - img "Yuzu AI Logo" [ref=e49]
+      - generic [ref=e50]: 返回
+    - heading "登录" [level=1] [ref=e51]
+  - main [ref=e52]:
+    - generic [ref=e53]:
+      - img "Yuzu AI Avatar active" [ref=e56]
+      - generic [ref=e57]: AI ACTIVE
+    - generic [ref=e58]:
+      - heading "欢迎回来" [level=2] [ref=e59]
+      - paragraph [ref=e60]: 登录进入你的霓虹领地
+    - generic [ref=e61]:
+      - generic [ref=e62]:
+        - text: 用户名或邮箱
+        - generic [ref=e63]:
+          - textbox "用户名或邮箱" [ref=e64]:
+            - /placeholder: 输入用户名或注册邮箱
+          - generic [ref=e65]: "@"
+      - generic [ref=e66]:
+        - generic [ref=e67]:
+          - generic [ref=e68]: 密码
+          - button "忘记密码？" [ref=e69] [cursor=pointer]
+        - generic [ref=e70]:
+          - textbox "密码" [ref=e71]:
+            - /placeholder: ••••••••
+          - button [ref=e72] [cursor=pointer]:
+            - img [ref=e73]
+      - button "连接登录" [ref=e76] [cursor=pointer]:
+        - generic [ref=e77]: 连接登录
+        - img [ref=e78]
+    - generic [ref=e82]: 或
+    - button "使用 Google 继续" [ref=e84] [cursor=pointer]:
+      - img [ref=e85]
+      - generic [ref=e90]: 使用 Google 继续
+    - paragraph [ref=e91]:
+      - text: 还没有账号？
+      - button "立即注册" [ref=e92] [cursor=pointer]
