@@ -73,7 +73,7 @@ export default function RegisterScreen({ onNavigate, onRegister }: RegisterScree
     setSubmitError('');
     try {
       await onRegister(username, email, password);
-      onNavigate(ScreenId.EMAIL_LOGIN);
+      onNavigate(ScreenId.DISCOVER);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : '注册失败，请重试';
       setSubmitError(message);

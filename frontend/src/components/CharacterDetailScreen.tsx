@@ -7,6 +7,7 @@ import LazyImage from './LazyImage';
 interface CharacterDetailScreenProps {
   character: Character;
   onNavigate: (screen: ScreenId) => void;
+  onGoBack?: () => void;
   onAddReview: (characterId: string, review: Review) => void;
   onSelectCharacter: (id: string) => void;
   favoriteIds: string[];
@@ -20,6 +21,7 @@ export default function CharacterDetailScreen({
   onSelectCharacter,
   favoriteIds,
   toggleFavorite,
+  onGoBack,
 }: CharacterDetailScreenProps) {
   const [commentText, setCommentText] = useState('');
   const [userRating, setUserRating] = useState(5);
@@ -54,7 +56,7 @@ export default function CharacterDetailScreen({
       {/* Floating Top Nav Bar */}
       <header className="sticky top-0 z-40 bg-background-deep/80 backdrop-blur-md px-6 h-16 flex items-center justify-between border-b border-outline-variant/20">
         <button
-          onClick={() => onNavigate(ScreenId.DISCOVER)}
+          onClick={() => onGoBack ? onGoBack() : onNavigate(ScreenId.DISCOVER)}
           className="flex items-center gap-1.5 pl-2 pr-3 py-1.5 rounded-full bg-surface-container/60 hover:bg-surface-elevated border border-accent-pink/30 hover:border-accent-pink/60 transition-all duration-200 cursor-pointer text-white shadow-[0_0_10px_rgba(232,121,199,0.1)] group/back"
         >
           <ChevronLeft className="w-3.5 h-3.5 text-accent-pink group-hover/back:-translate-x-0.5 transition-transform" />

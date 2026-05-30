@@ -8,7 +8,7 @@ import {
     adminDeleteWorld,
     adminImportWorld,
 } from './admin-worlds.controller.js';
-import { publicListWorlds } from './public-worlds.controller.js';
+import { publicGetWorld, publicListWorlds } from './public-worlds.controller.js';
 
 /**
  * 管理员世界书路由（需 requireAdmin 守卫）
@@ -46,6 +46,7 @@ export function createPublicWorldRoutes(): Router {
 
     // 用户可用的世界书列表（仅返回名称和基本信息）
     router.post('/list', publicListWorlds);
+    router.post('/get', publicGetWorld);
 
     return router;
 }

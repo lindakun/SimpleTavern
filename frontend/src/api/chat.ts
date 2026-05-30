@@ -18,6 +18,11 @@ interface SendMessageResponse {
   error?: string;
 }
 
+interface ProvidersResponse {
+  providers: Array<{ id: string; name: string; model?: string }>;
+  active: string | null;
+}
+
 export function useChatApi() {
   const { get, post } = useApiClient();
 
@@ -35,7 +40,7 @@ export function useChatApi() {
       get<ChatThread>(`/api/chat/threads/${characterId}`),
 
     // 保存聊天
-    saveChat: (characterId: string, messages: ChatMessage[]) =>
+    saveChat: (characterId: string, messages: unknown[]) =>
       post('/api/chats/save', {
         avatar_url: characterId,
         file_name: 'chat',
@@ -74,6 +79,6 @@ export function useChatApi() {
 
     // 获取支持的 LLM providers
     getProviders: () =>
-      get<Array<{ id: string; name: string }>>('/api/chat/providers'),
+      get<ProvidersResponse>('/api/chat/providers'),
   };
 }

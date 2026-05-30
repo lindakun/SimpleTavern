@@ -29,9 +29,17 @@ export function useCharacterApi() {
     updateCharacter: (character: Character) =>
       post<Character>('/api/characters/edit', character),
 
+    // 更新用户发布角色（node-persist 自定义角色）
+    updateUserCharacter: (character: Character) =>
+      post<Character>('/api/users/characters/edit', character),
+
     // 删除角色
     deleteCharacter: (avatarUrl: string) =>
       post('/api/characters/delete', { avatar_url: avatarUrl }),
+
+    // 删除用户发布角色（node-persist 自定义角色）
+    deleteUserCharacter: (characterId: string) =>
+      post('/api/users/characters/delete', { characterId }),
 
     // 发布角色
     publishCharacter: (character: Character) =>
@@ -39,7 +47,7 @@ export function useCharacterApi() {
 
     // 提交评价
     addReview: (characterId: string, review: Omit<Review, 'id'>) =>
-      post<Review>(`/api/discover/${characterId}/reviews`, review),
+      post<Character>(`/api/discover/${characterId}/reviews`, review),
 
     // 导出角色
     exportCharacter: (id: string) =>

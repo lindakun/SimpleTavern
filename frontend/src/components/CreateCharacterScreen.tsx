@@ -2,14 +2,20 @@ import React, { useState, useRef, useEffect } from 'react';
 import { ScreenId, Character } from '../types';
 import { ChevronLeft, BookOpen, ChevronRight, Volume2, Check, Globe } from 'lucide-react';
 import BottomNav from './BottomNav';
+import { useWorldApi } from '../api/worlds';
+import { CreateCharacterSchema, formatValidationErrors } from '../validations/character';
+import { useToast } from './Toast';
 
 interface CreateCharacterScreenProps {
   onNavigate: (screen: ScreenId) => void;
-  onPublish: (character: Character) => void;
+  onGoBack?: () => void;
+  onPublish: (character: Character) => Promise<void>;
   editCharacter?: Character | null;
 }
 
 export default function CreateCharacterScreen({ onNavigate, onPublish, editCharacter }: CreateCharacterScreenProps) {
+  const worldApi = useWorldApi();
+  const { showToast } = useToast();
   const [name, setName] = useState(editCharacter?.name || '');
   const [tagline, setTagline] = useState(editCharacter?.tagline || '');
   const [description, setDescription] = useState(editCharacter?.description || '');
@@ -22,10 +28,13 @@ export default function CreateCharacterScreen({ onNavigate, onPublish, editChara
   // 世界书列表
   const [worldList, setWorldList] = useState<{ file_id: string; name: string }[]>([]);
   const [selectedWorldFile, setSelectedWorldFile] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [showCustomTagInput, setShowCustomTagInput] = useState(false);
+  const [customTagValue, setCustomTagValue] = useState('');
+  const [_formErrors, setFormErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
-    fetch('/api/worlds/list', { method: 'POST', credentials: 'include' })
-      .then((r) => r.json())
+    worldApi.listWorlds()
       .then((data) => {
         setWorldList(Array.isArray(data) ? data : []);
       })
@@ -37,10 +46,17 @@ export default function CreateCharacterScreen({ onNavigate, onPublish, editChara
     }
   }, [editCharacter]);
 
-  const handleWorldSelect = (fileId: string) => {
+  const handleWorldSelect = async (fileId: string) => {
     setSelectedWorldFile(fileId);
     if (fileId) {
-      setWorldBook(fileId);  // 选择已有世界书，存储其名称
+      try {
+        const detail = await worldApi.getWorld(fileId);
+        setWorldBook(detail.promptText || detail.name || fileId);
+      } catch (err: unknown) {
+        setWorldBook(fileId);
+        const message = err instanceof Error ? err.message : '世界书读取失败';
+        showToast(message, 'error');
+      }
     } else if (!fileId && !editCharacter?.worldBook) {
       setWorldBook('');
     }
@@ -55,34 +71,54 @@ export default function CreateCharacterScreen({ onNavigate, onPublish, editChara
     }
   };
 
-  const handlePublish = (e: React.FormEvent) => {
+  const handlePublish = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim()) {
-      alert('请先输入角色名称！');
+
+    const validation = CreateCharacterSchema.safeParse({
+      name,
+      tagline,
+      description,
+      worldBook,
+      voiceType,
+      tags: selectedTags,
+      avatar,
+      status: editCharacter?.status || 'online',
+    });
+    if (!validation.success) {
+      const errors = formatValidationErrors(validation.error);
+      setFormErrors(errors);
+      showToast(Object.values(errors)[0] || '请检查角色信息', 'error');
       return;
     }
+    setFormErrors({});
 
     const newChar: Character = {
       id: editCharacter?.id || 'custom_' + Date.now(),
-      name,
+      name: validation.data.name,
       avatar,
-      tagline: tagline || `${name} - 赛博幻行者`,
+      tagline: validation.data.tagline || `${validation.data.name} - 赛博幻行者`,
       creator: editCharacter?.creator || '霓虹特工_Pilot',
       rating: editCharacter?.rating || 5.0,
       reviewCount: editCharacter?.reviewCount || 0,
-      tags: selectedTags,
-      description: description || '暂无更多设定信息。',
-      worldBook: worldBook || '标准世界观设定已激活。',
-      voiceType,
+      tags: validation.data.tags,
+      description: validation.data.description || '暂无更多设定信息。',
+      worldBook: validation.data.worldBook || '',
+      voiceType: validation.data.voiceType,
       status: editCharacter?.status || 'online',
       reviews: editCharacter?.reviews || [],
     };
 
-    onPublish(newChar);
-    alert(editCharacter
-      ? `✅ 角色 [${name}] 已更新保存！`
-      : `🎉 角色 [${name}] 已成功在 Yuzu AI 注册并发布！您可以立即与她对话了。`);
-    onNavigate(ScreenId.MY_CHARACTERS);
+    setSaving(true);
+    try {
+      await onPublish(newChar);
+      showToast(editCharacter ? '角色已保存' : '角色已发布', 'success');
+      onNavigate(ScreenId.MY_CHARACTERS);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : '保存失败';
+      showToast(message, 'error');
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -109,7 +145,8 @@ export default function CreateCharacterScreen({ onNavigate, onPublish, editChara
 
         <button
           onClick={handlePublish}
-          className="text-xs font-bold text-accent-pink hover:text-white px-4 py-2 bg-accent-pink/15 rounded-lg border border-accent-pink/40 hover:bg-accent-pink transition-all cursor-pointer"
+          disabled={saving}
+          className="text-xs font-bold text-accent-pink hover:text-white px-4 py-2 bg-accent-pink/15 rounded-lg border border-accent-pink/40 hover:bg-accent-pink transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {editCharacter ? '保存修改' : '发布'}
         </button>
@@ -286,15 +323,57 @@ export default function CreateCharacterScreen({ onNavigate, onPublish, editChara
               <button
                 type="button"
                 onClick={() => {
-                  const customTag = prompt('输入自定义性格标签：');
-                  if (customTag && customTag.trim()) {
-                    setSelectedTags([...selectedTags, customTag.trim()]);
-                  }
+                  setCustomTagValue('');
+                  setShowCustomTagInput(true);
                 }}
                 className="px-3 py-1.5 bg-surface-elevated border border-outline-variant/30 border-dashed rounded-full text-xs text-on-surface-variant hover:text-white cursor-pointer"
               >
                 + 自定义
               </button>
+              {showCustomTagInput && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+                  <div className="bg-surface-elevated border border-outline-variant/30 rounded-2xl p-5 w-72 shadow-2xl">
+                    <h4 className="text-xs font-bold text-white mb-3">添加自定义标签</h4>
+                    <input
+                      type="text"
+                      value={customTagValue}
+                      onChange={(e) => setCustomTagValue(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && customTagValue.trim()) {
+                          setSelectedTags([...selectedTags, customTagValue.trim()]);
+                          setShowCustomTagInput(false);
+                          setCustomTagValue('');
+                        }
+                      }}
+                      placeholder="输入标签名称..."
+                      className="w-full bg-background-deep border border-outline-variant/30 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-accent-pink mb-3"
+                      autoFocus
+                    />
+                    <div className="flex gap-2 justify-end">
+                      <button
+                        type="button"
+                        onClick={() => setShowCustomTagInput(false)}
+                        className="px-3 py-1.5 rounded-lg text-[10px] text-on-surface-variant border border-outline-variant/30 hover:text-white cursor-pointer"
+                      >
+                        取消
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (customTagValue.trim()) {
+                            setSelectedTags([...selectedTags, customTagValue.trim()]);
+                            setShowCustomTagInput(false);
+                            setCustomTagValue('');
+                          }
+                        }}
+                        className="px-3 py-1.5 rounded-lg text-[10px] bg-accent-pink text-white hover:brightness-110 cursor-pointer"
+                      >
+                        添加
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 

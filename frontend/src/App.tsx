@@ -1,9 +1,13 @@
-import { useState, useEffect, useCallback, lazy, Suspense, useMemo } from 'react';
+import { useState, useEffect, useCallback, lazy, Suspense, useMemo, useRef } from 'react';
 import { AnimatePresence } from 'motion/react';
-import { ScreenId, Character, ChatThread, ChatMessage } from './types';
+import { ScreenId, Character, ChatThread, ChatMessage, RouteState } from './types';
 import { FAQS } from './data';
 import { useToast } from './components/Toast.tsx';
 import { registerServiceWorker } from './sw-register';
+import { useUserApi } from './api/users';
+import { useCharacterApi } from './api/characters';
+import { useChatApi } from './api/chat';
+import { fromStoredChatMessages, toStoredChatMessages } from './utils/chatMessages';
 
 // Import our modular screens — lazy loaded for code splitting
 import GoogleCallback from './components/GoogleCallback';
@@ -32,6 +36,7 @@ export default function App() {
   }
 
   const [currentScreen, setCurrentScreen] = useState<ScreenId>(ScreenId.WELCOME);
+  const [navigationStack, setNavigationStack] = useState<ScreenId[]>([]);
   const [activeCharacterId, setActiveCharacterId] = useState<string>('yuki');
   const [editingCharacter, setEditingCharacter] = useState<Character | null>(null);
   const [user, setUser] = useState<{ username: string; email: string } | null>(null);
@@ -41,13 +46,27 @@ export default function App() {
   const [favoriteIds, setFavoriteIds] = useState<string[]>([]);
   const [chatThreads, setChatThreads] = useState<Record<string, ChatThread>>({});
   const { showToast } = useToast();
+  const userApi = useUserApi();
+  const characterApi = useCharacterApi();
+  const chatApi = useChatApi();
+  const didInitHistory = useRef(false);
+  const navSourceRef = useRef<ScreenId>(ScreenId.DISCOVER);
+
+  const hydrateUser = useCallback(async () => {
+    const profile = await userApi.getMe();
+    setUser({
+      username: profile.handle,
+      email: `${profile.handle}@yuzu.ai`,
+    });
+    return profile;
+  }, [userApi]);
 
   // 从后端加载数据（并行请求）
   useEffect(() => {
     Promise.all([
-      fetch('/api/discover').then(r => r.json()).catch(() => []),
-      fetch('/api/users/favorites').then(r => r.json()).catch(() => ({ favorites: [] })),
-      fetch('/api/users/characters').then(r => r.json()).catch(() => []),
+      characterApi.getDiscoverCharacters().catch(() => []),
+      userApi.getFavorites().catch(() => ({ favorites: [] })),
+      characterApi.getMyCharacters().catch(() => []),
     ]).then(([discoverData, favData, charsData]) => {
       if (Array.isArray(discoverData) && discoverData.length > 0) setCharacters(discoverData);
       if (favData && Array.isArray(favData.favorites)) setFavoriteIds(favData.favorites);
@@ -61,182 +80,160 @@ export default function App() {
     });
   }, []);
 
-  // Nav routing switch
-  const handleNavigate = useCallback((screen: ScreenId) => {
-    setCurrentScreen(screen);
+  // 恢复 cookie-session：刷新页面或新标签打开时保持登录态
+  useEffect(() => {
+    hydrateUser()
+      .then(() => {
+        setCurrentScreen(ScreenId.DISCOVER);
+        const initRoute: RouteState = { screen: ScreenId.DISCOVER, characterId: activeCharacterId };
+  window.history.replaceState(initRoute, '', window.location.pathname);
+      })
+      .catch(() => {
+        setUser(null);
+      });
   }, []);
 
-  const handleLogin = useCallback(async (input: string, password?: string) => {
-    const res = await fetch('/api/users/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ handle: input, password }),
+  const primaryScreens = useMemo(
+    () => new Set([ScreenId.DISCOVER, ScreenId.MESSAGE_CENTER, ScreenId.CREATE_CHOICE, ScreenId.PROFILE]),
+    [],
+  );
+
+  useEffect(() => {
+    if (didInitHistory.current) return;
+    didInitHistory.current = true;
+    window.history.replaceState({ screen: currentScreen, characterId: activeCharacterId }, '', window.location.pathname);
+
+    const onPopState = (event: PopStateEvent) => {
+      const nextScreen = event.state?.screen as ScreenId | undefined;
+      const nextCharacterId = event.state?.activeCharacterId as string | undefined;
+      if (nextCharacterId) setActiveCharacterId(nextCharacterId);
+      if (nextScreen && Object.values(ScreenId).includes(nextScreen)) {
+        setCurrentScreen(nextScreen);
+      } else {
+        setCurrentScreen(user ? ScreenId.DISCOVER : ScreenId.WELCOME);
+      }
+    };
+
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, [activeCharacterId, currentScreen, user]);
+
+  // Nav routing switch
+  const handleNavigate = useCallback((screen: ScreenId) => {
+    setCurrentScreen((previous) => {
+      if (previous !== screen) {
+        navSourceRef.current = previous;
+        setNavigationStack((stack) =>
+          primaryScreens.has(screen) ? [] : [...stack, previous]
+        );
+        window.history.pushState({ screen, characterId: activeCharacterId, source: navSourceRef.current }, '', window.location.pathname);
+      }
+      return screen;
     });
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.message || '登录失败');
-    }
-    const data = await res.json();
+  }, [activeCharacterId, primaryScreens]);
+
+  const handleGoBack = useCallback((fallback: ScreenId) => {
+    const navStack = navigationStack;
+    const prevScreen = navStack.length > 0 ? navStack.at(-1) : null;
+    const nextScreen = prevScreen || fallback;
+    setNavigationStack(navStack.length > 0 ? navStack.slice(0, -1) : []);
+    setCurrentScreen(nextScreen);
+    window.history.pushState({ screen: nextScreen, characterId: activeCharacterId }, '', window.location.pathname);
+  }, [activeCharacterId, navigationStack]);
+
+  const handleLogin = useCallback(async (input: string, password?: string) => {
+    const data = await userApi.login({ handle: input, password });
     setUser({
       username: data.handle || input,
       email: input.includes('@') ? input : `${data.handle}@yuzu.ai`,
     });
     showToast(`欢迎回来，${data.handle}！`, 'success');
-  }, [showToast]);
+  }, [showToast, userApi]);
 
   // Google OAuth 登录
   const handleGoogleLogin = useCallback(async (idToken: string) => {
     try {
-      const res = await fetch('/api/users/google-login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ idToken }),
-      });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.message || err.error || 'Google login failed');
-      }
-      const data = await res.json();
-      setUser({
-        username: data.handle,
-        email: `${data.handle}@yuzu.ai`,
-      });
+      await userApi.googleLogin(idToken);
+      await hydrateUser();
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : '未知错误';
       showToast(`Google 登录失败: ${message}`, 'error');
+      throw err;
     }
-  }, [showToast]);
+  }, [hydrateUser, showToast, userApi]);
 
   const handleRegister = useCallback(async (username: string, email: string, password?: string) => {
-    const res = await fetch('/api/users/register', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ handle: username, name: username, password, email }),
-    });
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.message || '注册失败');
-    }
-    showToast('注册成功，请登录', 'success');
-  }, [showToast]);
+    await userApi.register({ handle: username, name: username, password, email });
+    await hydrateUser();
+    showToast('注册成功，欢迎加入！', 'success');
+  }, [hydrateUser, showToast, userApi]);
 
   const handleLogout = useCallback(() => {
-    fetch('/api/users/logout', { method: 'POST' }).catch(() => {});
+    userApi.logout().catch(() => {});
     setUser(null);
     setFavoriteIds([]);
     setChatThreads({});
     // 重置角色列表为种子角色（清除用户创建的角色）
-    fetch('/api/discover')
-      .then(res => res.json())
+    characterApi.getDiscoverCharacters()
       .then(data => {
         if (Array.isArray(data)) setCharacters(data);
       })
       .catch(() => {});
-  }, []);
+  }, [characterApi, userApi]);
 
   // Toggle character in favorites — uses functional setState to avoid favoriteIds dependency
   const handleToggleFavorite = useCallback(async (characterId: string) => {
-    let wasFav = false;
+    const wasFav = favoriteIds.includes(characterId);
     // 乐观更新 UI（用 functional setState 读取最新状态）
-    setFavoriteIds(prev => {
-      wasFav = prev.includes(characterId);
-      return wasFav
+    setFavoriteIds(prev =>
+      wasFav
         ? prev.filter((id) => id !== characterId)
-        : [...prev, characterId];
-    });
+        : [...prev, characterId]
+    );
     try {
-      // 需要在 setState 回调外判断，用 setTimeout 让 setState 执行完
-      // 但为简化，直接发请求
-      const checkFav = favoriteIds.includes(characterId);
-      if (checkFav) {
-        await fetch(`/api/users/favorites/${characterId}`, { method: 'DELETE' });
+      if (wasFav) {
+        await userApi.removeFavorite(characterId);
       } else {
-        await fetch('/api/users/favorites', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ characterId }),
-        });
+        await userApi.addFavorite(characterId);
       }
-    } catch {
+    } catch (err: unknown) {
       // 回滚
       setFavoriteIds(prev =>
         wasFav
           ? [...prev, characterId]
           : prev.filter((id) => id !== characterId)
       );
+      const message = err instanceof Error ? err.message : '收藏同步失败';
+      showToast(message, 'error');
     }
-  }, [favoriteIds]);
+  }, [favoriteIds, showToast, userApi]);
 
   // Publish newly customized cyber persona (or update existing one)
   const handlePublishCharacter = useCallback(async (newChar: Character) => {
     const isEdit = !!editingCharacter;
-    try {
-      if (isEdit) {
-        // Update existing character
-        const res = await fetch('/api/characters/edit', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ avatar_url: newChar.id, ...newChar }),
-        });
-        if (res.ok) {
-          setCharacters(prev => prev.map(c => c.id === newChar.id ? newChar : c));
-          setEditingCharacter(null);
-          return;
-        }
-      } else {
-        // Create new character
-        const res = await fetch('/api/characters/publish', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(newChar),
-        });
-        if (res.ok) {
-          const saved = await res.json();
-          setCharacters(prev => [saved, ...prev]);
-          return;
-        }
-      }
-    } catch { /* fallback below */ }
-    // fallback
     if (isEdit) {
-      setCharacters(prev => prev.map(c => c.id === newChar.id ? newChar : c));
+      const saved = await characterApi.updateUserCharacter(newChar);
+      setCharacters(prev => prev.map(c => c.id === saved.id ? saved : c));
       setEditingCharacter(null);
     } else {
-      setCharacters(prev => [newChar, ...prev]);
+      const saved = await characterApi.publishCharacter(newChar);
+      setCharacters(prev => [saved, ...prev.filter(c => c.id !== saved.id)]);
     }
-  }, [editingCharacter]);
+  }, [characterApi, editingCharacter]);
 
   // Append reviews via backend API
   const handleAddReview = useCallback(async (characterId: string, review: Character['reviews'] extends (infer R)[] | undefined ? R : never) => {
     try {
-      const res = await fetch(`/api/discover/${characterId}/reviews`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(review),
-      });
-      if (res.ok) {
-        const updatedChar = await res.json();
-        setCharacters((prev) =>
-          prev.map((c) => (c.id === characterId ? updatedChar : c))
-        );
-        return;
-      }
-    } catch { /* fallback below */ }
-    // Fallback: 本地更新
-    setCharacters((prev) =>
-      prev.map((c) => {
-        if (c.id === characterId) {
-          const currentReviews = c.reviews || [];
-          const updatedReviews = [review, ...currentReviews];
-          const average = parseFloat(
-            (updatedReviews.reduce((sum, r) => sum + r.rating, 0) / updatedReviews.length).toFixed(1)
-          );
-          return { ...c, reviews: updatedReviews, reviewCount: updatedReviews.length, rating: average };
-        }
-        return c;
-      })
-    );
-  }, []);
+      const updatedChar = await characterApi.addReview(characterId, review);
+      setCharacters((prev) =>
+        prev.map((c) => (c.id === characterId ? updatedChar : c))
+      );
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : '评价提交失败';
+      showToast(message, 'error');
+      throw err;
+    }
+  }, [characterApi, showToast]);
 
   // Messaging dispatcher calling backend
   const handleSendMessage = useCallback(async (characterId: string, text: string) => {
@@ -270,24 +267,22 @@ export default function App() {
     }
 
     try {
-      const response = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: text,
-          history: updatedThreadMessages.map((m) => ({ role: m.role, text: m.text })),
-          characterName: chatCharacter.name,
-          characterDescription: chatCharacter.description,
-          worldBook: chatCharacter.worldBook,
-        }),
+      const response = await chatApi.sendMessage({
+        message: text,
+        history: currentThread.messages.map((m) => ({ role: m.role, text: m.text })),
+        characterName: chatCharacter.name,
+        characterDescription: chatCharacter.description,
+        worldBook: chatCharacter.worldBook,
       });
 
-      const data = await response.json();
+      if (response.error) {
+        throw new Error(response.error);
+      }
 
       const aiReply: ChatMessage = {
         id: 'msg_ai_' + Date.now(),
         role: 'model',
-        text: data.text || '……发生连接断裂。',
+        text: response.text || '……发生连接断裂。',
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       };
 
@@ -301,22 +296,14 @@ export default function App() {
         },
       }));
 
-      // 保存聊天到后端
-      fetch('/api/chats/save', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          avatar_url: characterId,
-          file_name: 'chat',
-          chat: finalMessages,
-        }),
-      }).catch(() => {});
-    } catch {
-      showToast('消息发送失败，请检查网络连接', 'error');
+      await chatApi.saveChat(characterId, toStoredChatMessages(chatCharacter, finalMessages));
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : '消息发送失败，请检查网络连接';
+      showToast(`消息发送失败: ${message}`, 'error');
       const errorMsg: ChatMessage = {
         id: 'msg_err_' + Date.now(),
         role: 'model',
-        text: '（⚠️ 脑干链接断开，网络发生干扰。请重试……）',
+        text: `（发送失败：${message}）`,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       };
       setChatThreads((prev) => ({
@@ -326,33 +313,32 @@ export default function App() {
           messages: [...updatedThreadMessages, errorMsg],
         },
       }));
+      throw err;
     }
-  }, [chatThreads, characters, showToast]);
+  }, [chatApi, chatThreads, characters, showToast]);
 
   // 删除角色
   const handleDeleteCharacter = useCallback(async (characterId: string) => {
     const char = characters.find(c => c.id === characterId);
     if (!char) return;
     try {
-      const res = await fetch('/api/characters/delete', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ avatar_url: char.avatar }),
-      });
-      if (res.ok) {
-        setCharacters(prev => prev.filter(c => c.id !== characterId));
-        showToast('角色已删除', 'success');
+      if (char.id.startsWith('custom_')) {
+        await characterApi.deleteUserCharacter(characterId);
+      } else {
+        await characterApi.deleteCharacter(char.avatar);
       }
-    } catch {
-      showToast('删除失败', 'error');
+      setCharacters(prev => prev.filter(c => c.id !== characterId));
+      showToast('角色已删除', 'success');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : '删除失败';
+      showToast(message, 'error');
     }
-  }, [characters, showToast]);
+  }, [characterApi, characters, showToast]);
 
   // 加载聊天线程（仅在挂载和无用户时加载）
   useEffect(() => {
     if (user) return;
-    fetch('/api/chat/threads')
-      .then(res => res.json())
+    chatApi.getThreads()
       .then(data => {
         if (Array.isArray(data) && data.length > 0) {
           setChatThreads(prev => {
@@ -360,7 +346,11 @@ export default function App() {
             if (Array.isArray(data)) {
               for (const thread of data) {
                 if (!merged[thread.characterId]) {
-                  merged[thread.characterId] = thread;
+                  merged[thread.characterId] = {
+                    ...thread,
+                    messages: thread.messages || [],
+                    unreadCount: thread.unreadCount || 0,
+                  };
                 }
               }
             }
@@ -369,16 +359,16 @@ export default function App() {
         }
       })
       .catch(() => {});
-  }, [user]);
+  }, [chatApi, user]);
 
   // 用户登录/登出时重新加载个人数据（并行请求）
   useEffect(() => {
     if (!user) return;
     setChatThreads({});
     Promise.all([
-      fetch('/api/users/favorites').then(r => r.json()).catch(() => ({ favorites: [] })),
-      fetch('/api/users/characters').then(r => r.json()).catch(() => []),
-      fetch('/api/chat/threads').then(r => r.json()).catch(() => []),
+      userApi.getFavorites().catch(() => ({ favorites: [] })),
+      characterApi.getMyCharacters().catch(() => []),
+      chatApi.getThreads().catch(() => []),
     ]).then(([favData, charsData, threadsData]) => {
       if (favData && Array.isArray(favData.favorites)) setFavoriteIds(favData.favorites);
       if (Array.isArray(charsData) && charsData.length > 0) {
@@ -391,12 +381,16 @@ export default function App() {
       if (Array.isArray(threadsData)) {
         const threads: Record<string, ChatThread> = {};
         for (const thread of threadsData) {
-          threads[thread.characterId] = thread;
+          threads[thread.characterId] = {
+            ...thread,
+            messages: thread.messages || [],
+            unreadCount: thread.unreadCount || 0,
+          };
         }
         setChatThreads(threads);
       }
     });
-  }, [user]);
+  }, [characterApi, chatApi, user, userApi]);
 
   // 进入聊天时加载已有聊天记录（避免重复加载）
   const [loadedChats, setLoadedChats] = useState<Set<string>>(new Set());
@@ -404,33 +398,39 @@ export default function App() {
     if (currentScreen !== ScreenId.CHAT || !activeCharacterId) return;
     if (loadedChats.has(activeCharacterId)) return;
     setLoadedChats(prev => new Set(prev).add(activeCharacterId));
-    fetch('/api/chats/get', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ avatar_url: activeCharacterId, file_name: 'chat' }),
-    })
-      .then(res => res.json())
+    chatApi.getChat(activeCharacterId)
       .then(data => {
-        if (Array.isArray(data) && data.length > 0) {
+        const messages = fromStoredChatMessages(data);
+        if (messages.length > 0) {
           setChatThreads(prev => ({
             ...prev,
             [activeCharacterId]: {
+              ...prev[activeCharacterId],
               characterId: activeCharacterId,
-              messages: data,
+              messages,
               unreadCount: 0,
             },
           }));
         }
       })
       .catch(() => {});
-  }, [currentScreen, activeCharacterId, loadedChats]);
+  }, [chatApi, currentScreen, activeCharacterId, loadedChats]);
 
   const currentCharacter = characters.find((c) => c.id === activeCharacterId) || characters[0] || null;
 
   // Memoize myCharactersCount to avoid recalculation on every render
   const myCharactersCount = useMemo(() => characters.filter(c => c.id.startsWith('custom_')).length, [characters]);
 
-  if (!currentCharacter) {
+  const requiresCharacter = [
+    ScreenId.DISCOVER,
+    ScreenId.CHARACTER_DETAIL,
+    ScreenId.CHAT,
+    ScreenId.MESSAGE_CENTER,
+    ScreenId.MY_CHARACTERS,
+    ScreenId.MY_FAVORITES,
+  ].includes(currentScreen);
+
+  if (!currentCharacter && requiresCharacter) {
     return (
       <div className="min-h-screen w-full bg-[#090A0F] text-[#E0E0E6] flex items-center justify-center">
         <div className="text-center space-y-4">
@@ -481,10 +481,11 @@ export default function App() {
 
           {currentScreen === ScreenId.CHARACTER_DETAIL && (
             <CharacterDetailScreen
-              character={currentCharacter}
+              character={currentCharacter as Character}
               favoriteIds={favoriteIds}
               toggleFavorite={handleToggleFavorite}
               onNavigate={handleNavigate}
+              onGoBack={() => handleGoBack(ScreenId.DISCOVER)}
               onSelectCharacter={setActiveCharacterId}
               onAddReview={handleAddReview}
             />
@@ -492,10 +493,11 @@ export default function App() {
 
           {currentScreen === ScreenId.CHAT && (
             <ChatScreen
-              character={currentCharacter}
+              character={currentCharacter as Character}
               messages={chatThreads[activeCharacterId]?.messages || []}
               onSendMessage={handleSendMessage}
               onNavigate={handleNavigate}
+              onGoBack={() => handleGoBack(ScreenId.MESSAGE_CENTER)}
             />
           )}
 
@@ -506,6 +508,7 @@ export default function App() {
           {currentScreen === ScreenId.CREATE_CHARACTER && (
             <CreateCharacterScreen
               onNavigate={(screen) => { setEditingCharacter(null); handleNavigate(screen); }}
+              onGoBack={() => handleGoBack(ScreenId.MY_CHARACTERS)}
               onPublish={handlePublishCharacter}
               editCharacter={editingCharacter}
             />

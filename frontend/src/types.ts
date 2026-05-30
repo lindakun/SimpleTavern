@@ -15,6 +15,12 @@ export enum ScreenId {
   HELP_FEEDBACK = 'help_feedback',             // 帮助与反馈 - 柚姬AI
 }
 
+export interface RouteState {
+  screen: ScreenId;
+  characterId?: string;
+  source?: ScreenId;
+}
+
 export interface Character {
   id: string;
   name: string;

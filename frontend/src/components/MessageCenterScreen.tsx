@@ -3,6 +3,9 @@ import { RotateCw } from 'lucide-react';
 import BottomNav from './BottomNav';
 import LazyImage from './LazyImage';
 import { useToast } from './Toast.tsx';
+import { useChatThreads } from '../hooks/useChat';
+import { useQueryClient } from '@tanstack/react-query';
+import { chatKeys } from '../hooks/useChat';
 
 interface MessageCenterScreenProps {
   characters: Character[];
@@ -18,13 +21,14 @@ export default function MessageCenterScreen({
   onSelectCharacter,
 }: MessageCenterScreenProps) {
   const { showToast } = useToast();
+  const queryClient = useQueryClient();
+  const { data: _threadList = [], refetch: refetchThreads } = useChatThreads();
 
   const handleSync = async () => {
     try {
-      const res = await fetch('/api/chat/threads');
-      if (res.ok) {
-        showToast('已同步最新消息', 'success');
-      }
+      await refetchThreads();
+      queryClient.invalidateQueries({ queryKey: chatKeys.threads() });
+      showToast('已同步最新消息', 'success');
     } catch {
       showToast('同步失败', 'error');
     }
@@ -91,10 +95,10 @@ export default function MessageCenterScreen({
           ) : chatList.map((c) => {
             const thread = chatThreads[c.id];
             
-            // Get last message text or fallback to tagline
-            const lastMsgText = thread?.messages && thread.messages.length > 0
-              ? thread.messages[thread.messages.length - 1]?.text || c.tagline
-              : c.tagline;
+            // Get last message text: prefer thread summary, then latest message, then tagline
+            const lastMsgText = thread?.lastMessageText
+              ?? (thread?.messages?.length ? thread.messages[thread.messages.length - 1]?.text : null)
+              ?? c.tagline;
 
             const unreadCount = thread?.unreadCount || 0;
             
@@ -133,7 +137,9 @@ export default function MessageCenterScreen({
                       {c.id === 'yuki' ? '柚姬' : c.name}
                     </span>
                     <span className="text-[10px] text-on-surface-variant/40 font-mono">
-                      {c.lastActiveLabel || '10:45 AM'}
+                      {thread?.updatedAt
+                        ? new Date(thread.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                        : (c.lastActiveLabel || '10:45 AM')}
                     </span>
                   </div>
                   <p className="text-xs text-on-surface-variant line-clamp-1">

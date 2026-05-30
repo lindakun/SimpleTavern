@@ -15,9 +15,12 @@ export default function WelcomeScreen({ onNavigate, onGoogleLogin }: WelcomeScre
     setGoogleLoading(true);
     openGoogleOAuthPopup(
       async (result) => {
-        await onGoogleLogin(result.idToken);
-        setGoogleLoading(false);
-        onNavigate(ScreenId.DISCOVER);
+        try {
+          await onGoogleLogin(result.idToken);
+          onNavigate(ScreenId.DISCOVER);
+        } finally {
+          setGoogleLoading(false);
+        }
       },
       () => {
         setGoogleLoading(false);

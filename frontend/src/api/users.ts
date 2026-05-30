@@ -47,7 +47,7 @@ interface ChangeNameParams {
 }
 
 export function useUserApi() {
-  const { get, post } = useApiClient();
+  const { get, post, delete: del } = useApiClient();
 
   return {
     // 登录
@@ -57,6 +57,10 @@ export function useUserApi() {
     // 注册
     register: (params: RegisterParams) =>
       post('/api/users/register', params),
+
+    // Google 登录
+    googleLogin: (idToken: string) =>
+      post<{ handle: string }>('/api/users/google-login', { idToken }),
 
     // 登出
     logout: () =>
@@ -68,7 +72,7 @@ export function useUserApi() {
 
     // 获取当前用户信息
     getMe: () =>
-      get<UserProfile>('/api/users/me'),
+      get<UserProfile>('/api/users/me', { showError: false }),
 
     // 修改密码
     changePassword: (params: ChangePasswordParams) =>
@@ -92,23 +96,23 @@ export function useUserApi() {
 
     // 删除收藏
     removeFavorite: (characterId: string) =>
-      post(`/api/users/favorites/${characterId}`, {}),
+      del<{ favorites: string[] }>(`/api/users/favorites/${characterId}`),
 
     // 获取用户设置
     getSettings: () =>
-      get<Record<string, unknown>>('/api/users/settings'),
+      get<{ settings: Record<string, unknown> }>('/api/users/settings'),
 
     // 保存用户设置
     saveSettings: (settings: Record<string, unknown>) =>
-      post('/api/users/settings', settings),
+      post('/api/users/settings', { settings }),
 
     // 密码恢复
     recoverPassword: (email: string) =>
-      post('/api/users/recover-password', { email }),
+      post('/api/users/recover-step1', { email }),
 
     // 重置密码
     resetPassword: (token: string, newPassword: string) =>
-      post('/api/users/reset-password', { token, newPassword }),
+      post('/api/users/recover-step2', { code: token, newPassword }),
 
     // 管理员接口 - 创建用户
     createUser: (params: RegisterParams) =>

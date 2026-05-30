@@ -9,6 +9,7 @@ interface ChatScreenProps {
   messages: ChatMessage[];
   onSendMessage: (characterId: string, text: string) => Promise<void>;
   onNavigate: (screen: ScreenId) => void;
+  onGoBack?: () => void;
 }
 
 export default function ChatScreen({
@@ -16,9 +17,12 @@ export default function ChatScreen({
   messages,
   onSendMessage,
   onNavigate,
+  onGoBack,
 }: ChatScreenProps) {
   const [inputText, setInputText] = useState('');
   const [isTyping, setIsTyping] = useState(false);
+  const [lastError, setLastError] = useState<string | null>(null);
+  const [failedText, setFailedText] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll when messages update
@@ -28,18 +32,22 @@ export default function ChatScreen({
     }
   }, [messages, isTyping]);
 
-  const handleSend = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!inputText.trim() || isTyping) return;
+  const handleSend = async (e?: React.FormEvent, retryText?: string) => {
+    if (e) e.preventDefault();
+    const textToSend = retryText ?? inputText;
+    if (!textToSend.trim() || isTyping) return;
 
-    const textToSend = inputText;
     setInputText('');
     setIsTyping(true);
+    setLastError(null);
+    setFailedText(null);
 
     try {
       await onSendMessage(character.id, textToSend);
     } catch (err) {
-      console.error('Error in send:', err);
+      const message = err instanceof Error ? err.message : '消息发送失败';
+      setLastError(message);
+      setFailedText(textToSend);
     } finally {
       setIsTyping(false);
     }
@@ -54,7 +62,7 @@ export default function ChatScreen({
       {/* Header bar - wrapping image in clickable button to satisfy validation xpath: //header//img/.. */}
       <header className="flex-shrink-0 z-40 bg-[#0F111A]/95 backdrop-blur-md h-16 px-4 flex items-center justify-between border-b border-white/5">
         <button
-          onClick={() => onNavigate(ScreenId.MESSAGE_CENTER)}
+          onClick={() => onGoBack ? onGoBack() : onNavigate(ScreenId.MESSAGE_CENTER)}
           className="flex items-center gap-1.5 pl-2 pr-3 py-1.5 rounded-full bg-surface-container/60 hover:bg-surface-elevated border border-accent-pink/30 hover:border-accent-pink/60 transition-all duration-200 cursor-pointer text-white shadow-[0_0_10px_rgba(232,121,199,0.1)] group/back"
         >
           <ChevronLeft className="w-3.5 h-3.5 text-accent-pink group-hover/back:-translate-x-0.5 transition-transform" />
@@ -177,7 +185,7 @@ export default function ChatScreen({
 
       {/* Input controls */}
       <div className="flex-shrink-0 w-full bg-[#0B0720]/95 border-t border-outline-variant/20 p-3 flex items-center gap-2">
-        <form onSubmit={handleSend} className="w-full flex items-center gap-2 p-1.5 bg-surface-container/80 rounded-xl border border-outline-variant/40 backdrop-blur-md">
+        <form onSubmit={(e) => handleSend(e)} className="w-full flex items-center gap-2 p-1.5 bg-surface-container/80 rounded-xl border border-outline-variant/40 backdrop-blur-md">
           {/* Quick voice option simulation */}
           <button
             type="button"
@@ -193,12 +201,18 @@ export default function ChatScreen({
             <Volume2 className="w-4 h-4" />
           </button>
 
-          <input
-            type="text"
+          <textarea
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                handleSend();
+              }
+            }}
             placeholder={`给 ${character.name} 发送秘密信号...`}
-            className="flex-grow bg-transparent text-xs text-white focus:outline-none placeholder:text-on-surface-variant/40"
+            rows={1}
+            className="flex-grow bg-transparent text-xs text-white focus:outline-none placeholder:text-on-surface-variant/40 resize-none leading-relaxed py-1.5"
           />
           <button
             type="submit"
@@ -208,6 +222,19 @@ export default function ChatScreen({
             <Send className="w-3.5 h-3.5" />
           </button>
         </form>
+        {lastError && (
+          <div className="mt-2 text-[10px] text-red-400 flex items-center gap-2 px-2">
+            <span className="flex-1">{lastError}</span>
+            {failedText && (
+              <button
+                onClick={() => handleSend(undefined, failedText)}
+                className="px-2 py-0.5 bg-red-500/20 border border-red-500/40 rounded text-[10px] text-red-300 hover:bg-red-500/30 cursor-pointer"
+              >
+                重试
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       <BottomNav currentScreen={ScreenId.CHAT} onNavigate={onNavigate} inline />

@@ -48,7 +48,11 @@ export const CreateCharacterSchema = z.object({
     .default([]),
 
   avatar: z.string()
-    .url('头像必须是有效的URL')
+    .refine((value) => {
+      if (!value) return true;
+      if (value.startsWith('data:image/')) return true;
+      return z.string().url().safeParse(value).success;
+    }, '头像必须是有效的URL或图片文件')
     .optional(),
 });
 

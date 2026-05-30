@@ -88,6 +88,41 @@ export async function getUserCharacter(handle: string, characterId: string): Pro
 }
 
 /**
+ * 更新用户发布角色
+ */
+export async function updateUserCharacter(
+    handle: string,
+    characterId: string,
+    data: Partial<Omit<UserCharacter, 'id' | 'creator' | 'createdAt'>>,
+): Promise<UserCharacter | null> {
+    try {
+        const key = `userchar:${handle}:${characterId}`;
+        const existing = await storage.getItem(key) as UserCharacter | undefined;
+        if (!existing) return null;
+
+        const updated: UserCharacter = {
+            ...existing,
+            name: data.name ?? existing.name,
+            avatar: data.avatar ?? existing.avatar,
+            tagline: data.tagline ?? existing.tagline,
+            description: data.description ?? existing.description,
+            worldBook: data.worldBook ?? existing.worldBook,
+            tags: data.tags ?? existing.tags,
+            voiceType: data.voiceType ?? existing.voiceType,
+            rating: data.rating ?? existing.rating,
+            reviewCount: data.reviewCount ?? existing.reviewCount,
+            status: data.status ?? existing.status,
+        };
+
+        await storage.setItem(key, updated);
+        logger.info(`用户 ${handle} 更新了角色: ${updated.name} (${characterId})`);
+        return updated;
+    } catch {
+        return null;
+    }
+}
+
+/**
  * 删除用户发布角色
  */
 export async function deleteUserCharacter(handle: string, characterId: string): Promise<boolean> {
