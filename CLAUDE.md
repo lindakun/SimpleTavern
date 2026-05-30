@@ -10,7 +10,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 SillyTavern 是一个面向高级用户的 LLM 前端（v1.18.0，AGPL-3.0），后端使用 Node.js/Express，前端使用原生 HTML/CSS/JavaScript。
 
-**重构目标**：前后端分离，后端迁移到 TypeScript + 分层架构（Controller → Service → Repository），前端零感知迁移。
+**重构目标**：前后端分离，后端迁移到 TypeScript + 分层架构（Controller → Service → Repository），前端使用 React 19 全新搭建。
 
 ## 新旧项目关系
 
@@ -139,6 +139,9 @@ SIMPLE_TAVERN_DATA_ROOT=/path/to/data
 # 日志级别：debug | info | warn | error
 LOG_LEVEL=info
 
+# 当前活跃 LLM（对应 llm_0 / llm_1 等序号）
+SIMPLE_TAVERN_ACTIVE_LLM=llm_0
+
 # Google OAuth 配置（生产环境必需）
 SIMPLE_TAVERN_GOOGLE_CLIENT_ID=your-google-client-id.apps.googleusercontent.com
 SIMPLE_TAVERN_GOOGLE_CLIENT_SECRET=your-google-client-secret
@@ -200,12 +203,11 @@ server.ts ← app.ts ← modules/*/
 
 | 模块 | 文件 | 职责 |
 |------|------|------|
-| **auth** | `auth.controller.ts`, `auth.service.ts`, `auth.routes.ts` | 登录/登出/密码恢复/管理员用户管理 |
+| **auth** | `auth.controller.ts`, `auth.service.ts`, `auth.routes.ts`, `google.service.ts` | 登录/登出/密码恢复/管理员用户管理/Google OAuth |
 | **users** | `users.repository.ts`, `users.service.ts`, `favorites.controller.ts`, `favorites.routes.ts` | 用户数据层、收藏、设置 |
-| **characters** | `characters.controller.ts`, `characters.service.ts`, `characters.repository.ts`, `characters.validator.ts`, `characters.parser.ts`, `characters.importer.ts`, `characters.user.service.ts` | 角色 CRUD、PNG 角色卡读写、导入/导出、用户发布 |
-| **chats** | `chats.controller.ts`, `chats.service.ts`, `chats.repository.ts` | 聊天读写、JSONL 文件操作、路径安全检查 |
+| **characters** | `characters.controller.ts`, `characters.service.ts`, `characters.repository.ts`, `characters.validator.ts`, `characters.parser.ts`, `characters.importer.ts`, `characters.user.service.ts`, `characters.public.routes.ts`, `characters.public.import.routes.ts`, `admin-characters.controller.ts`, `admin-characters.routes.ts`, `discover.controller.ts`, `discover.routes.ts`, `seed.service.ts` | 角色 CRUD、PNG 角色卡读写、导入/导出、用户发布、发现/种子角色 |
+| **chats** | `chats.controller.ts`, `chats.service.ts`, `chats.repository.ts`, `chats.public.routes.ts` | 聊天读写、JSONL 文件操作、路径安全检查 |
 | **backends** | `chat-completions/`, `llm-config.ts`, `types.ts` | AI 聊天补全（OpenAI-compatible）、LLM 配置、多 provider 支持 |
-| **discover** | `discover.controller.ts`, `discover.routes.ts`, `seed.service.ts` | 发现页面、种子角色、评价系统 |
 | **worlds** | `worlds.routes.ts`, `worlds.service.ts`, `admin-worlds.controller.ts`, `public-worlds.controller.ts` | 世界书管理（管理员CRUD/用户端列表） |
 
 ### 共享中间件
@@ -216,6 +218,14 @@ server.ts ← app.ts ← modules/*/
 | 错误处理 | `shared/middleware/error-handler.ts` | 统一错误响应格式 `{ error, message }` |
 | 认证守卫 | `shared/middleware/auth-guard.ts` | requireLogin / requireAdmin |
 | 请求上下文 | `shared/middleware/request-context.ts` | 请求追踪 |
+
+### 后端性能优化
+
+- **compression** 中间件：启用 gzip 压缩
+- **Cache-Control 头**：为特定端点设置缓存策略
+  - `/version` → `max-age=3600`（1 小时）
+  - `/api/discover` → `max-age=300`（5 分钟）
+  - `/api/chat/providers` → `max-age=600`（10 分钟）
 
 ## 前端架构
 
@@ -233,7 +243,7 @@ server.ts ← app.ts ← modules/*/
 无 react-router。手动路由，基于 `ScreenId` 枚举在 `App.tsx` 中做条件渲染，使用 `AnimatePresence` 实现页面切换动画。
 
 ```
-App.tsx ← 14 个 Screen 组件
+App.tsx ← 14 个 Screen 组件（React.lazy 懒加载）
   ├── WelcomeScreen / EmailLoginScreen / RegisterScreen
   ├── DiscoverScreen / CharacterDetailScreen
   ├── ChatScreen（AI 对话）
@@ -246,16 +256,25 @@ App.tsx ← 14 个 Screen 组件
 ### 数据流
 
 - 使用 `useState` 管理应用状态（characters, favoriteIds, chatThreads）
-- `useEffect` 在挂载时从后端加载数据
+- `useEffect` 在挂载时从后端加载数据，使用 `Promise.all` 并行请求
 - 对后端 API 调用使用 optimistic UI updates + rollback 模式
 - `App.tsx` 作为唯一状态管理组件，子组件通过 props 接收数据和回调
 - **React Query** (`@tanstack/react-query`) 管理服务端状态，支持缓存、重试、后台刷新
+- `useMemo` 用于避免重复计算（如 `myCharactersCount`、`allTags`、`filteredCharacters`）
+- 功能性 `setState` 避免不必要的依赖项（如 `handleToggleFavorite`）
+
+### 前端性能优化
+
+- **代码分割**：14 个 Screen 组件使用 `React.lazy` + `Suspense` 懒加载
+- **图片懒加载**：`LazyImage` 组件（Intersection Observer），所有角色头像使用 `LazyImage`
+- **Service Worker 缓存**（见下方专节）
+- **动画优化**：页面切换移除 x 平移，缩短动画时长
 
 ### 组件结构
 
 ```
 components/
-  ├── Screen 组件（14个页面）
+  ├── Screen 组件（14个页面，React.lazy 懒加载）
   │   ├── WelcomeScreen / EmailLoginScreen / RegisterScreen
   │   ├── DiscoverScreen / CharacterDetailScreen
   │   ├── ChatScreen（AI 对话）
@@ -263,6 +282,8 @@ components/
   │   ├── MessageCenterScreen / ProfileScreen
   │   ├── MyCharactersScreen / MyFavoritesScreen
   │   └── SettingsScreen / HelpFeedbackScreen
+  ├── 特殊组件
+  │   └── GoogleCallback.tsx（OAuth 回调弹窗）
   ├── UI 组件
   │   ├── BottomNav.tsx（底部导航）
   │   ├── Toast.tsx（消息提示）
@@ -274,7 +295,59 @@ components/
       ├── useCharacters.ts（角色数据）
       ├── useChat.ts（聊天逻辑）
       ├── useFavorites.ts（收藏管理）
-      └── useImageUpload.ts（图片上传）
+      └── useFormValidation.ts（表单验证）
+```
+
+### 其他前端目录
+
+```
+src/
+  ├── api/               ← API 客户端封装
+  │   ├── client.ts      ← fetch 封装 + 认证头
+  │   ├── characters.ts  ← 角色 API
+  │   ├── chat.ts        ← 聊天 API
+  │   ├── users.ts       ← 用户 API
+  │   ├── google-oauth.ts ← Google OAuth
+  │   └── index.ts       ← 统一导出
+  ├── contexts/          ← React Context
+  │   └── AppContext.tsx  ← 全局 Context
+  ├── validations/       ← 前端验证
+  │   ├── auth.ts        ← 认证表单验证
+  │   ├── character.ts   ← 角色表单验证
+  │   └── index.ts       ← 统一导出
+  ├── sw-register.ts     ← Service Worker 注册（生产环境）
+  ├── types.ts           ← TypeScript 类型定义
+  └── data.ts            ← 静态数据（FAQ 等）
+```
+
+## Service Worker 缓存
+
+前端实现了 Service Worker 缓存方案，文件位于 `frontend/public/sw.js`，注册逻辑在 `src/sw-register.ts`。
+
+- **开发环境自动跳过**：`import.meta.env.DEV` 为 true 时不注册 SW
+- **直接注册**：不等待 `load` 事件，组件挂载时立即注册
+- **缓存版本**：`simpletavern-v1`，修改 `CACHE_NAME` 可让浏览器更新缓存
+
+### 缓存策略
+
+| 策略 | 路由 | 效果 |
+|------|------|------|
+| **Stale-While-Revalidate** | `/api/discover`, `/api/users/me`, `/api/users/settings` | 先返回缓存（瞬间），后台静默更新 |
+| **Cache-First** | `/api/chat/providers`, `/api/version` + 所有静态资源（JS/CSS/图片/字体） | 缓存命中直接返回，未命中才请求网络 |
+| **Network-First** | `/api/users/favorites`, `/api/users/characters`, `/api/chat/threads` | 优先拿最新数据，网络失败时降级到缓存 |
+
+### 生产环境 Nginx 配置
+
+`sw.js` 需要配置 `no-cache` 头，确保浏览器总能获取最新版 SW：
+
+```nginx
+location /sw.js {
+    proxy_pass http://127.0.0.1:3000/sw.js;
+    proxy_http_version 1.1;
+    add_header Cache-Control "no-cache, no-store, must-revalidate";
+    add_header Pragma "no-cache";
+    add_header Expires "0";
+}
 ```
 
 ## 已实现的 API 端点
@@ -282,16 +355,16 @@ components/
 | 分类 | 端点 | 说明 |
 |------|------|------|
 | **公开** | `GET /csrf-token` `GET /version` | 基础端点 |
-| **认证** | `POST /api/users/login|register|list|recover-*|google-login` | 登录/注册/用户列表/密码恢复/Google OAuth |
-| **用户** | `POST /api/users/logout|change-*` `GET /api/users/me` | 登出/改密码/改名/改头像/获取当前用户 |
-| **管理员** | `POST /api/users/create|delete|disable|enable|promote|demote` | 用户管理 |
+| **认证** | `POST /api/users/login\|register\|list\|recover-*\|google-login` | 登录/注册/用户列表/密码恢复/Google OAuth |
+| **用户** | `POST /api/users/logout\|change-*` `GET /api/users/me` | 登出/改密码/改名/改头像/获取当前用户 |
+| **管理员** | `POST /api/users/create\|delete\|disable\|enable\|promote\|demote` | 用户管理 |
 | **收藏** | `GET/POST /api/users/favorites` `DELETE /api/users/favorites/:id` | 收藏系统 |
-| **角色** | `POST /api/characters/all|get|create|edit|delete|rename|export|import|chats|publish` | 角色 CRUD + 导入导出 |
+| **角色** | `POST /api/characters/all\|get\|create\|edit\|delete\|rename\|export\|import\|chats\|publish` | 角色 CRUD + 导入导出 |
 | **发现** | `GET /api/discover` `GET /api/discover/:id` `POST /api/discover/:id/reviews` | 种子角色 + 评价系统 |
 | **世界书** | `POST /api/worlds/list` | 用户端世界书列表（需登录） |
 | **管理-角色** | `POST /api/characters/admin-*` | 管理员角色管理（全量查询/编辑/删除） |
 | **管理-世界书** | `POST /api/worlds/admin-*` | 管理员世界书管理（CRUD/导入） |
-| **聊天** | `POST /api/chats/save|get|rename|delete|export|import` `POST /api/chats/group/*` | 聊天 CRUD + 群组 |
+| **聊天** | `POST /api/chats/save\|get\|rename\|delete\|export\|import` `POST /api/chats/group/*` | 聊天 CRUD + 群组 |
 | **AI 聊天** | `POST /api/chat` `GET /api/chat/providers` | 角色扮演聊天（多 LLM） |
 | **线程** | `GET /api/chat/threads` `GET /api/chat/threads/:id` | 聊天历史 |
 | **用户角色** | `GET /api/users/characters` | 用户创建的角色列表 |
@@ -306,6 +379,7 @@ components/
 | 2 | 角色与聊天模块（CRUD + PNG 角色卡） | ✓ 完成 |
 | 3 | AI 后端模块（OpenAI-compatible 多 LLM 支持） | ✓ 完成 |
 | 4 | 用户功能模块（收藏/发布角色/聊天线程/设置） | ✓ 完成 |
+| 4.5 | 前端性能优化（代码分割/SW缓存/图片懒加载） | ✓ 完成 |
 | 5 | 图像与语音模块 | 待开始 |
 | 6 | 收尾与清理 | 待开始 |
 
@@ -324,10 +398,12 @@ git add -A
 git commit -m "feat: xxx"
 git push origin main
 
-# 2. 服务器执行部署脚本
+# 2. 服务器拉取并重建
 ssh ubuntu@129.146.164.152
-sudo /opt/deploy-simpletavern.sh
+cd /opt/simpletavern && sudo git pull origin main && sudo docker compose up -d --build
 ```
+
+> ⚠️ **注意**：服务器上 `git pull` 和 `docker compose` 需要 `sudo` 权限。
 
 ### 部署脚本功能
 - 备份数据目录 (`/opt/simpletavern/data`)
@@ -365,6 +441,7 @@ VITE_GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
 - SSL 证书: `/etc/letsencrypt/live/chat.hhxxttxs.icu/`
 - 前端代理: `/` → `127.0.0.1:3000`
 - API 代理: `/api/` → `127.0.0.1:8001`
+- SW 不缓存: `/sw.js` → `no-cache, no-store, must-revalidate`
 
 ### 常用命令
 ```bash
@@ -378,7 +455,7 @@ docker logs -f simple-tavern-backend
 cd /opt/simpletavern && docker compose restart
 
 # 手动拉取最新代码
-cd /opt/simpletavern && git pull origin main
+cd /opt/simpletavern && sudo git pull origin main
 ```
 
 ## 参考文档

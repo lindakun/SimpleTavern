@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useCallback, useRef } from 'react';
+import { X } from 'lucide-react';
 
 type ToastType = 'success' | 'error' | 'info';
 
@@ -19,14 +20,27 @@ export const useToast = () => useContext(ToastContext);
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const nextId = useRef(0);
+  const timers = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map());
+
+  const dismissToast = useCallback((id: number) => {
+    setToasts(prev => prev.filter(t => t.id !== id));
+    const timer = timers.current.get(id);
+    if (timer) {
+      clearTimeout(timer);
+      timers.current.delete(id);
+    }
+  }, []);
 
   const showToast = useCallback((message: string, type: ToastType = 'error') => {
     const id = nextId.current++;
     setToasts(prev => [...prev, { id, message, type }]);
-    setTimeout(() => {
-      setToasts(prev => prev.filter(t => t.id !== id));
-    }, 3000);
-  }, []);
+
+    const duration = type === 'error' ? 5000 : 3000;
+    const timer = setTimeout(() => {
+      dismissToast(id);
+    }, duration);
+    timers.current.set(id, timer);
+  }, [dismissToast]);
 
   const bgColor = (type: ToastType) => {
     switch (type) {
@@ -51,10 +65,16 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
         {toasts.map(toast => (
           <div
             key={toast.id}
-            className={`${bgColor(toast.type)} border backdrop-blur-xl text-white text-xs font-mono px-4 py-3 rounded-xl shadow-[0_0_20px_rgba(0,0,0,0.5)] animate-subtle-fadeIn pointer-events-auto`}
+            className={`${bgColor(toast.type)} border backdrop-blur-xl text-white text-xs font-mono px-4 py-3 pr-9 rounded-xl shadow-[0_0_20px_rgba(0,0,0,0.5)] animate-subtle-fadeIn pointer-events-auto relative`}
           >
             <span className="mr-2">{icon(toast.type)}</span>
             {toast.message}
+            <button
+              onClick={() => dismissToast(toast.id)}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-white/60 hover:text-white bg-transparent border-0 cursor-pointer p-0.5"
+            >
+              <X className="w-3 h-3" />
+            </button>
           </div>
         ))}
       </div>

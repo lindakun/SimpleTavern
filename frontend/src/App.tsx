@@ -8,7 +8,7 @@ import { registerServiceWorker } from './sw-register';
 // Import our modular screens — lazy loaded for code splitting
 import GoogleCallback from './components/GoogleCallback';
 const WelcomeScreen = lazy(() => import('./components/WelcomeScreen'));
-const EmailLoginScreen = lazy(() => import('./components/EmailLoginScreen'));
+const LoginScreen = lazy(() => import('./components/LoginScreen'));
 const RegisterScreen = lazy(() => import('./components/RegisterScreen'));
 const DiscoverScreen = lazy(() => import('./components/DiscoverScreen'));
 const CharacterDetailScreen = lazy(() => import('./components/CharacterDetailScreen'));
@@ -67,30 +67,21 @@ export default function App() {
   }, []);
 
   const handleLogin = useCallback(async (input: string, password?: string) => {
-    try {
-      const res = await fetch('/api/users/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ handle: input, password }),
-      });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.message || 'Login failed');
-      }
-      const data = await res.json();
-      setUser({
-        username: data.handle || input,
-        email: input.includes('@') ? input : `${data.handle}@yuzu.ai`,
-      });
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : '未知错误';
-      showToast(`登录失败: ${message}，以离线模式进入`, 'error');
-      const displayName = input.includes('@') ? input.split('@')[0] : input;
-      setUser({
-        username: displayName || '特工_Pilot',
-        email: input.includes('@') ? input : `${displayName}@yuzu.ai`,
-      });
+    const res = await fetch('/api/users/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ handle: input, password }),
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.message || '登录失败');
     }
+    const data = await res.json();
+    setUser({
+      username: data.handle || input,
+      email: input.includes('@') ? input : `${data.handle}@yuzu.ai`,
+    });
+    showToast(`欢迎回来，${data.handle}！`, 'success');
   }, [showToast]);
 
   // Google OAuth 登录
@@ -117,21 +108,17 @@ export default function App() {
   }, [showToast]);
 
   const handleRegister = useCallback(async (username: string, email: string, password?: string) => {
-    try {
-      const res = await fetch('/api/users/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ handle: username, name: username, password, email }),
-      });
-      if (res.ok) {
-        setUser({ username, email });
-        setCurrentScreen(ScreenId.DISCOVER);
-      }
-    } catch {
-      // Fallback
-      setUser({ username, email });
+    const res = await fetch('/api/users/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ handle: username, name: username, password, email }),
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.message || '注册失败');
     }
-  }, []);
+    showToast('注册成功，请登录', 'success');
+  }, [showToast]);
 
   const handleLogout = useCallback(() => {
     fetch('/api/users/logout', { method: 'POST' }).catch(() => {});
@@ -467,7 +454,7 @@ export default function App() {
           )}
 
           {currentScreen === ScreenId.EMAIL_LOGIN && (
-            <EmailLoginScreen onNavigate={handleNavigate} onLogin={handleLogin} onGoogleLogin={handleGoogleLogin} />
+            <LoginScreen onNavigate={handleNavigate} onLogin={handleLogin} onGoogleLogin={handleGoogleLogin} />
           )}
 
           {currentScreen === ScreenId.REGISTER && (

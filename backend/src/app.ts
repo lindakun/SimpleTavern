@@ -56,16 +56,6 @@ export function createApp(config: ServerConfig): express.Express {
     // ---- CORS ----
     app.use(createCorsMiddleware());
 
-    // ---- 请求日志（验证 SW 缓存） ----
-    app.use((req, _res, next) => {
-        const start = Date.now();
-        _res.on('finish', () => {
-            const ms = Date.now() - start;
-            console.log(`[REQ] ${req.method} ${req.originalUrl} → ${_res.statusCode} (${ms}ms)`);
-        });
-        next();
-    });
-
     // ---- Cookie 会话 ----
     const sessionSecret = getCookieSecret(config.dataRoot);
     const sessionMaxAge = config.sessionTimeout > 0

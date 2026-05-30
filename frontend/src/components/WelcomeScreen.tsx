@@ -98,7 +98,7 @@ export default function WelcomeScreen({ onNavigate, onGoogleLogin }: WelcomeScre
             className="w-full h-14 flex items-center justify-center gap-3 bg-surface-container border border-accent-pink/20 hover:border-accent-pink/50 text-white rounded-xl active:scale-95 transition-all duration-200 cursor-pointer"
           >
             <Mail className="w-5 h-5 text-accent-pink" />
-            <span className="text-sm font-semibold tracking-wide">Login with Email</span>
+            <span className="text-sm font-semibold tracking-wide">使用邮箱登录</span>
           </button>
 
           {/* Account Registry redirect - Triggers register account view */}
@@ -108,9 +108,9 @@ export default function WelcomeScreen({ onNavigate, onGoogleLogin }: WelcomeScre
               onClick={() => onNavigate(ScreenId.REGISTER)}
               className="text-sm text-on-surface-variant hover:text-accent-pink transition-colors cursor-pointer group"
             >
-              New here?{' '}
+              还没有账号？{' '}
               <span className="text-accent-pink font-bold border-b border-transparent group-hover:border-accent-pink/50 pb-0.5 ml-1">
-                Create an Account
+                立即注册
               </span>
             </button>
           </div>
