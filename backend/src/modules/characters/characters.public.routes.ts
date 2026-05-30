@@ -100,7 +100,7 @@ export function createPublicCharacterRoutes(): Router {
 
             const config = getConfig();
             const dirs = getUserDirectories(config.dataRoot, handle);
-            const pngChars = characterService.getAllCharacters(dirs.characters, dirs.chats, true);
+            const pngChars = characterService.getAllCharacters(dirs.characters, dirs.chats, false);
 
             const characters = pngChars.map(c => ({
                 id: String(c.avatar || ''),
