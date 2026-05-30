@@ -89,5 +89,18 @@ export function useChatApi() {
     // 获取支持的 LLM providers
     getProviders: () =>
       get<ProvidersResponse>('/api/chat/providers'),
+
+    // 批量删除聊天
+    batchDeleteChats: (characterIds: string[]) =>
+      post<{ ok: boolean; deletedCount: number }>('/api/chats/batch-delete', {
+        characterIds,
+      }),
+
+    // 置顶/取消置顶聊天
+    pinChat: (characterId: string, pinned: boolean) =>
+      post<{ ok: boolean; pinned: boolean }>('/api/chats/pin', {
+        characterId,
+        pinned,
+      }),
   };
 }

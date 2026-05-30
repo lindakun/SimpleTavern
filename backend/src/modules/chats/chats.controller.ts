@@ -2,7 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import path from 'node:path';
 import fs from 'node:fs';
 import * as chatService from './chats.service.js';
-import { readChatFile, writeChatFile, listChatFiles, readFirstLine } from './chats.repository.js';
+import { readChatFile, writeChatFile, listChatFiles, readFirstLine, readPinnedList } from './chats.repository.js';
 import { BadRequestError } from '../../common/errors.js';
 import { getConfig } from '../../config/index.js';
 import { getUserDirectories } from '../users/users.repository.js';
@@ -280,6 +280,7 @@ export function getChatThreads(req: Request, res: Response, next: NextFunction):
 
         const entries = fs.readdirSync(dirs.chats, { withFileTypes: true });
         const threads: any[] = [];
+        const pinnedSet = new Set(readPinnedList(dirs.chats));
 
         for (const entry of entries) {
             if (!entry.isDirectory()) continue;
@@ -301,10 +302,15 @@ export function getChatThreads(req: Request, res: Response, next: NextFunction):
                 lastMessageText: lastMsg?.mes || '',
                 lastActive: lastMsg?.send_date || '',
                 messageCount: Math.max(0, chatData.length - 1),
+                pinned: pinnedSet.has(entry.name),
             });
         }
 
-        threads.sort((a, b) => String(b.lastActive).localeCompare(String(a.lastActive)));
+        // 置顶优先，然后按最后活跃时间排序
+        threads.sort((a, b) => {
+            if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
+            return String(b.lastActive).localeCompare(String(a.lastActive));
+        });
         res.json(threads);
     } catch (err) {
         next(err);
@@ -338,6 +344,44 @@ export function getThreadHistory(req: Request, res: Response, next: NextFunction
         }
 
         res.json(allMessages);
+    } catch (err) {
+        next(err);
+    }
+}
+
+/**
+ * POST /api/chats/batch-delete — 批量删除聊天
+ */
+export function batchDeleteChats(req: Request, res: Response, next: NextFunction): void {
+    try {
+        const dirs = getUserDirs(req);
+        const { characterIds } = req.body;
+
+        if (!Array.isArray(characterIds) || characterIds.length === 0) {
+            throw new BadRequestError('characterIds must be a non-empty array');
+        }
+
+        const deletedCount = chatService.batchDeleteChats(dirs.chats, characterIds);
+        res.json({ ok: true, deletedCount });
+    } catch (err) {
+        next(err);
+    }
+}
+
+/**
+ * POST /api/chats/pin — 置顶/取消置顶聊天
+ */
+export function togglePinChat(req: Request, res: Response, next: NextFunction): void {
+    try {
+        const dirs = getUserDirs(req);
+        const { characterId, pinned } = req.body;
+
+        if (!characterId || typeof pinned !== 'boolean') {
+            throw new BadRequestError('characterId and pinned (boolean) are required');
+        }
+
+        const result = chatService.togglePinChat(dirs.chats, characterId, pinned);
+        res.json({ ok: true, pinned: result });
     } catch (err) {
         next(err);
     }

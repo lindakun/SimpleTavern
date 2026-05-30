@@ -144,3 +144,80 @@ export function deleteChat(
 
     chatRepo.deleteChatFile(filePath);
 }
+
+/**
+ * 批量删除聊天（按角色 ID 列表）
+ * 每个角色 ID 对应一个聊天目录，删除整个目录
+ */
+export function batchDeleteChats(
+    chatsDir: string,
+    characterIds: string[],
+): number {
+    let deletedCount = 0;
+    for (const characterId of characterIds) {
+        const chatDir = chatRepo.getCharacterChatDir(chatsDir, characterId);
+        if (!chatRepo.isPathUnderParent(chatsDir, chatDir)) continue;
+        if (!fs.existsSync(chatDir)) continue;
+
+        const files = chatRepo.listChatFiles(chatDir);
+        const filePaths = files.map(f => path.join(chatDir, f));
+        const deleted = chatRepo.batchDeleteChatFiles(filePaths);
+        deletedCount += deleted;
+
+        // 删除空目录
+        try {
+            const remaining = fs.readdirSync(chatDir);
+            if (remaining.length === 0) {
+                fs.rmdirSync(chatDir);
+            }
+        } catch {
+            // 忽略删除空目录失败
+        }
+    }
+
+    // 从置顶列表中也清除
+    const pinned = chatRepo.readPinnedList(chatsDir);
+    const pinnedSet = new Set(pinned);
+    let pinnedChanged = false;
+    for (const id of characterIds) {
+        if (pinnedSet.has(id)) {
+            pinnedSet.delete(id);
+            pinnedChanged = true;
+        }
+    }
+    if (pinnedChanged) {
+        chatRepo.writePinnedList(chatsDir, Array.from(pinnedSet));
+    }
+
+    return deletedCount;
+}
+
+/**
+ * 切换聊天置顶状态
+ */
+export function togglePinChat(
+    chatsDir: string,
+    characterId: string,
+    pinned: boolean,
+): boolean {
+    const pinnedList = chatRepo.readPinnedList(chatsDir);
+    const pinnedSet = new Set(pinnedList);
+
+    if (pinned) {
+        if (pinnedSet.has(characterId)) return true; // 已置顶
+        pinnedSet.add(characterId);
+    } else {
+        if (!pinnedSet.has(characterId)) return false; // 未置顶
+        pinnedSet.delete(characterId);
+    }
+
+    chatRepo.writePinnedList(chatsDir, Array.from(pinnedSet));
+    return pinned;
+}
+
+/**
+ * 获取置顶列表
+ */
+export function getPinnedList(chatsDir: string): string[] {
+    return chatRepo.readPinnedList(chatsDir);
+}

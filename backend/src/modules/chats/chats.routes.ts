@@ -27,5 +27,9 @@ export function createChatRoutes(): Router {
     router.post('/group/delete', chatController.deleteGroupChat);
     router.post('/group/import', upload.single('group_chat'), chatController.importGroupChat);
 
+    // 批量操作
+    router.post('/batch-delete', chatController.batchDeleteChats);
+    router.post('/pin', chatController.togglePinChat);
+
     return router;
 }

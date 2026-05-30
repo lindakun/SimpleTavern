@@ -57,6 +57,19 @@ export function deleteChatFile(filePath: string): boolean {
 }
 
 /**
+ * 批量删除聊天文件
+ */
+export function batchDeleteChatFiles(filePaths: string[]): number {
+    let deleted = 0;
+    for (const filePath of filePaths) {
+        if (deleteChatFile(filePath)) {
+            deleted++;
+        }
+    }
+    return deleted;
+}
+
+/**
  * 列出指定目录下的所有聊天文件
  */
 export function listChatFiles(directory: string): string[] {
@@ -112,4 +125,30 @@ export function readFirstLine(filePath: string): string | null {
     } catch {
         return null;
     }
+}
+
+/**
+ * 读取置顶列表（用户维度，存储在 chatsDir/pinned.json）
+ */
+export function readPinnedList(chatsDir: string): string[] {
+    const filePath = path.join(chatsDir, 'pinned.json');
+    try {
+        if (!fs.existsSync(filePath)) return [];
+        const content = fs.readFileSync(filePath, 'utf-8');
+        const data = JSON.parse(content);
+        return Array.isArray(data) ? data : [];
+    } catch {
+        return [];
+    }
+}
+
+/**
+ * 写入置顶列表
+ */
+export function writePinnedList(chatsDir: string, pinnedIds: string[]): void {
+    const filePath = path.join(chatsDir, 'pinned.json');
+    if (!fs.existsSync(chatsDir)) {
+        fs.mkdirSync(chatsDir, { recursive: true });
+    }
+    fs.writeFileSync(filePath, JSON.stringify(pinnedIds), 'utf-8');
 }

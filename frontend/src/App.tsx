@@ -550,6 +550,24 @@ export default function App() {
               chatThreads={chatThreads}
               onNavigate={handleNavigate}
               onSelectCharacter={setActiveCharacterId}
+              onDeleteChatThreads={(characterIds) => {
+                setChatThreads(prev => {
+                  const next = { ...prev };
+                  for (const id of characterIds) {
+                    delete next[id];
+                  }
+                  return next;
+                });
+              }}
+              onTogglePinChat={(characterId, pinned) => {
+                setChatThreads(prev => ({
+                  ...prev,
+                  [characterId]: {
+                    ...prev[characterId],
+                    pinned,
+                  },
+                }));
+              }}
             />
           )}
 

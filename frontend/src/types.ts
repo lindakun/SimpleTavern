@@ -74,6 +74,7 @@ export interface ChatThread {
   unreadCount: number;
   messages: ChatMessage[];
   updatedAt?: string;
+  pinned?: boolean;
 }
 
 export interface AppState {

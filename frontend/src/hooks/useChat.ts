@@ -177,3 +177,47 @@ export function useProviders() {
     staleTime: 30 * 60 * 1000, // 30分钟
   });
 }
+
+/**
+ * 批量删除聊天
+ */
+export function useBatchDeleteChats() {
+  const chatApi = useChatApi();
+  const { showToast } = useToast();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (characterIds: string[]) => {
+      return chatApi.batchDeleteChats(characterIds);
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: chatKeys.threads() });
+      showToast(`已删除 ${data.deletedCount} 个聊天`, 'success');
+    },
+    onError: (error: Error) => {
+      showToast(`批量删除失败: ${error.message}`, 'error');
+    },
+  });
+}
+
+/**
+ * 置顶/取消置顶聊天
+ */
+export function useTogglePinChat() {
+  const chatApi = useChatApi();
+  const { showToast } = useToast();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ characterId, pinned }: { characterId: string; pinned: boolean }) => {
+      return chatApi.pinChat(characterId, pinned);
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: chatKeys.threads() });
+      showToast(variables.pinned ? '已置顶' : '已取消置顶', 'success');
+    },
+    onError: (error: Error) => {
+      showToast(`操作失败: ${error.message}`, 'error');
+    },
+  });
+}
