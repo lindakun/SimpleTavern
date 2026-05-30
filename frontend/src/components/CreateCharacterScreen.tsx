@@ -1,8 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { ScreenId, Character } from '../types';
-import { ChevronLeft, Plus, X, ChevronDown, ChevronUp } from 'lucide-react';
+import { ChevronLeft, Plus, X, ChevronDown, ChevronUp, Globe } from 'lucide-react';
 import BottomNav from './BottomNav';
 import { useToast } from './Toast';
+import { useWorldApi } from '../api/worlds';
 
 interface CreateCharacterScreenProps {
   onNavigate: (screen: ScreenId) => void;
@@ -25,6 +26,7 @@ interface CharacterForm {
   tags: string[];
   creator: string;
   character_version: string;
+  worldBook: string;
 }
 
 const defaultForm: CharacterForm = {
@@ -41,6 +43,7 @@ const defaultForm: CharacterForm = {
   tags: [],
   creator: '',
   character_version: '1.0',
+  worldBook: '',
 };
 
 function formFromCharacter(c: Character | null | undefined): CharacterForm {
@@ -59,6 +62,7 @@ function formFromCharacter(c: Character | null | undefined): CharacterForm {
     tags: c.tags || [],
     creator: c.creator || '',
     character_version: c.character_version || '1.0',
+    worldBook: c.worldBook || '',
   };
 }
 
@@ -124,16 +128,33 @@ function Field({
 export default function CreateCharacterScreen({ onNavigate, onPublish, editCharacter }: CreateCharacterScreenProps) {
   const { showToast } = useToast();
   const [form, setForm] = useState<CharacterForm>(() => formFromCharacter(editCharacter));
+  const worldApi = useWorldApi();
   const [avatar, setAvatar] = useState(editCharacter?.avatar || '');
   const [saving, setSaving] = useState(false);
   const [tagInput, setTagInput] = useState('');
   const [showTagInput, setShowTagInput] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // 世界书
+  const [worldList, setWorldList] = useState<{ file_id: string; name: string }[]>([]);
+  const [selectedWorldFile, setSelectedWorldFile] = useState(editCharacter?.worldBook || '');
+
+  // 加载世界书列表
+  useEffect(() => {
+    worldApi.listWorlds()
+      .then((data) => {
+        setWorldList(Array.isArray(data) ? data : []);
+      })
+      .catch(() => { /* 世界书功能不可用时静默失败 */ });
+  }, []);
+
   // 编辑模式：外部 editCharacter 变化时同步
   useEffect(() => {
     setForm(formFromCharacter(editCharacter));
     setAvatar(editCharacter?.avatar || '');
+    if (editCharacter?.worldBook) {
+      setSelectedWorldFile(editCharacter.worldBook);
+    }
   }, [editCharacter]);
 
   const updateForm = (key: keyof CharacterForm, value: string | string[]) => {
@@ -194,6 +215,7 @@ export default function CreateCharacterScreen({ onNavigate, onPublish, editChara
       post_history_instructions: form.post_history_instructions || undefined,
       alternate_greetings: form.alternate_greetings.length > 0 ? form.alternate_greetings : undefined,
       character_version: form.character_version || '1.0',
+      worldBook: form.worldBook || undefined,
       status: editCharacter?.status || 'online',
       reviews: editCharacter?.reviews || [],
     };
@@ -436,6 +458,36 @@ export default function CreateCharacterScreen({ onNavigate, onPublish, editChara
           >
             <Plus className="w-3 h-3" /> 添加替代问候语
           </button>
+        </Section>
+
+        {/* 世界书 */}
+        <Section title="世界书" subtitle={selectedWorldFile ? `已绑定: ${worldList.find(w => w.file_id === selectedWorldFile)?.name || selectedWorldFile}` : '可选'}>
+          {worldList.length > 0 ? (
+            <div className="space-y-2">
+              <div className="relative">
+                <Globe className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant/40 pointer-events-none" />
+                <select
+                  value={selectedWorldFile}
+                  onChange={(e) => {
+                    const fileId = e.target.value;
+                    setSelectedWorldFile(fileId);
+                    updateForm('worldBook', fileId);
+                  }}
+                  className="w-full bg-surface-elevated/60 border border-outline-variant/20 rounded-xl pl-9 pr-3 py-2.5 text-xs text-white outline-none appearance-none cursor-pointer focus:border-accent-pink transition-colors"
+                >
+                  <option value="">不绑定世界书</option>
+                  {worldList.map((w) => (
+                    <option key={w.file_id} value={w.file_id}>{w.name}</option>
+                  ))}
+                </select>
+              </div>
+              {selectedWorldFile && (
+                <p className="text-[10px] text-on-surface-variant/60">世界书将在角色聊天时自动注入到对话上下文中</p>
+              )}
+            </div>
+          ) : (
+            <p className="text-[11px] text-on-surface-variant/50">暂无可用世界书，需管理员先创建</p>
+          )}
         </Section>
 
         {/* 创作者信息 */}
