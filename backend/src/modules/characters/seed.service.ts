@@ -16,17 +16,29 @@ export interface SeedCharacter {
     name: string;
     avatar: string;
     avatarColor?: string;
-    tagline?: string;
     creator: string;
     rating: number;
     reviewCount: number;
     tags: string[];
-    description: string;
-    worldBook?: string;
-    voiceType?: 'sweet' | 'mature';
     status?: 'online' | 'offline' | 'draft' | 'private';
     lastActiveLabel?: string;
     reviews: Review[];
+    // V3 角色卡字段
+    description: string;
+    personality?: string;
+    scenario?: string;
+    first_mes?: string;
+    mes_example?: string;
+    creator_notes?: string;
+    system_prompt?: string;
+    post_history_instructions?: string;
+    alternate_greetings?: string[];
+    character_version?: string;
+    extensions?: Record<string, unknown>;
+    // 兼容旧字段
+    tagline?: string;
+    worldBook?: string;
+    voiceType?: 'sweet' | 'mature';
     [key: string]: unknown;
 }
 
