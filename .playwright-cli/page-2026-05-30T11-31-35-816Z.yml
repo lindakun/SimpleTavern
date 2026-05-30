@@ -1,0 +1,42 @@
+- generic [ref=e44]:
+  - banner [ref=e45]:
+    - button "Yuzu AI Logo 返回" [ref=e46] [cursor=pointer]:
+      - img [ref=e47]
+      - img "Yuzu AI Logo" [ref=e49]
+      - generic [ref=e50]: 返回
+    - heading "注册账号" [level=1] [ref=e51]
+  - main [ref=e52]:
+    - img "Join Header Portrait" [ref=e54]
+    - generic [ref=e55]:
+      - heading "加入霓虹边境" [level=2] [ref=e56]
+      - paragraph [ref=e57]: 立即开启您的柚姬AI之旅
+    - generic [ref=e58]:
+      - generic [ref=e59]:
+        - text: 用户名
+        - textbox "3-30位英文、数字或下划线" [ref=e61]
+      - generic [ref=e62]:
+        - text: 电子邮箱
+        - textbox "example@yuzu.ai" [ref=e64]
+      - generic [ref=e65]:
+        - text: 密码
+        - generic [ref=e66]:
+          - textbox "至少6位，含大小写字母和数字" [ref=e67]
+          - button [ref=e68] [cursor=pointer]:
+            - img [ref=e69]
+      - generic [ref=e72]:
+        - text: 确认密码
+        - generic [ref=e73]:
+          - textbox "再次输入密码" [ref=e74]
+          - button [ref=e75] [cursor=pointer]:
+            - img [ref=e76]
+      - button "注册" [disabled] [ref=e79]
+    - paragraph [ref=e80]:
+      - text: 已有账号？
+      - button "立即登录" [ref=e81] [cursor=pointer]
+    - paragraph [ref=e82]:
+      - text: 注册即代表您同意我们的
+      - link "服务条款" [ref=e83] [cursor=pointer]:
+        - /url: "#terms"
+      - text: 与
+      - link "隐私政策" [ref=e84] [cursor=pointer]:
+        - /url: "#privacy"

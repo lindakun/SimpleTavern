@@ -7,7 +7,7 @@
  * - Network-First: 网络优先，离线时返回缓存
  */
 
-const BUILD_VERSION = '2026-05-30-1';
+const BUILD_VERSION = '2026-05-30-2';
 const CACHE_NAME = 'simpletavern-' + BUILD_VERSION;
 
 // ─── 生命周期事件 ───

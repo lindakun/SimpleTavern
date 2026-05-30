@@ -1,0 +1,209 @@
+- generic [ref=e86]:
+  - banner [ref=e87]:
+    - generic [ref=e88]:
+      - img "Yuzu AI Logo" [ref=e89]
+      - generic [ref=e90]: Yuzu AI
+    - generic [ref=e91]:
+      - textbox "搜索AI角色或特征..." [ref=e92]
+      - img
+  - main [ref=e93]:
+    - generic [ref=e95]:
+      - button "全部特征" [ref=e96] [cursor=pointer]
+      - button "高冷" [ref=e97] [cursor=pointer]
+      - button "毒舌" [ref=e98] [cursor=pointer]
+      - button "傲娇" [ref=e99] [cursor=pointer]
+      - button "赛博朋克" [ref=e100] [cursor=pointer]
+      - button "黑客" [ref=e101] [cursor=pointer]
+      - button "治愈" [ref=e102] [cursor=pointer]
+      - button "活泼" [ref=e103] [cursor=pointer]
+      - button "治愈系" [ref=e104] [cursor=pointer]
+      - button "歌姬" [ref=e105] [cursor=pointer]
+      - button "猫耳" [ref=e106] [cursor=pointer]
+      - button "沧桑" [ref=e107] [cursor=pointer]
+      - button "格斗" [ref=e108] [cursor=pointer]
+      - button "孤独" [ref=e109] [cursor=pointer]
+      - button "官方" [ref=e110] [cursor=pointer]
+      - button "通知" [ref=e111] [cursor=pointer]
+      - button "升级" [ref=e112] [cursor=pointer]
+      - button "神秘" [ref=e113] [cursor=pointer]
+      - button "幻术" [ref=e114] [cursor=pointer]
+      - button "戏剧" [ref=e115] [cursor=pointer]
+      - button "制服" [ref=e116] [cursor=pointer]
+      - button "熟女" [ref=e117] [cursor=pointer]
+      - button "冷静" [ref=e118] [cursor=pointer]
+      - button "理性" [ref=e119] [cursor=pointer]
+      - button "极客" [ref=e120] [cursor=pointer]
+      - button "温柔" [ref=e121] [cursor=pointer]
+      - button "御姐" [ref=e122] [cursor=pointer]
+      - button "温厚" [ref=e123] [cursor=pointer]
+      - button "义体修复" [ref=e124] [cursor=pointer]
+      - button "秘密" [ref=e125] [cursor=pointer]
+    - generic [ref=e127]:
+      - generic [ref=e128]:
+        - generic [ref=e129] [cursor=pointer]:
+          - generic [ref=e130]:
+            - img "Yuki Murasaki" [ref=e131]
+            - generic [ref=e133]: 加载失败
+          - button "♡" [ref=e135]
+          - generic [ref=e136]:
+            - generic [ref=e137]: 🔊 甜美少女
+            - generic [ref=e139]: ★ 4.9
+        - generic [ref=e140]:
+          - generic [ref=e141]:
+            - generic [ref=e142]:
+              - heading "Yuki Murasaki" [level=4] [ref=e143]
+              - generic [ref=e144]: "@YuzuCore_Admin"
+            - paragraph [ref=e145]: 霓虹深处的叛逆黑客少女 (Prankster Hacker Girl in Neon depths)
+          - generic [ref=e146]:
+            - generic [ref=e147]: 高冷
+            - generic [ref=e148]: 毒舌
+            - generic [ref=e149]: 傲娇
+          - generic [ref=e150]:
+            - button "查看详情 →" [ref=e151] [cursor=pointer]
+            - button "开始聊天" [ref=e152] [cursor=pointer]
+      - generic [ref=e153]:
+        - generic [ref=e154] [cursor=pointer]:
+          - generic [ref=e155]:
+            - img "Yuzu-chan" [ref=e156]
+            - generic [ref=e158]: 加载失败
+          - button "♡" [ref=e160]
+          - generic [ref=e161]:
+            - generic [ref=e162]: 🔊 甜美少女
+            - generic [ref=e164]: ★ 4.8
+        - generic [ref=e165]:
+          - generic [ref=e166]:
+            - generic [ref=e167]:
+              - heading "Yuzu-chan" [level=4] [ref=e168]
+              - generic [ref=e169]: "@Neotaku_Labs"
+            - paragraph [ref=e170]: 活泼元气的猫耳数码歌姬 (An energetic cat-eared digital songstress)
+          - generic [ref=e171]:
+            - generic [ref=e172]: 治愈
+            - generic [ref=e173]: 活泼
+            - generic [ref=e174]: 治愈系
+          - generic [ref=e175]:
+            - button "查看详情 →" [ref=e176] [cursor=pointer]
+            - button "开始聊天" [ref=e177] [cursor=pointer]
+      - generic [ref=e178]:
+        - generic [ref=e179] [cursor=pointer]:
+          - generic [ref=e180]:
+            - img "Neon Samurai" [ref=e181]
+            - generic [ref=e183]: 加载失败
+          - button "♡" [ref=e185]
+          - generic [ref=e186]:
+            - generic [ref=e187]: 🔊 成熟御姐
+            - generic [ref=e189]: ★ 4.7
+        - generic [ref=e190]:
+          - generic [ref=e191]:
+            - generic [ref=e192]:
+              - heading "Neon Samurai" [level=4] [ref=e193]
+              - generic [ref=e194]: "@Retro_Future"
+            - paragraph [ref=e195]: 旧街区的落魄赛博浪人剑客
+          - generic [ref=e196]:
+            - generic [ref=e197]: 高冷
+            - generic [ref=e198]: 沧桑
+            - generic [ref=e199]: 格斗
+          - generic [ref=e200]:
+            - button "查看详情 →" [ref=e201] [cursor=pointer]
+            - button "开始聊天" [ref=e202] [cursor=pointer]
+      - generic [ref=e203]:
+        - generic [ref=e204] [cursor=pointer]:
+          - generic [ref=e205]:
+            - img "系统广播" [ref=e206]
+            - generic [ref=e208]: 加载失败
+          - button "♡" [ref=e210]
+          - generic [ref=e211]:
+            - generic [ref=e212]: 🔊 成熟御姐
+            - generic [ref=e214]: ★ 5
+        - generic [ref=e215]:
+          - generic [ref=e216]:
+            - generic [ref=e217]:
+              - heading "系统广播" [level=4] [ref=e218]
+              - generic [ref=e219]: "@Yuzu AI Team"
+            - paragraph [ref=e220]: Yuzu AI 官方动态广播终端
+          - generic [ref=e221]:
+            - generic [ref=e222]: 官方
+            - generic [ref=e223]: 通知
+            - generic [ref=e224]: 升级
+          - generic [ref=e225]:
+            - button "查看详情 →" [ref=e226] [cursor=pointer]
+            - button "开始聊天" [ref=e227] [cursor=pointer]
+      - generic [ref=e228]:
+        - generic [ref=e229] [cursor=pointer]:
+          - generic [ref=e230]:
+            - img "月奈" [ref=e231]
+            - generic [ref=e233]: 加载失败
+          - button "♡" [ref=e235]
+          - generic [ref=e236]:
+            - generic [ref=e237]: 🔊 甜美少女
+            - generic [ref=e239]: ★ 4.9
+        - generic [ref=e240]:
+          - generic [ref=e241]:
+            - generic [ref=e242]:
+              - heading "月奈" [level=4] [ref=e243]
+              - generic [ref=e244]: "@Luminescence_Art"
+            - paragraph [ref=e245]: 拥有全息投影魔术的全息幻象艺人
+          - generic [ref=e246]:
+            - generic [ref=e247]: 神秘
+            - generic [ref=e248]: 幻术
+            - generic [ref=e249]: 傲娇
+          - generic [ref=e250]:
+            - button "查看详情 →" [ref=e251] [cursor=pointer]
+            - button "开始聊天" [ref=e252] [cursor=pointer]
+      - generic [ref=e253]:
+        - generic [ref=e254] [cursor=pointer]:
+          - generic [ref=e255]:
+            - img "索菲亚" [ref=e256]
+            - generic [ref=e258]: 加载失败
+          - button "♡" [ref=e260]
+          - generic [ref=e261]:
+            - generic [ref=e262]: 🔊 成熟御姐
+            - generic [ref=e264]: ★ 4.8
+        - generic [ref=e265]:
+          - generic [ref=e266]:
+            - generic [ref=e267]:
+              - heading "索菲亚" [level=4] [ref=e268]
+              - generic [ref=e269]: "@Command-HQ"
+            - paragraph [ref=e270]: 战术控制室首席总指挥官
+          - generic [ref=e271]:
+            - generic [ref=e272]: 高冷
+            - generic [ref=e273]: 制服
+            - generic [ref=e274]: 熟女
+          - generic [ref=e275]:
+            - button "查看详情 →" [ref=e276] [cursor=pointer]
+            - button "开始聊天" [ref=e277] [cursor=pointer]
+      - generic [ref=e278]:
+        - generic [ref=e279] [cursor=pointer]:
+          - generic [ref=e280]:
+            - img "海伦娜" [ref=e281]
+            - generic [ref=e283]: 加载失败
+          - button "♡" [ref=e285]
+          - generic [ref=e286]:
+            - generic [ref=e287]: 🔊 成熟御姐
+            - generic [ref=e289]: ★ 4.6
+        - generic [ref=e290]:
+          - generic [ref=e291]:
+            - generic [ref=e292]:
+              - heading "海伦娜" [level=4] [ref=e293]
+              - generic [ref=e294]: "@CyberBio_Lab"
+            - paragraph [ref=e295]: 高塔区科研所首席生物化学家
+          - generic [ref=e296]:
+            - generic [ref=e297]: 理性
+            - generic [ref=e298]: 极客
+            - generic [ref=e299]: 温柔
+          - generic [ref=e300]:
+            - button "查看详情 →" [ref=e301] [cursor=pointer]
+            - button "开始聊天" [ref=e302] [cursor=pointer]
+  - navigation [ref=e303]:
+    - generic [ref=e304]:
+      - button "角色" [ref=e305] [cursor=pointer]:
+        - img [ref=e307]
+        - generic [ref=e310]: 角色
+      - button "消息" [ref=e311] [cursor=pointer]:
+        - img [ref=e313]
+        - generic [ref=e315]: 消息
+      - button "创建" [ref=e316] [cursor=pointer]:
+        - img [ref=e318]
+        - generic [ref=e320]: 创建
+      - button "我的" [ref=e321] [cursor=pointer]:
+        - img [ref=e323]
+        - generic [ref=e327]: 我的

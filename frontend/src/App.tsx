@@ -359,7 +359,7 @@ export default function App() {
         }
       })
       .catch(() => {});
-  }, [chatApi, user]);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 用户登录/登出时重新加载个人数据（并行请求）
   useEffect(() => {
@@ -390,7 +390,7 @@ export default function App() {
         setChatThreads(threads);
       }
     });
-  }, [characterApi, chatApi, user, userApi]);
+  }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 进入聊天时加载已有聊天记录（避免重复加载）
   const [loadedChats, setLoadedChats] = useState<Set<string>>(new Set());
