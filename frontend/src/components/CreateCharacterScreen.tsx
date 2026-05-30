@@ -155,9 +155,8 @@ export default function CreateCharacterScreen({ onNavigate, onPublish, editChara
   useEffect(() => {
     setForm(formFromCharacter(editCharacter));
     setAvatar(editCharacter?.avatar || '');
-    if (editCharacter?.worldBook) {
-      setSelectedWorldFile(editCharacter.worldBook);
-    }
+    // 同步 worldBook：如果 editCharacter 有 worldBook 则使用，否则重置为空字符串
+    setSelectedWorldFile(editCharacter?.worldBook || '');
   }, [editCharacter]);
 
   const updateForm = (key: keyof CharacterForm, value: string | string[]) => {
@@ -200,6 +199,9 @@ export default function CreateCharacterScreen({ onNavigate, onPublish, editChara
       return;
     }
 
+    // 使用 selectedWorldFile 作为 worldBook 的源，确保与 UI 选择同步
+    const worldBookValue = selectedWorldFile || undefined;
+
     const newChar: Character = {
       id: editCharacter?.id || 'custom_' + Date.now(),
       name: form.name.trim(),
@@ -218,7 +220,7 @@ export default function CreateCharacterScreen({ onNavigate, onPublish, editChara
       post_history_instructions: form.post_history_instructions || undefined,
       alternate_greetings: form.alternate_greetings.length > 0 ? form.alternate_greetings : undefined,
       character_version: form.character_version || '1.0',
-      worldBook: form.worldBook || undefined,
+      worldBook: worldBookValue,
       voiceType: form.voiceType || undefined,
       status: editCharacter?.status || 'online',
       reviews: editCharacter?.reviews || [],
