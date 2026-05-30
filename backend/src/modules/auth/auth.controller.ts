@@ -42,7 +42,7 @@ export async function login(req: Request, res: Response, next: NextFunction): Pr
         session.version = result.version;
         session.admin = result.admin;
 
-        res.json({ handle: result.handle });
+        res.json({ handle: result.handle, admin: result.admin });
     } catch (err) {
         next(err);
     }
@@ -441,7 +441,7 @@ export async function googleLogin(req: Request, res: Response, next: NextFunctio
         session.version = result.version;
         session.admin = result.admin;
 
-        res.json({ handle: result.handle, isNewUser });
+        res.json({ handle: result.handle, admin: result.admin, isNewUser });
     } catch (err) {
         next(err);
     }
