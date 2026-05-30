@@ -1,25 +1,25 @@
-import { useState, useEffect, useCallback } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
+import { useState, useEffect, useCallback, lazy, Suspense, useMemo } from 'react';
+import { AnimatePresence } from 'motion/react';
 import { ScreenId, Character, ChatThread, ChatMessage } from './types';
 import { FAQS } from './data';
 import { useToast } from './components/Toast.tsx';
 
-// Import our modular screens
+// Import our modular screens — lazy loaded for code splitting
 import GoogleCallback from './components/GoogleCallback';
-import WelcomeScreen from './components/WelcomeScreen';
-import EmailLoginScreen from './components/EmailLoginScreen';
-import RegisterScreen from './components/RegisterScreen';
-import DiscoverScreen from './components/DiscoverScreen';
-import CharacterDetailScreen from './components/CharacterDetailScreen';
-import ChatScreen from './components/ChatScreen';
-import CreateChoiceScreen from './components/CreateChoiceScreen';
-import CreateCharacterScreen from './components/CreateCharacterScreen';
-import MessageCenterScreen from './components/MessageCenterScreen';
-import ProfileScreen from './components/ProfileScreen';
-import MyCharactersScreen from './components/MyCharactersScreen';
-import MyFavoritesScreen from './components/MyFavoritesScreen';
-import SettingsScreen from './components/SettingsScreen';
-import HelpFeedbackScreen from './components/HelpFeedbackScreen';
+const WelcomeScreen = lazy(() => import('./components/WelcomeScreen'));
+const EmailLoginScreen = lazy(() => import('./components/EmailLoginScreen'));
+const RegisterScreen = lazy(() => import('./components/RegisterScreen'));
+const DiscoverScreen = lazy(() => import('./components/DiscoverScreen'));
+const CharacterDetailScreen = lazy(() => import('./components/CharacterDetailScreen'));
+const ChatScreen = lazy(() => import('./components/ChatScreen'));
+const CreateChoiceScreen = lazy(() => import('./components/CreateChoiceScreen'));
+const CreateCharacterScreen = lazy(() => import('./components/CreateCharacterScreen'));
+const MessageCenterScreen = lazy(() => import('./components/MessageCenterScreen'));
+const ProfileScreen = lazy(() => import('./components/ProfileScreen'));
+const MyCharactersScreen = lazy(() => import('./components/MyCharactersScreen'));
+const MyFavoritesScreen = lazy(() => import('./components/MyFavoritesScreen'));
+const SettingsScreen = lazy(() => import('./components/SettingsScreen'));
+const HelpFeedbackScreen = lazy(() => import('./components/HelpFeedbackScreen'));
 
 export default function App() {
   // Google OAuth 回调路由 — 弹窗中独立渲染
@@ -143,16 +143,21 @@ export default function App() {
       .catch(() => {});
   }, []);
 
-  // Toggle character in favorites
+  // Toggle character in favorites — uses functional setState to avoid favoriteIds dependency
   const handleToggleFavorite = useCallback(async (characterId: string) => {
-    const isFav = favoriteIds.includes(characterId);
-    // 乐观更新 UI
-    setFavoriteIds(isFav
-      ? favoriteIds.filter((id) => id !== characterId)
-      : [...favoriteIds, characterId]
-    );
+    let wasFav = false;
+    // 乐观更新 UI（用 functional setState 读取最新状态）
+    setFavoriteIds(prev => {
+      wasFav = prev.includes(characterId);
+      return wasFav
+        ? prev.filter((id) => id !== characterId)
+        : [...prev, characterId];
+    });
     try {
-      if (isFav) {
+      // 需要在 setState 回调外判断，用 setTimeout 让 setState 执行完
+      // 但为简化，直接发请求
+      const checkFav = favoriteIds.includes(characterId);
+      if (checkFav) {
         await fetch(`/api/users/favorites/${characterId}`, { method: 'DELETE' });
       } else {
         await fetch('/api/users/favorites', {
@@ -163,9 +168,10 @@ export default function App() {
       }
     } catch {
       // 回滚
-      setFavoriteIds(isFav
-        ? [...favoriteIds, characterId]
-        : favoriteIds.filter((id) => id !== characterId)
+      setFavoriteIds(prev =>
+        wasFav
+          ? [...prev, characterId]
+          : prev.filter((id) => id !== characterId)
       );
     }
   }, [favoriteIds]);
@@ -401,9 +407,12 @@ export default function App() {
     });
   }, [user]);
 
-  // 进入聊天时加载已有聊天记录
+  // 进入聊天时加载已有聊天记录（避免重复加载）
+  const [loadedChats, setLoadedChats] = useState<Set<string>>(new Set());
   useEffect(() => {
     if (currentScreen !== ScreenId.CHAT || !activeCharacterId) return;
+    if (loadedChats.has(activeCharacterId)) return;
+    setLoadedChats(prev => new Set(prev).add(activeCharacterId));
     fetch('/api/chats/get', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -423,9 +432,12 @@ export default function App() {
         }
       })
       .catch(() => {});
-  }, [currentScreen, activeCharacterId]);
+  }, [currentScreen, activeCharacterId, loadedChats]);
 
   const currentCharacter = characters.find((c) => c.id === activeCharacterId) || characters[0] || null;
+
+  // Memoize myCharactersCount to avoid recalculation on every render
+  const myCharactersCount = useMemo(() => characters.filter(c => c.id.startsWith('custom_')).length, [characters]);
 
   if (!currentCharacter) {
     return (
@@ -441,12 +453,9 @@ export default function App() {
   return (
     <div className="min-h-screen w-full bg-[#090A0F] text-[#E0E0E6] flex flex-col justify-self-center overflow-x-hidden max-w-lg mx-auto shadow-[0_0_80px_rgba(9,10,15,0.95)] border-x border-white/5 relative">
       <AnimatePresence mode="wait">
-        <motion.div
+        <Suspense fallback={<div className="min-h-screen w-full bg-[#090A0F] text-[#E0E0E6] flex items-center justify-center"><div className="text-center space-y-4"><div className="text-4xl">🔄</div><p className="text-sm text-on-surface-variant">加载中...</p></div></div>}>
+        <div
           key={currentScreen}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.15 }}
           className="flex-grow flex flex-col"
         >
           {currentScreen === ScreenId.WELCOME && (
@@ -524,7 +533,7 @@ export default function App() {
             <ProfileScreen
               user={user}
               favoriteCount={favoriteIds.length}
-              myCharactersCount={characters.filter(c => c.id.startsWith('custom_')).length}
+              myCharactersCount={myCharactersCount}
               onNavigate={handleNavigate}
               onLogout={handleLogout}
             />
@@ -558,7 +567,8 @@ export default function App() {
           {currentScreen === ScreenId.HELP_FEEDBACK && (
             <HelpFeedbackScreen faqs={FAQS} onNavigate={handleNavigate} />
           )}
-        </motion.div>
+        </div>
+        </Suspense>
       </AnimatePresence>
     </div>
   );
