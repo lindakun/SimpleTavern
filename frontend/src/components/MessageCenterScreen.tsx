@@ -98,7 +98,8 @@ export default function MessageCenterScreen({
             // Get last message text: prefer thread summary, then latest message, then tagline
             const lastMsgText = thread?.lastMessageText
               ?? (thread?.messages?.length ? thread.messages[thread.messages.length - 1]?.text : null)
-              ?? c.tagline;
+              ?? c.tagline
+              ?? c.description?.slice(0, 40);
 
             const unreadCount = thread?.unreadCount || 0;
             

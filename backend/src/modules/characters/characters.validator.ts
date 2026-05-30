@@ -8,7 +8,7 @@ export interface ValidationResult {
 }
 
 /**
- * 校验角色数据的基本字段
+ * 校验角色数据的基本字段（V1/V2/V3）
  */
 export function validateCharacterData(data: unknown): ValidationResult {
     const errors: string[] = [];
@@ -19,10 +19,10 @@ export function validateCharacterData(data: unknown): ValidationResult {
 
     const char = data as Record<string, unknown>;
 
-    // V2 格式校验
-    if (char.spec === 'chara_card_v2') {
+    // V2/V3 格式校验
+    if (char.spec === 'chara_card_v2' || char.spec === 'chara_card_v3') {
         if (!char.data || typeof char.data !== 'object') {
-            errors.push('Spec V2 requires a data field');
+            errors.push('Spec V2/V3 requires a data field');
         } else {
             const d = char.data as Record<string, unknown>;
             if (!d.name) {
@@ -40,20 +40,14 @@ export function validateCharacterData(data: unknown): ValidationResult {
 }
 
 /**
- * 创建空的角色卡数据（用于新角色）
+ * 创建空的角色卡数据（V3 格式，用于新角色）
  */
 export function createDefaultCharacterData(name: string): Record<string, unknown> {
     return {
-        spec: 'chara_card_v2',
-        spec_version: '2.0',
-        name: name,
-        description: '',
-        personality: '',
-        scenario: '',
-        first_mes: '',
-        mes_example: '',
+        spec: 'chara_card_v3',
+        spec_version: '3.0',
         data: {
-            name: name,
+            name,
             description: '',
             personality: '',
             scenario: '',
@@ -62,16 +56,11 @@ export function createDefaultCharacterData(name: string): Record<string, unknown
             creator_notes: '',
             system_prompt: '',
             post_history_instructions: '',
+            alternate_greetings: [],
             tags: [],
             creator: '',
-            character_version: '',
-            alternate_greetings: [],
-            extensions: {
-                talkativeness: 0.5,
-                fav: false,
-                world: '',
-                depth_prompt: { prompt: '', depth: 4, role: 'system' },
-            },
+            character_version: '1.0',
+            extensions: {},
         },
     };
 }

@@ -285,6 +285,15 @@ export default function App() {
         history: currentThread.messages.map((m) => ({ role: m.role, text: m.text })),
         characterName: chatCharacter.name,
         characterDescription: chatCharacter.description,
+        // V3 角色卡字段
+        personality: chatCharacter.personality,
+        scenario: chatCharacter.scenario,
+        first_mes: chatCharacter.first_mes,
+        mes_example: chatCharacter.mes_example,
+        system_prompt: chatCharacter.system_prompt,
+        post_history_instructions: chatCharacter.post_history_instructions,
+        alternate_greetings: chatCharacter.alternate_greetings,
+        // 兼容旧字段
         worldBook: chatCharacter.worldBook,
       });
 

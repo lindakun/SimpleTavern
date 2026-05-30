@@ -6,16 +6,30 @@ interface UserCharacter {
     id: string;
     name: string;
     avatar: string;
-    tagline: string;
-    description: string;
-    worldBook: string;
-    tags: string[];
-    voiceType: 'sweet' | 'mature';
     creator: string;
     createdAt: string;
     rating: number;
     reviewCount: number;
     status: 'online' | 'private' | 'draft';
+    tags: string[];
+
+    // V3 角色卡 data 字段
+    description: string;
+    personality: string;
+    scenario: string;
+    first_mes: string;
+    mes_example: string;
+    creator_notes: string;
+    system_prompt: string;
+    post_history_instructions: string;
+    alternate_greetings: string[];
+    character_version: string;
+    extensions: Record<string, unknown>;
+
+    // 兼容旧字段
+    tagline?: string;
+    worldBook?: string;
+    voiceType?: 'sweet' | 'mature';
 }
 
 /**
@@ -45,12 +59,23 @@ export async function publishCharacter(
     handle: string,
     data: {
         name: string;
-        tagline?: string;
         description?: string;
-        worldBook?: string;
+        personality?: string;
+        scenario?: string;
+        first_mes?: string;
+        mes_example?: string;
+        creator_notes?: string;
+        system_prompt?: string;
+        post_history_instructions?: string;
+        alternate_greetings?: string[];
         tags?: string[];
-        voiceType?: 'sweet' | 'mature';
+        creator?: string;
+        character_version?: string;
         avatar?: string;
+        // 兼容旧字段
+        tagline?: string;
+        worldBook?: string;
+        voiceType?: 'sweet' | 'mature';
     },
 ): Promise<UserCharacter> {
     const id = `custom_${uuidv4().slice(0, 8)}`;
@@ -58,16 +83,30 @@ export async function publishCharacter(
         id,
         name: data.name,
         avatar: data.avatar || '',
-        tagline: data.tagline || '',
-        description: data.description || '',
-        worldBook: data.worldBook || '',
-        tags: data.tags || [],
-        voiceType: data.voiceType || 'sweet',
-        creator: handle,
+        creator: data.creator || handle,
         createdAt: new Date().toISOString(),
         rating: 0,
         reviewCount: 0,
         status: 'online',
+        tags: data.tags || [],
+
+        // V3 字段
+        description: data.description || '',
+        personality: data.personality || '',
+        scenario: data.scenario || '',
+        first_mes: data.first_mes || '',
+        mes_example: data.mes_example || '',
+        creator_notes: data.creator_notes || '',
+        system_prompt: data.system_prompt || '',
+        post_history_instructions: data.post_history_instructions || '',
+        alternate_greetings: data.alternate_greetings || [],
+        character_version: data.character_version || '1.0',
+        extensions: {},
+
+        // 兼容旧字段
+        tagline: data.tagline,
+        worldBook: data.worldBook,
+        voiceType: data.voiceType,
     };
 
     await storage.setItem(`userchar:${handle}:${id}`, character);
@@ -104,14 +143,28 @@ export async function updateUserCharacter(
             ...existing,
             name: data.name ?? existing.name,
             avatar: data.avatar ?? existing.avatar,
-            tagline: data.tagline ?? existing.tagline,
-            description: data.description ?? existing.description,
-            worldBook: data.worldBook ?? existing.worldBook,
             tags: data.tags ?? existing.tags,
-            voiceType: data.voiceType ?? existing.voiceType,
             rating: data.rating ?? existing.rating,
             reviewCount: data.reviewCount ?? existing.reviewCount,
             status: data.status ?? existing.status,
+
+            // V3 字段
+            description: data.description ?? existing.description,
+            personality: data.personality ?? existing.personality,
+            scenario: data.scenario ?? existing.scenario,
+            first_mes: data.first_mes ?? existing.first_mes,
+            mes_example: data.mes_example ?? existing.mes_example,
+            creator_notes: data.creator_notes ?? existing.creator_notes,
+            system_prompt: data.system_prompt ?? existing.system_prompt,
+            post_history_instructions: data.post_history_instructions ?? existing.post_history_instructions,
+            alternate_greetings: data.alternate_greetings ?? existing.alternate_greetings,
+            character_version: data.character_version ?? existing.character_version,
+            extensions: data.extensions ?? existing.extensions,
+
+            // 兼容旧字段
+            tagline: data.tagline ?? existing.tagline,
+            worldBook: data.worldBook ?? existing.worldBook,
+            voiceType: data.voiceType ?? existing.voiceType,
         };
 
         await storage.setItem(key, updated);

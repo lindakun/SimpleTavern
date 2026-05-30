@@ -90,7 +90,7 @@ export default function MyFavoritesScreen({
                     <h3 className="font-bold text-sm text-white">{c.id === 'yuki' ? 'Yuki Murasaki' : c.name}</h3>
                     <span className="text-[10px] text-on-surface-variant font-mono">@{c.creator}</span>
                   </div>
-                  <p className="text-xs text-on-surface-variant line-clamp-1">{c.tagline}</p>
+                  <p className="text-xs text-on-surface-variant line-clamp-1">{c.tagline || c.description?.slice(0, 40)}</p>
                   
                   <div className="flex items-center justify-between pt-1">
                     <span className="px-2 py-0.5 text-[9px] bg-[#0F111A]/90 border border-accent-pink/20 rounded-full font-mono text-accent-pink">

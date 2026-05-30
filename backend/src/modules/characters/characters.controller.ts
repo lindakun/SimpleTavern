@@ -235,11 +235,28 @@ export async function publishCharacter(req: Request, res: Response, next: NextFu
     try {
         const handle = (req.session as Record<string, any>)?.handle;
         if (!handle) { res.status(403).json({ error: 'Unauthorized' }); return; }
-        const { name, tagline, description, worldBook, tags, voiceType, avatar } = req.body;
+        const { name } = req.body;
         if (!name) throw new BadRequestError('name is required');
 
         const character = await userCharacterService.publishCharacter(handle, {
-            name, tagline, description, worldBook, tags, voiceType, avatar,
+            name,
+            description: req.body.description,
+            personality: req.body.personality,
+            scenario: req.body.scenario,
+            first_mes: req.body.first_mes,
+            mes_example: req.body.mes_example,
+            creator_notes: req.body.creator_notes,
+            system_prompt: req.body.system_prompt,
+            post_history_instructions: req.body.post_history_instructions,
+            alternate_greetings: req.body.alternate_greetings,
+            tags: req.body.tags,
+            creator: req.body.creator,
+            character_version: req.body.character_version,
+            avatar: req.body.avatar,
+            // 兼容旧字段
+            tagline: req.body.tagline,
+            worldBook: req.body.worldBook,
+            voiceType: req.body.voiceType,
         });
         res.json(character);
     } catch (err) {
@@ -247,11 +264,27 @@ export async function publishCharacter(req: Request, res: Response, next: NextFu
     }
 }
 
+function parseTags(tags: unknown): string[] {
+    if (typeof tags === 'string') {
+        return tags.split(',').map((t: string) => t.trim()).filter(Boolean);
+    }
+    return Array.isArray(tags) ? tags : [];
+}
+
+function parseAlternateGreetings(val: unknown): string[] {
+    if (Array.isArray(val)) return val.filter((g: unknown) => typeof g === 'string');
+    return [];
+}
+
 function buildCharData(body: Record<string, unknown>): Record<string, unknown> {
+    const name = String(body.name || body.ch_name || '');
+    const tags = parseTags(body.tags);
+    const alternateGreetings = parseAlternateGreetings(body.alternate_greetings);
+
     return {
-        spec: 'chara_card_v2',
-        spec_version: '2.0',
-        name: body.name || body.ch_name || '',
+        spec: 'chara_card_v3',
+        spec_version: '3.0',
+        name,
         description: body.description || '',
         personality: body.personality || '',
         scenario: body.scenario || '',
@@ -260,9 +293,9 @@ function buildCharData(body: Record<string, unknown>): Record<string, unknown> {
         creatorcomment: body.creator_notes || '',
         talkativeness: body.talkativeness || 0.5,
         fav: body.fav === true || body.fav === 'true',
-        tags: typeof body.tags === 'string' ? body.tags.split(',').map((t: string) => t.trim()).filter(Boolean) : (body.tags || []),
+        tags,
         data: {
-            name: body.name || body.ch_name || '',
+            name,
             description: body.description || '',
             personality: body.personality || '',
             scenario: body.scenario || '',
@@ -271,10 +304,10 @@ function buildCharData(body: Record<string, unknown>): Record<string, unknown> {
             creator_notes: body.creator_notes || '',
             system_prompt: body.system_prompt || '',
             post_history_instructions: body.post_history_instructions || '',
-            tags: typeof body.tags === 'string' ? body.tags.split(',').map((t: string) => t.trim()).filter(Boolean) : (body.tags || []),
+            tags,
             creator: body.creator || '',
-            character_version: body.character_version || '',
-            alternate_greetings: [],
+            character_version: body.character_version || '1.0',
+            alternate_greetings: alternateGreetings,
             extensions: {
                 talkativeness: body.talkativeness || 0.5,
                 fav: body.fav === true || body.fav === 'true',

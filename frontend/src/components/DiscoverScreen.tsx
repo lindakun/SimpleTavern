@@ -31,7 +31,7 @@ export default function DiscoverScreen({
     if (c.status === 'draft') return false;
 
     const matchesSearch = c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          c.tagline.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                          (c.tagline || c.description).toLowerCase().includes(searchQuery.toLowerCase()) ||
                           c.description.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesTag = selectedTag === 'ALL' || c.tags.includes(selectedTag);
     return matchesSearch && matchesTag;
@@ -167,7 +167,7 @@ export default function DiscoverScreen({
                           <span className="text-[10px] text-on-surface-variant font-mono">@{c.creator}</span>
                         </div>
                         <p className="text-xs text-on-surface-variant line-clamp-2 leading-relaxed">
-                          {c.tagline}
+                          {c.tagline || c.description?.slice(0, 60)}
                         </p>
                       </div>
 

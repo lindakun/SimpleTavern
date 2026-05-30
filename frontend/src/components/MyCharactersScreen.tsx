@@ -139,7 +139,7 @@ export default function MyCharactersScreen({
                           )}
                         </div>
                       </div>
-                      <p className="text-[11px] text-on-surface-variant line-clamp-1">{c.tagline}</p>
+                      <p className="text-[11px] text-on-surface-variant line-clamp-1">{c.tagline || c.description?.slice(0, 40)}</p>
                       <span className="text-[9px] text-on-surface-variant/40 font-mono block">
                         最后活跃: {c.lastActiveLabel || '2小时前'}
                       </span>

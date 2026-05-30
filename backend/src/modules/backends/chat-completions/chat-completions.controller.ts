@@ -8,7 +8,7 @@ import { logger } from '../../../common/logger.js';
  */
 export async function chat(req: Request, res: Response, _next: NextFunction): Promise<void> {
     try {
-        const { message, history, characterName, characterDescription, worldBook, provider } = req.body;
+        const { message, history, characterName, characterDescription, provider } = req.body;
 
         if (!message) {
             res.status(400).json({ error: 'Message is required' });
@@ -20,7 +20,16 @@ export async function chat(req: Request, res: Response, _next: NextFunction): Pr
             history: history || [],
             characterName: characterName || 'AI',
             characterDescription: characterDescription || '',
-            worldBook,
+            // V3 角色卡字段
+            personality: req.body.personality,
+            scenario: req.body.scenario,
+            first_mes: req.body.first_mes,
+            mes_example: req.body.mes_example,
+            system_prompt: req.body.system_prompt,
+            post_history_instructions: req.body.post_history_instructions,
+            alternate_greetings: req.body.alternate_greetings,
+            // 兼容旧字段
+            worldBook: req.body.worldBook,
             provider,
         });
 

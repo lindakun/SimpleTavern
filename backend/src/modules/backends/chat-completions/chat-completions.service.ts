@@ -4,29 +4,63 @@ import { logger } from '../../../common/logger.js';
 
 /**
  * 构建角色扮演的消息列表
- * 将用户请求 + 角色信息转换为 LLM 消息格式
+ * 将用户请求 + 角色 V3 卡信息转换为 LLM 消息格式
  */
 function buildMessages(req: ChatRequest): ChatMessage[] {
     const messages: ChatMessage[] = [];
 
-    // 系统指令 — 角色设定
-    let systemPrompt = `You are roleplaying as a fictional character named "${req.characterName}".
+    // 系统指令 — 使用 system_prompt 或自动构建
+    let systemPrompt: string;
 
-Character Description:
-${req.characterDescription || 'A fictional AI character in a cyberpunk world.'}`;
-
-    if (req.worldBook) {
-        systemPrompt += `\n\nWorldbook / Lore & Speaking Guidelines:
-${req.worldBook}`;
+    if (req.system_prompt) {
+        // 使用角色卡自带的 system_prompt
+        systemPrompt = req.system_prompt;
+    } else {
+        // 自动构建系统提示词
+        systemPrompt = `You are roleplaying as a fictional character named "${req.characterName}".`;
     }
 
-    systemPrompt += `\n\nCRITICAL RULES:
+    // 追加角色描述
+    if (req.characterDescription) {
+        systemPrompt += `\n\nCharacter Description:\n${req.characterDescription}`;
+    }
+
+    // 追加性格
+    if (req.personality) {
+        systemPrompt += `\n\nPersonality:\n${req.personality}`;
+    }
+
+    // 追加场景
+    if (req.scenario) {
+        systemPrompt += `\n\nScenario:\n${req.scenario}`;
+    }
+
+    // 追加世界书
+    if (req.worldBook) {
+        systemPrompt += `\n\nWorldbook / Lore & Speaking Guidelines:\n${req.worldBook}`;
+    }
+
+    // 通用规则（仅在无 system_prompt 时添加）
+    if (!req.system_prompt) {
+        systemPrompt += `\n\nCRITICAL RULES:
 1. Always stay in character. Never speak as an AI assistant.
 2. Speak primarily in Chinese unless the character's description specifies otherwise.
 3. Keep responses conversational and relatively short.
 4. Show your character's personality traits in your responses.`;
+    }
 
     messages.push({ role: 'system', content: systemPrompt });
+
+    // 如果有 first_mes，作为 assistant 的初始消息
+    if (req.first_mes) {
+        const charName = req.characterName || 'Character';
+        messages.push({
+            role: 'assistant',
+            content: req.first_mes
+                .replace(/\{\{char\}\}/gi, charName)
+                .replace(/\{\{user\}\}/gi, 'User'),
+        });
+    }
 
     // 历史消息
     if (req.history && req.history.length > 0) {
@@ -36,6 +70,11 @@ ${req.worldBook}`;
                 content: msg.text,
             });
         }
+    }
+
+    // 历史记录后指令
+    if (req.post_history_instructions) {
+        messages.push({ role: 'system', content: req.post_history_instructions });
     }
 
     // 当前消息
@@ -167,5 +206,5 @@ function getSimulatedReply(characterName: string): string {
         ];
         return r[Math.floor(Math.random() * r.length)];
     }
-    return `【${characterName}】：“信号收到了。在新京2099的雨夜，你找我有什么事？”`;
+    return `【${characterName}】："信号收到了。在新京2099的雨夜，你找我有什么事？"`;
 }
