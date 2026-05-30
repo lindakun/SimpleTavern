@@ -1,17 +1,22 @@
+import React, { useState } from 'react';
 import { ScreenId } from '../types';
 import { X, Zap, Edit, Sparkles } from 'lucide-react';
+import { useToast } from './Toast';
 
 interface CreateChoiceScreenProps {
   onNavigate: (screen: ScreenId) => void;
 }
 
 export default function CreateChoiceScreen({ onNavigate }: CreateChoiceScreenProps) {
+  const { showToast } = useToast();
+  const [importing, setImporting] = useState(false);
+
   return (
     <div className="relative min-h-screen bg-[#090A0F] text-[#E0E0E6] flex flex-col justify-between p-6">
       {/* Heavy colorful blur backgrounds */}
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-80 h-80 bg-accent-pink/10 rounded-full blur-[120px] pointer-events-none" />
 
-      {/* Top close bar with xpath: //button[.//span[text()='close']] matching standard cross button */}
+      {/* Top close bar */}
       <header className="flex justify-between items-center h-16 relative z-10 w-full mb-8">
         <h1 className="text-lg font-bold text-white tracking-widest font-headline-lg-mobile bg-gradient-to-r from-accent-pink to-accent-purple bg-clip-text text-transparent">
           创建方式选择
@@ -43,27 +48,26 @@ export default function CreateChoiceScreen({ onNavigate }: CreateChoiceScreenPro
           </p>
         </div>
 
-        {/* Choice 1: Manual creator with detailed world book configuration */}
+        {/* Choice 1: Manual creator */}
         <div className="bg-surface-elevated/40 border border-accent-pink/30 hover:border-accent-pink p-6 rounded-3xl backdrop-blur-md shadow-[0_0_30px_rgba(232,121,199,0.05)] hover:shadow-[0_0_40px_rgba(232,121,199,0.15)] duration-300 flex flex-col justify-between gap-4">
           <div className="flex items-start gap-4">
             <div className="w-12 h-12 bg-accent-pink/15 rounded-2xl flex items-center justify-center text-accent-pink text-lg font-mono flex-shrink-0">
               <Zap className="w-5 h-5 fill-accent-pink/20 text-accent-pink" />
             </div>
             <div className="space-y-1">
-              <h3 className="text-sm font-bold text-white">大师手笔创意（可配置世界书）</h3>
+              <h3 className="text-sm font-bold text-white">从零创建角色</h3>
               <p className="text-[11px] text-on-surface-variant leading-relaxed">
-                全自定义头像、标签、性格设定，并在下方添加【世界书 (World Book)】。让角色拥有深厚完整的宇宙观及说话行为守则。
+                填写角色名称、描述、性格、场景、第一条消息、系统提示词等完整 V3 角色卡信息。
               </p>
             </div>
           </div>
 
-          {/* edit_square trigger with exact text as xpath value for creation trigger on Screen 2 */}
           <button
             onClick={() => onNavigate(ScreenId.CREATE_CHARACTER)}
             className="w-full h-11 bg-gradient-to-r from-accent-pink to-accent-purple text-white rounded-xl text-xs font-bold active:scale-95 duration-200 flex items-center justify-center gap-2 cursor-pointer shadow-lg"
           >
             <Edit className="w-3.5 h-3.5" />
-            <span>大师配置模式</span>
+            <span>开始创建</span>
           </button>
         </div>
 
@@ -76,12 +80,12 @@ export default function CreateChoiceScreen({ onNavigate }: CreateChoiceScreenPro
             <div className="space-y-1">
               <h3 className="text-sm font-bold text-white">从外部导入</h3>
               <p className="text-[11px] text-on-surface-variant leading-relaxed">
-                支持导入 PNG 角色卡或 JSON 文件。自动识别角色卡格式（V1/V2），保留头像、设定、世界书等完整信息。
+                支持导入 PNG 角色卡或 JSON 文件。自动识别 V1/V2/V3 格式，保留头像、设定等完整信息。
               </p>
             </div>
           </div>
 
-          <label className="w-full h-11 bg-surface-container border border-outline-variant hover:border-accent-purple text-xs text-on-surface rounded-xl font-bold active:scale-95 transition-transform cursor-pointer flex items-center justify-center gap-2">
+          <label className={`w-full h-11 bg-surface-container border border-outline-variant hover:border-accent-purple text-xs text-on-surface rounded-xl font-bold active:scale-95 transition-transform cursor-pointer flex items-center justify-center gap-2 ${importing ? 'opacity-50 pointer-events-none' : ''}`}>
             <input
               type="file"
               accept=".png,.json"
@@ -90,6 +94,7 @@ export default function CreateChoiceScreen({ onNavigate }: CreateChoiceScreenPro
                 const file = e.target.files?.[0];
                 if (!file) return;
 
+                setImporting(true);
                 const formData = new FormData();
                 formData.append('file', file);
 
@@ -100,25 +105,26 @@ export default function CreateChoiceScreen({ onNavigate }: CreateChoiceScreenPro
                   });
                   if (res.ok) {
                     const data = await res.json();
-                    alert(`导入成功: ${data.path}\n支持格式: 原 SillyTavern V2/V1 / Pygmalion`);
+                    showToast(`导入成功: ${data.path}`, 'success');
+                    onNavigate(ScreenId.MY_CHARACTERS);
                   } else {
                     const err = await res.json().catch(() => ({}));
-                    alert(`导入失败: ${err.message || '未知错误'}`);
+                    showToast(`导入失败: ${err.message || err.error || '未知错误'}`, 'error');
                   }
-                } catch (err) {
-                  alert('导入失败: 网络错误');
+                } catch {
+                  showToast('导入失败: 网络错误', 'error');
+                } finally {
+                  setImporting(false);
                 }
-
-                onNavigate(ScreenId.DISCOVER);
               }}
             />
             <Sparkles className="w-3.5 h-3.5" />
-            选择文件导入
+            {importing ? '导入中...' : '选择文件导入'}
           </label>
         </div>
       </main>
 
-      {/* Spacers on base */}
+      {/* Footer */}
       <footer className="w-full py-4 text-center">
         <span className="text-[10px] text-on-surface-variant/40 font-mono tracking-widest block">
           CRAFTED BY YUZU INTELLIGENCE DEVELOPMENT GROUP

@@ -73,7 +73,8 @@ async function importFromPng(uploadPath: string, charactersDir: string): Promise
         const jsonStr = JSON.stringify(jsonData);
         writeCharacterCardToFile(destPath, jsonStr, fs.readFileSync(uploadPath));
         fs.unlinkSync(uploadPath);
-        logger.info(`导入 V2 角色卡: ${name}`);
+        const specVer = jsonData.spec === 'chara_card_v3' ? 'V3' : 'V2';
+        logger.info(`导入 ${specVer} 角色卡: ${name}`);
         return pngName;
     }
 
@@ -83,7 +84,7 @@ async function importFromPng(uploadPath: string, charactersDir: string): Promise
             jsonData.creator_notes = jsonData.creator_notes.replace("Creator's notes go here.", '');
         }
 
-        const char = convertV1toV2({
+        const char = convertV1toV3({
             name: jsonData.name,
             description: jsonData.description ?? '',
             personality: jsonData.personality ?? '',
@@ -91,11 +92,15 @@ async function importFromPng(uploadPath: string, charactersDir: string): Promise
             mes_example: jsonData.mes_example ?? '',
             scenario: jsonData.scenario ?? '',
             creator_notes: jsonData.creator_notes ?? jsonData.creatorcomment ?? '',
+            system_prompt: jsonData.system_prompt ?? '',
+            post_history_instructions: jsonData.post_history_instructions ?? '',
+            alternate_greetings: jsonData.alternate_greetings ?? [],
             talkativeness: jsonData.talkativeness ?? 0.5,
             creator: jsonData.creator ?? '',
             tags: jsonData.tags ?? '',
             fav: jsonData.fav ?? false,
             world: jsonData.world ?? '',
+            character_version: jsonData.character_version ?? '',
         });
 
         const jsonStr = JSON.stringify(char);
@@ -103,7 +108,7 @@ async function importFromPng(uploadPath: string, charactersDir: string): Promise
         const baseImage = getBaseImage(charactersDir);
         writeCharacterCardToFile(destPath, jsonStr, baseImage);
         fs.unlinkSync(uploadPath);
-        logger.info(`导入 V1 角色卡(已转V2): ${name}`);
+        logger.info(`导入 V1 角色卡(已转V3): ${name}`);
         return pngName;
     }
 
@@ -114,7 +119,7 @@ async function importFromPng(uploadPath: string, charactersDir: string): Promise
             jsonData.creator_notes = jsonData.creator_notes.replace("Creator's notes go here.", '');
         }
 
-        const char = convertV1toV2({
+        const char = convertV1toV3({
             name: name2,
             description: jsonData.char_persona ?? '',
             personality: '',
@@ -130,7 +135,7 @@ async function importFromPng(uploadPath: string, charactersDir: string): Promise
         const jsonStr = JSON.stringify(char);
         writeCharacterCardToFile(destPath2, jsonStr, fs.readFileSync(uploadPath));
         fs.unlinkSync(uploadPath);
-        logger.info(`导入 Pygmalion 格式: ${name2}`);
+        logger.info(`导入 Pygmalion 格式(已转V3): ${name2}`);
         return pngName2;
     }
 
@@ -169,7 +174,7 @@ async function importFromJson(uploadPath: string, charactersDir: string): Promis
             jsonData.creator_notes = jsonData.creator_notes.replace("Creator's notes go here.", '');
         }
 
-        const char = convertV1toV2({
+        const char = convertV1toV3({
             name: jsonData.name,
             description: jsonData.description ?? '',
             personality: jsonData.personality ?? '',
@@ -177,9 +182,13 @@ async function importFromJson(uploadPath: string, charactersDir: string): Promis
             mes_example: jsonData.mes_example ?? '',
             scenario: jsonData.scenario ?? '',
             creator_notes: jsonData.creator_notes ?? jsonData.creatorcomment ?? '',
+            system_prompt: jsonData.system_prompt ?? '',
+            post_history_instructions: jsonData.post_history_instructions ?? '',
+            alternate_greetings: jsonData.alternate_greetings ?? [],
             talkativeness: jsonData.talkativeness ?? 0.5,
             creator: jsonData.creator ?? '',
             tags: jsonData.tags ?? '',
+            character_version: jsonData.character_version ?? '',
         });
 
         writeCharacterCardToFile(destPath, JSON.stringify(char), getBaseImage(charactersDir));
@@ -196,7 +205,7 @@ async function importFromJson(uploadPath: string, charactersDir: string): Promis
             jsonData.creator_notes = jsonData.creator_notes.replace("Creator's notes go here.", '');
         }
 
-        const char = convertV1toV2({
+        const char = convertV1toV3({
             name: jsonData.char_name,
             description: jsonData.char_persona ?? '',
             personality: '',
@@ -215,9 +224,9 @@ async function importFromJson(uploadPath: string, charactersDir: string): Promis
 }
 
 /**
- * V1 → V2 格式转换（与原 SillyTavern 一致）
+ * V1 → V3 格式转换
  */
-function convertV1toV2(data: {
+function convertV1toV3(data: {
     name: string;
     description: string;
     personality: string;
@@ -225,15 +234,15 @@ function convertV1toV2(data: {
     mes_example: string;
     scenario: string;
     creator_notes?: string;
+    system_prompt?: string;
+    post_history_instructions?: string;
+    alternate_greetings?: string[];
     talkativeness?: number;
     creator?: string;
     tags?: string;
     fav?: boolean;
     world?: string;
-    system_prompt?: string;
-    post_history_instructions?: string;
     character_version?: string;
-    alternate_greetings?: string[];
     depth_prompt_prompt?: string;
     depth_prompt_depth?: number;
     depth_prompt_role?: string;
@@ -243,8 +252,8 @@ function convertV1toV2(data: {
         : (Array.isArray(data.tags) ? data.tags : []);
 
     return {
-        spec: 'chara_card_v2',
-        spec_version: '2.0',
+        spec: 'chara_card_v3',
+        spec_version: '3.0',
         name: data.name,
         description: data.description || '',
         personality: data.personality || '',
@@ -270,7 +279,7 @@ function convertV1toV2(data: {
             post_history_instructions: data.post_history_instructions || '',
             tags,
             creator: data.creator || '',
-            character_version: data.character_version || '',
+            character_version: data.character_version || '1.0',
             alternate_greetings: data.alternate_greetings || [],
             extensions: {
                 talkativeness: data.talkativeness ?? 0.5,
