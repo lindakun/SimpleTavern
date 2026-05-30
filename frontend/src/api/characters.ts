@@ -56,5 +56,9 @@ export function useCharacterApi() {
     // 导入角色
     importCharacter: (data: unknown) =>
       post('/api/characters/import', data),
+
+    // 获取用户的 PNG 角色卡列表
+    getUserPngCharacters: () =>
+      get<Character[]>('/api/users/png-characters'),
   };
 }

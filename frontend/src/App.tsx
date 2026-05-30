@@ -67,16 +67,21 @@ export default function App() {
       characterApi.getDiscoverCharacters().catch(() => []),
       userApi.getFavorites().catch(() => ({ favorites: [] })),
       characterApi.getMyCharacters().catch(() => []),
-    ]).then(([discoverData, favData, charsData]) => {
+      characterApi.getUserPngCharacters().catch(() => []),
+    ]).then(([discoverData, favData, charsData, pngCharsData]) => {
       if (Array.isArray(discoverData) && discoverData.length > 0) setCharacters(discoverData);
       if (favData && Array.isArray(favData.favorites)) setFavoriteIds(favData.favorites);
-      if (Array.isArray(charsData) && charsData.length > 0) {
-        setCharacters(prev => {
-          const existingIds = new Set(prev.map(c => c.id));
-          const newChars = charsData.filter((c: Character) => !existingIds.has(c.id));
-          return [...prev, ...newChars];
-        });
-      }
+      const mergeChars = (data: Character[]) => {
+        if (Array.isArray(data) && data.length > 0) {
+          setCharacters(prev => {
+            const existingIds = new Set(prev.map(c => c.id));
+            const newChars = data.filter((c: Character) => !existingIds.has(c.id));
+            return [...prev, ...newChars];
+          });
+        }
+      };
+      mergeChars(charsData);
+      mergeChars(pngCharsData);
     });
   }, []);
 
@@ -324,6 +329,9 @@ export default function App() {
     try {
       if (char.id.startsWith('custom_')) {
         await characterApi.deleteUserCharacter(characterId);
+      } else if (char.id.endsWith('.png')) {
+        // PNG 角色卡：avatar_url 就是文件名（即 id）
+        await characterApi.deleteCharacter(char.id);
       } else {
         await characterApi.deleteCharacter(char.avatar);
       }
@@ -368,16 +376,21 @@ export default function App() {
     Promise.all([
       userApi.getFavorites().catch(() => ({ favorites: [] })),
       characterApi.getMyCharacters().catch(() => []),
+      characterApi.getUserPngCharacters().catch(() => []),
       chatApi.getThreads().catch(() => []),
-    ]).then(([favData, charsData, threadsData]) => {
+    ]).then(([favData, charsData, pngCharsData, threadsData]) => {
       if (favData && Array.isArray(favData.favorites)) setFavoriteIds(favData.favorites);
-      if (Array.isArray(charsData) && charsData.length > 0) {
-        setCharacters(prev => {
-          const existingIds = new Set(prev.map(c => c.id));
-          const newChars = charsData.filter((c: Character) => !existingIds.has(c.id));
-          return [...prev, ...newChars];
-        });
-      }
+      const mergeChars = (data: Character[]) => {
+        if (Array.isArray(data) && data.length > 0) {
+          setCharacters(prev => {
+            const existingIds = new Set(prev.map(c => c.id));
+            const newChars = data.filter((c: Character) => !existingIds.has(c.id));
+            return [...prev, ...newChars];
+          });
+        }
+      };
+      mergeChars(charsData);
+      mergeChars(pngCharsData);
       if (Array.isArray(threadsData)) {
         const threads: Record<string, ChatThread> = {};
         for (const thread of threadsData) {
@@ -419,7 +432,7 @@ export default function App() {
   const currentCharacter = characters.find((c) => c.id === activeCharacterId) || characters[0] || null;
 
   // Memoize myCharactersCount to avoid recalculation on every render
-  const myCharactersCount = useMemo(() => characters.filter(c => c.id.startsWith('custom_')).length, [characters]);
+  const myCharactersCount = useMemo(() => characters.filter(c => c.id.startsWith('custom_') || c.id.endsWith('.png')).length, [characters]);
 
   const requiresCharacter = [
     ScreenId.DISCOVER,

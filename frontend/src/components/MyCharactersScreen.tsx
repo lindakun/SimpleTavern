@@ -19,10 +19,16 @@ export default function MyCharactersScreen({
   onDeleteCharacter,
   currentUser,
 }: MyCharactersScreenProps) {
-  // 只显示当前用户创建的角色（custom_ 前缀 + creator 匹配）
-  const authorCharacters = characters.filter((c) =>
-    c.id.startsWith('custom_') && (!currentUser || c.creator === currentUser)
-  );
+  // 显示用户自己的角色：custom_ 前缀（用户发布）+ .png 结尾（导入的 PNG 角色卡）
+  const authorCharacters = characters.filter((c) => {
+    if (c.id.startsWith('custom_')) {
+      return !currentUser || c.creator === currentUser;
+    }
+    if (c.id.endsWith('.png')) {
+      return true;
+    }
+    return false;
+  });
 
   const startChatAction = (id: string) => {
     onSelectCharacter(id);
