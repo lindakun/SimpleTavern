@@ -43,7 +43,7 @@ export const CreateCharacterSchema = z.object({
   status: CharacterStatusSchema.optional().default('online'),
 
   tags: z.array(TagSchema)
-    .max(10, '标签不能超过10个个')
+    .max(50, '标签不能超过50个')
     .optional()
     .default([]),
 

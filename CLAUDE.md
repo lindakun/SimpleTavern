@@ -50,6 +50,10 @@ SillyTavern 是一个面向高级用户的 LLM 前端（v1.18.0，AGPL-3.0），
 
 另有原项目 SillyTavern 的容器 `sillytavern`（端口 8000），当前处于 **Paused** 状态。
 
+## 生产环境测试帐号
+- 用户名：lzx
+- 密码：Asdf@1234
+
 ### 常用 Docker 命令
 
 ```bash
