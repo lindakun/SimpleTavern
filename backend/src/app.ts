@@ -76,16 +76,27 @@ export function createApp(config: ServerConfig): express.Express {
     });
 
     app.get('/version', (_req, res) => {
+        res.setHeader('Cache-Control', 'public, max-age=3600');
         res.json({ version: '0.1.0', name: 'simple-tavern' });
     });
 
     // ---- 公开路由（无需登录） ----
     app.use('/api', createPublicAuthRoutes(config));
 
+    // ---- AI 聊天 providers 缓存 ----
+    app.use('/api/chat/providers', (_req, res, next) => {
+        res.setHeader('Cache-Control', 'public, max-age=600');
+        next();
+    });
+
     // ---- AI 聊天接口（公开，前端无需后端会话） ----
     app.use('/api', createAiChatRoutes());
 
-    // ---- 角色发现/探索 API（公开） ----
+    // ---- 角色发现/探索 API（公开，缓存 5 分钟） ----
+    app.use('/api/discover', (_req, res, next) => {
+        res.setHeader('Cache-Control', 'public, max-age=300');
+        next();
+    });
     app.use('/api', createDiscoverRoutes());
 
     // ---- 用户数据 API（收藏、设置，公开） ----

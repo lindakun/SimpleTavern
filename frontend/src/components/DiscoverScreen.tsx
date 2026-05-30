@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { ScreenId, Character } from '../types';
 import { Search, X } from 'lucide-react';
 import BottomNav from './BottomNav';
+import LazyImage from './LazyImage';
 import { CharacterCardSkeleton } from './Skeleton';
 
 interface DiscoverScreenProps {
@@ -23,9 +24,9 @@ export default function DiscoverScreen({
   const [selectedTag, setSelectedTag] = useState('ALL');
 
   // Unique tags across characters (plus ALL)
-  const allTags = ['ALL', ...Array.from(new Set(characters.flatMap((c) => c.tags)))];
+  const allTags = useMemo(() => ['ALL', ...Array.from(new Set(characters.flatMap((c) => c.tags)))], [characters]);
 
-  const filteredCharacters = characters.filter((c) => {
+  const filteredCharacters = useMemo(() => characters.filter((c) => {
     // Exclude draft character from standard public discover feed
     if (c.status === 'draft') return false;
 
@@ -34,7 +35,7 @@ export default function DiscoverScreen({
                           c.description.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesTag = selectedTag === 'ALL' || c.tags.includes(selectedTag);
     return matchesSearch && matchesTag;
-  });
+  }), [characters, searchQuery, selectedTag]);
 
   return (
     <div className="relative min-h-screen bg-background-deep text-white pb-24">
@@ -125,9 +126,9 @@ export default function DiscoverScreen({
                       onSelectCharacter(c.id);
                       onNavigate(ScreenId.CHARACTER_DETAIL);
                     }} >
-                      <img
-                        alt={c.name}
+                      <LazyImage
                         src={c.avatar}
+                        alt={c.name}
                         referrerPolicy="no-referrer"
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                       />

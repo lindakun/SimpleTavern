@@ -1,5 +1,6 @@
 import { ScreenId, Character } from '../types';
 import { ChevronLeft } from 'lucide-react';
+import LazyImage from './LazyImage';
 
 interface MyFavoritesScreenProps {
   characters: Character[];
@@ -76,9 +77,9 @@ export default function MyFavoritesScreen({
                 onClick={() => selectCharacterAction(c.id)}
                 className="bg-surface-container/60 hover:bg-surface-container border border-outline-variant/20 hover:border-accent-pink/40 p-4 rounded-2xl flex items-center gap-4 transition-all duration-300 cursor-pointer relative"
               >
-                <img
-                  alt={c.name}
+                <LazyImage
                   src={c.avatar}
+                  alt={c.name}
                   referrerPolicy="no-referrer"
                   className="w-16 h-16 rounded-xl object-cover border border-outline-variant/30 flex-shrink-0"
                 />

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { ScreenId, Character, Review } from '../types';
 import { ChevronLeft } from 'lucide-react';
 import BottomNav from './BottomNav';
+import LazyImage from './LazyImage';
 
 interface CharacterDetailScreenProps {
   character: Character;
@@ -79,7 +80,7 @@ export default function CharacterDetailScreen({
       {/* Hero Visual Area with Blurred Backing */}
       <div className="relative w-full h-[320px] overflow-hidden border-b border-outline-variant/30">
         {/* Full-screen blur backdrop */}
-        <img
+        <LazyImage
           alt=""
           src={character.avatar}
           className="absolute inset-0 w-full h-full object-cover filter blur-xl scale-125 opacity-30 select-none"
@@ -87,7 +88,7 @@ export default function CharacterDetailScreen({
         {/* Centered avatar container card */}
         <div className="relative z-10 w-full h-full flex flex-col justify-center items-center py-6 text-center bg-gradient-to-t from-background-deep to-transparent">
           <div className="relative w-28 h-28 rounded-2xl overflow-hidden border-2 border-accent-pink shadow-[0_0_25px_rgba(232,121,199,0.3)]">
-            <img
+            <LazyImage
               alt={character.name}
               referrerPolicy="no-referrer"
               src={character.avatar}

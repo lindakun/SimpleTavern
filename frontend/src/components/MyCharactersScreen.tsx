@@ -1,5 +1,6 @@
 import { ScreenId, Character } from '../types';
 import { Plus, ChevronLeft } from 'lucide-react';
+import LazyImage from './LazyImage';
 
 interface MyCharactersScreenProps {
   characters: Character[];
@@ -103,9 +104,9 @@ export default function MyCharactersScreen({
                   className="bg-surface-container border border-outline-variant/25 p-4 rounded-2xl space-y-4"
                 >
                   <div className="flex items-start gap-4">
-                    <img
-                      alt={c.name}
+                    <LazyImage
                       src={c.avatar}
+                      alt={c.name}
                       referrerPolicy="no-referrer"
                       className="w-14 h-14 rounded-full object-cover border border-outline-variant/30"
                     />

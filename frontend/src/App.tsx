@@ -38,37 +38,23 @@ export default function App() {
   const [chatThreads, setChatThreads] = useState<Record<string, ChatThread>>({});
   const { showToast } = useToast();
 
-  // 从后端加载数据
+  // 从后端加载数据（并行请求）
   useEffect(() => {
-    // 种子角色
-    fetch('/api/discover')
-      .then(res => res.json())
-      .then(data => {
-        if (Array.isArray(data) && data.length > 0) setCharacters(data);
-      })
-      .catch(() => {});
-
-    // 收藏
-    fetch('/api/users/favorites')
-      .then(res => res.json())
-      .then(data => {
-        if (data && Array.isArray(data.favorites)) setFavoriteIds(data.favorites);
-      })
-      .catch(() => {});
-
-    // 用户角色
-    fetch('/api/users/characters')
-      .then(res => res.json())
-      .then(data => {
-        if (Array.isArray(data) && data.length > 0) {
-          setCharacters(prev => {
-            const existingIds = new Set(prev.map(c => c.id));
-            const newChars = data.filter((c: Character) => !existingIds.has(c.id));
-            return [...prev, ...newChars];
-          });
-        }
-      })
-      .catch(() => {});
+    Promise.all([
+      fetch('/api/discover').then(r => r.json()).catch(() => []),
+      fetch('/api/users/favorites').then(r => r.json()).catch(() => ({ favorites: [] })),
+      fetch('/api/users/characters').then(r => r.json()).catch(() => []),
+    ]).then(([discoverData, favData, charsData]) => {
+      if (Array.isArray(discoverData) && discoverData.length > 0) setCharacters(discoverData);
+      if (favData && Array.isArray(favData.favorites)) setFavoriteIds(favData.favorites);
+      if (Array.isArray(charsData) && charsData.length > 0) {
+        setCharacters(prev => {
+          const existingIds = new Set(prev.map(c => c.id));
+          const newChars = charsData.filter((c: Character) => !existingIds.has(c.id));
+          return [...prev, ...newChars];
+        });
+      }
+    });
   }, []);
 
   // Nav routing switch
@@ -388,41 +374,31 @@ export default function App() {
       .catch(() => {});
   }, [user]);
 
-  // 用户登录/登出时重新加载个人数据
+  // 用户登录/登出时重新加载个人数据（并行请求）
   useEffect(() => {
     if (!user) return;
-    fetch('/api/users/favorites')
-      .then(res => res.json())
-      .then(data => {
-        if (data && Array.isArray(data.favorites)) setFavoriteIds(data.favorites);
-      })
-      .catch(() => {});
-    fetch('/api/users/characters')
-      .then(res => res.json())
-      .then(data => {
-        if (Array.isArray(data) && data.length > 0) {
-          setCharacters(prev => {
-            const existingIds = new Set(prev.map(c => c.id));
-            const newChars = data.filter((c: Character) => !existingIds.has(c.id));
-            return [...prev, ...newChars];
-          });
-        }
-      })
-      .catch(() => {});
-    // 先清空旧数据，再加载当前用户的数据
     setChatThreads({});
-    fetch('/api/chat/threads')
-      .then(res => res.json())
-      .then(data => {
-        if (Array.isArray(data)) {
-          const threads: Record<string, ChatThread> = {};
-          for (const thread of data) {
-            threads[thread.characterId] = thread;
-          }
-          setChatThreads(threads);
+    Promise.all([
+      fetch('/api/users/favorites').then(r => r.json()).catch(() => ({ favorites: [] })),
+      fetch('/api/users/characters').then(r => r.json()).catch(() => []),
+      fetch('/api/chat/threads').then(r => r.json()).catch(() => []),
+    ]).then(([favData, charsData, threadsData]) => {
+      if (favData && Array.isArray(favData.favorites)) setFavoriteIds(favData.favorites);
+      if (Array.isArray(charsData) && charsData.length > 0) {
+        setCharacters(prev => {
+          const existingIds = new Set(prev.map(c => c.id));
+          const newChars = charsData.filter((c: Character) => !existingIds.has(c.id));
+          return [...prev, ...newChars];
+        });
+      }
+      if (Array.isArray(threadsData)) {
+        const threads: Record<string, ChatThread> = {};
+        for (const thread of threadsData) {
+          threads[thread.characterId] = thread;
         }
-      })
-      .catch(() => {});
+        setChatThreads(threads);
+      }
+    });
   }, [user]);
 
   // 进入聊天时加载已有聊天记录
@@ -467,10 +443,10 @@ export default function App() {
       <AnimatePresence mode="wait">
         <motion.div
           key={currentScreen}
-          initial={{ opacity: 0, x: 20 }}
-          animate={{ opacity: 1, x: 0 }}
-          exit={{ opacity: 0, x: -20 }}
-          transition={{ duration: 0.25, ease: 'easeOut' }}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.15 }}
           className="flex-grow flex flex-col"
         >
           {currentScreen === ScreenId.WELCOME && (

@@ -5,9 +5,10 @@ import { ChevronLeft } from 'lucide-react';
 interface RegisterScreenProps {
   onNavigate: (screen: ScreenId) => void;
   onRegister: (username: string, email: string, password?: string) => void;
+  onGoogleLogin?: (idToken: string) => void;
 }
 
-export default function RegisterScreen({ onNavigate, onRegister }: RegisterScreenProps) {
+export default function RegisterScreen({ onNavigate, onRegister, onGoogleLogin: _onGoogleLogin }: RegisterScreenProps) {
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');

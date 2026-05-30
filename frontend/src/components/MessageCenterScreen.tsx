@@ -1,6 +1,7 @@
 import { ScreenId, Character, ChatThread } from '../types';
 import { RotateCw } from 'lucide-react';
 import BottomNav from './BottomNav';
+import LazyImage from './LazyImage';
 import { useToast } from './Toast.tsx';
 
 interface MessageCenterScreenProps {
@@ -108,9 +109,9 @@ export default function MessageCenterScreen({
               >
                 {/* Avatar with unread indicator badge */}
                 <div className="relative">
-                  <img
-                    alt={c.name}
+                  <LazyImage
                     src={c.avatar}
+                    alt={c.name}
                     referrerPolicy="no-referrer"
                     className="w-12 h-12 rounded-full object-cover border border-outline-variant/30"
                   />

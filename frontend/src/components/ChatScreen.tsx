@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { ScreenId, Character, ChatMessage } from '../types';
 import { Volume2, Send, ChevronLeft } from 'lucide-react';
 import BottomNav from './BottomNav';
+import LazyImage from './LazyImage';
 
 interface ChatScreenProps {
   character: Character;
@@ -71,10 +72,10 @@ export default function ChatScreen({
           onClick={() => onNavigate(ScreenId.CHARACTER_DETAIL)}
           className="flex items-center gap-2 px-3 py-1 bg-surface-elevated/40 border border-outline-variant/20 hover:border-accent-pink/40 rounded-full transition-all cursor-pointer text-left"
         >
-          <img
+          <LazyImage
+            src={character.avatar}
             alt={character.name}
             referrerPolicy="no-referrer"
-            src={character.avatar}
             className="w-9 h-9 rounded-full object-cover border border-accent-pink/50 flex-shrink-0"
           />
           <div>
@@ -97,7 +98,7 @@ export default function ChatScreen({
       <main ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-6 space-y-4 select-text scrollbar-thin">
         {/* Default Greeting */}
         <div className="flex items-start gap-2.5 animate-subtle-fadeIn">
-          <img
+          <LazyImage
             alt={character.name}
             src={character.avatar}
             className="w-8 h-8 rounded-full object-cover border border-outline-variant/40 flex-shrink-0"
@@ -162,7 +163,7 @@ export default function ChatScreen({
         {/* Active model typing states */}
         {isTyping && (
           <div className="flex items-start gap-2.5 animate-pulse">
-            <img alt={character.name} src={character.avatar} className="w-8 h-8 rounded-full object-cover border border-outline-variant/40" />
+            <LazyImage alt={character.name} src={character.avatar} className="w-8 h-8 rounded-full object-cover border border-outline-variant/40" />
             <div className="bg-surface-container/60 border border-outline-variant/20 px-4 py-3 rounded-2xl rounded-tl-none">
               <div className="flex gap-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-accent-pink animate-bounce delay-100" />

@@ -139,6 +139,13 @@ SIMPLE_TAVERN_DATA_ROOT=/path/to/data
 # 日志级别：debug | info | warn | error
 LOG_LEVEL=info
 
+# Google OAuth 配置（生产环境必需）
+SIMPLE_TAVERN_GOOGLE_CLIENT_ID=your-google-client-id.apps.googleusercontent.com
+SIMPLE_TAVERN_GOOGLE_CLIENT_SECRET=your-google-client-secret
+
+# 前端 Google Client ID（Vite 环境变量）
+VITE_GOOGLE_CLIENT_ID=your-google-client-id.apps.googleusercontent.com
+
 # 多 LLM 配置，按序号扩展
 SIMPLE_TAVERN_LLM_0_BASE_URL=https://api.xxx.com/v1
 SIMPLE_TAVERN_LLM_0_MODEL=model-name
@@ -198,7 +205,8 @@ server.ts ← app.ts ← modules/*/
 | **characters** | `characters.controller.ts`, `characters.service.ts`, `characters.repository.ts`, `characters.validator.ts`, `characters.parser.ts`, `characters.importer.ts`, `characters.user.service.ts` | 角色 CRUD、PNG 角色卡读写、导入/导出、用户发布 |
 | **chats** | `chats.controller.ts`, `chats.service.ts`, `chats.repository.ts` | 聊天读写、JSONL 文件操作、路径安全检查 |
 | **backends** | `chat-completions/`, `llm-config.ts`, `types.ts` | AI 聊天补全（OpenAI-compatible）、LLM 配置、多 provider 支持 |
-| **discover** | `discover.controller.ts`, `seed.service.ts` | 发现页面、种子角色、评价系统 |
+| **discover** | `discover.controller.ts`, `discover.routes.ts`, `seed.service.ts` | 发现页面、种子角色、评价系统 |
+| **worlds** | `worlds.routes.ts`, `worlds.service.ts`, `admin-worlds.controller.ts`, `public-worlds.controller.ts` | 世界书管理（管理员CRUD/用户端列表） |
 
 ### 共享中间件
 
@@ -218,6 +226,7 @@ server.ts ← app.ts ← modules/*/
 - **Tailwind CSS v4** + `@tailwindcss/vite`（零配置文件）
 - **motion** v12（动画，AnimatePresence 页面切换）
 - **lucide-react**（图标）
+- **@tanstack/react-query**（服务端状态管理）
 
 ### 路由
 
@@ -240,18 +249,48 @@ App.tsx ← 14 个 Screen 组件
 - `useEffect` 在挂载时从后端加载数据
 - 对后端 API 调用使用 optimistic UI updates + rollback 模式
 - `App.tsx` 作为唯一状态管理组件，子组件通过 props 接收数据和回调
+- **React Query** (`@tanstack/react-query`) 管理服务端状态，支持缓存、重试、后台刷新
+
+### 组件结构
+
+```
+components/
+  ├── Screen 组件（14个页面）
+  │   ├── WelcomeScreen / EmailLoginScreen / RegisterScreen
+  │   ├── DiscoverScreen / CharacterDetailScreen
+  │   ├── ChatScreen（AI 对话）
+  │   ├── CreateChoiceScreen / CreateCharacterScreen
+  │   ├── MessageCenterScreen / ProfileScreen
+  │   ├── MyCharactersScreen / MyFavoritesScreen
+  │   └── SettingsScreen / HelpFeedbackScreen
+  ├── UI 组件
+  │   ├── BottomNav.tsx（底部导航）
+  │   ├── Toast.tsx（消息提示）
+  │   ├── LazyImage.tsx（懒加载图片）
+  │   ├── Skeleton.tsx（加载骨架屏）
+  │   └── ErrorBoundary.tsx（错误边界）
+  └── hooks/（自定义 Hooks）
+      ├── useAuth.ts（认证逻辑）
+      ├── useCharacters.ts（角色数据）
+      ├── useChat.ts（聊天逻辑）
+      ├── useFavorites.ts（收藏管理）
+      └── useImageUpload.ts（图片上传）
+```
 
 ## 已实现的 API 端点
 
 | 分类 | 端点 | 说明 |
 |------|------|------|
 | **公开** | `GET /csrf-token` `GET /version` | 基础端点 |
-| **认证** | `POST /api/users/login|list|recover-*` | 登录/用户列表/密码恢复 |
-| **用户** | `POST /api/users/logout|change-*` | 登出/改密码/改名/改头像 |
+| **认证** | `POST /api/users/login|register|list|recover-*|google-login` | 登录/注册/用户列表/密码恢复/Google OAuth |
+| **用户** | `POST /api/users/logout|change-*` `GET /api/users/me` | 登出/改密码/改名/改头像/获取当前用户 |
 | **管理员** | `POST /api/users/create|delete|disable|enable|promote|demote` | 用户管理 |
 | **收藏** | `GET/POST /api/users/favorites` `DELETE /api/users/favorites/:id` | 收藏系统 |
 | **角色** | `POST /api/characters/all|get|create|edit|delete|rename|export|import|chats|publish` | 角色 CRUD + 导入导出 |
-| **发现** | `GET /api/discover` `GET /api/discover/:id` `POST /api/discover/:id/reviews` | 种子角色 + 导入角色 |
+| **发现** | `GET /api/discover` `GET /api/discover/:id` `POST /api/discover/:id/reviews` | 种子角色 + 评价系统 |
+| **世界书** | `POST /api/worlds/list` | 用户端世界书列表（需登录） |
+| **管理-角色** | `POST /api/characters/admin-*` | 管理员角色管理（全量查询/编辑/删除） |
+| **管理-世界书** | `POST /api/worlds/admin-*` | 管理员世界书管理（CRUD/导入） |
 | **聊天** | `POST /api/chats/save|get|rename|delete|export|import` `POST /api/chats/group/*` | 聊天 CRUD + 群组 |
 | **AI 聊天** | `POST /api/chat` `GET /api/chat/providers` | 角色扮演聊天（多 LLM） |
 | **线程** | `GET /api/chat/threads` `GET /api/chat/threads/:id` | 聊天历史 |
@@ -307,8 +346,19 @@ sudo /opt/deploy-simpletavern.sh
 
 ### 环境变量配置
 生产环境敏感信息通过 `.env` 文件配置（不提交到 Git）：
-- `backend/.env`: `SIMPLE_TAVERN_GOOGLE_CLIENT_ID`, `SIMPLE_TAVERN_GOOGLE_CLIENT_SECRET`
-- `frontend/.env`: `VITE_GOOGLE_CLIENT_ID`
+
+**backend/.env:**
+```bash
+SIMPLE_TAVERN_GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
+SIMPLE_TAVERN_GOOGLE_CLIENT_SECRET=your-client-secret
+```
+
+**frontend/.env:**
+```bash
+VITE_GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
+```
+
+> ⚠️ **注意**: Google OAuth 配置需要在 [Google Cloud Console](https://console.cloud.google.com/) 创建 OAuth 2.0 客户端 ID，并授权回调地址 `https://chat.hhxxttxs.icu/auth/callback`
 
 ### Nginx 配置
 - 配置文件: `/etc/nginx/sites-available/chat.hhxxttxs.icu`
