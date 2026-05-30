@@ -3,6 +3,7 @@ import { AnimatePresence } from 'motion/react';
 import { ScreenId, Character, ChatThread, ChatMessage } from './types';
 import { FAQS } from './data';
 import { useToast } from './components/Toast.tsx';
+import { registerServiceWorker } from './sw-register';
 
 // Import our modular screens — lazy loaded for code splitting
 import GoogleCallback from './components/GoogleCallback';
@@ -22,6 +23,9 @@ const SettingsScreen = lazy(() => import('./components/SettingsScreen'));
 const HelpFeedbackScreen = lazy(() => import('./components/HelpFeedbackScreen'));
 
 export default function App() {
+  // 注册 Service Worker（生产环境）
+  useEffect(() => { registerServiceWorker(); }, []);
+
   // Google OAuth 回调路由 — 弹窗中独立渲染
   if (window.location.pathname === '/auth/google/callback') {
     return <GoogleCallback />;
