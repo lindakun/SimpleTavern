@@ -36,9 +36,9 @@ export function useChatApi() {
   const { get, post } = useApiClient();
 
   return {
-    // 发送聊天消息
+    // 发送聊天消息（AI 生成可能耗时较长，超时设为 3 分钟）
     sendMessage: (params: SendMessageParams) =>
-      post<SendMessageResponse>('/api/chat', params),
+      post<SendMessageResponse>('/api/chat', params, { timeout: 180000 }),
 
     // 获取聊天线程列表
     getThreads: () =>
