@@ -217,8 +217,16 @@ export default function App() {
   const handlePublishCharacter = useCallback(async (newChar: Character) => {
     const isEdit = !!editingCharacter;
     if (isEdit) {
-      const saved = await characterApi.updateUserCharacter(newChar);
-      setCharacters(prev => prev.map(c => c.id === saved.id ? saved : c));
+      // PNG 角色卡使用 /api/characters/edit，custom_ 角色使用 /api/users/characters/edit
+      const isPngCharacter = editingCharacter.id.endsWith('.png');
+      if (isPngCharacter) {
+        // PNG 角色卡：使用 avatar_url（即 id）更新，后端需要 avatar_url 字段
+        await characterApi.updateCharacter({ ...newChar, avatar_url: editingCharacter.id, avatar: editingCharacter.id });
+        setCharacters(prev => prev.map(c => c.id === newChar.id ? newChar : c));
+      } else {
+        const saved = await characterApi.updateUserCharacter(newChar);
+        setCharacters(prev => prev.map(c => c.id === saved.id ? saved : c));
+      }
       setEditingCharacter(null);
     } else {
       const saved = await characterApi.publishCharacter(newChar);
