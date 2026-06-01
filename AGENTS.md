@@ -173,6 +173,14 @@ server.ts ← app.ts ← modules/*/
   ├── routes/         ← Express Router 定义，关联到 controller 方法
   ├── validator/      ← 输入验证（角色数据校验）
   └── parser/         ← 格式解析（PNG 角色卡读取）
+
+其他后端目录：
+  ├── common/         ← 公共工具（errors.ts, result.ts, logger.ts, utils.ts）
+  ├── config/         ← 配置加载（env.ts, index.ts）
+  ├── infrastructure/ ← 基础设施（storage/disk-cache.ts — MemoryLimitedMap<V> 内存受限 Map）
+  ├── shared/         ← 共享中间件（cors, error-handler, auth-guard, request-context）
+  ├── types/          ← TypeScript 类型定义（api.types, config.types, models.types, declarations.d.ts）
+  └── data/           ← 种子数据（seed-characters.json — 发现页种子角色数据）
 ```
 
 ### 代码约定
@@ -209,6 +217,8 @@ server.ts ← app.ts ← modules/*/
 | **chats** | `chats.controller.ts`, `chats.service.ts`, `chats.repository.ts`, `chats.public.routes.ts` | 聊天读写、JSONL 文件操作、路径安全检查 |
 | **backends** | `chat-completions/`, `llm-config.ts`, `types.ts` | AI 聊天补全（OpenAI-compatible）、LLM 配置、多 provider 支持 |
 | **worlds** | `worlds.routes.ts`, `worlds.service.ts`, `admin-worlds.controller.ts`, `public-worlds.controller.ts` | 世界书管理（管理员CRUD/用户端列表） |
+| **infrastructure** | `infrastructure/storage/disk-cache.ts` | 基础设施（内存受限 Map 工具类 `MemoryLimitedMap<V>`） |
+| **data** | `data/seed-characters.json` | 种子角色数据（内置角色，随代码分发） |
 
 ### 共享中间件
 
@@ -226,6 +236,24 @@ server.ts ← app.ts ← modules/*/
   - `/version` → `max-age=3600`（1 小时）
   - `/api/discover` → `max-age=300`（5 分钟）
   - `/api/chat/providers` → `max-age=600`（10 分钟）
+
+### 后端关键依赖
+
+| 依赖 | 用途 |
+|------|------|
+| `helmet` | HTTP 安全头 |
+| `csrf-sync` | CSRF 防护 |
+| `rate-limiter-flexible` | 请求限流 |
+| `archiver` | 文件压缩（角色导出） |
+| `multer` | 文件上传 |
+| `google-auth-library` | Google OAuth 认证 |
+| `cookie-session` | Cookie-based 会话 |
+| `compression` | gzip 压缩 |
+| `node-persist` | 用户数据持久化（JSON key-value） |
+| `png-chunk-text` / `png-chunks-extract` | PNG 角色卡 JSON 读写 |
+| `sanitize-filename` | 文件名安全处理 |
+| `yaml` | config.yaml 解析 |
+| `chalk` | 日志着色 |
 
 ## 前端架构
 
@@ -307,6 +335,7 @@ src/
   │   ├── characters.ts  ← 角色 API
   │   ├── chat.ts        ← 聊天 API
   │   ├── users.ts       ← 用户 API
+  │   ├── worlds.ts      ← 世界书 API
   │   ├── google-oauth.ts ← Google OAuth
   │   └── index.ts       ← 统一导出
   ├── contexts/          ← React Context
@@ -317,8 +346,14 @@ src/
   │   └── index.ts       ← 统一导出
   ├── sw-register.ts     ← Service Worker 注册（生产环境）
   ├── types.ts           ← TypeScript 类型定义
-  └── data.ts            ← 静态数据（FAQ 等）
+  ├── data.ts            ← 静态数据（FAQ 等）
+  └── utils/             ← 工具函数
+      └── chatMessages.ts ← 聊天消息格式转换（fromStoredChatMessages / toStoredChatMessages）
 ```
+
+### 自定义 Hooks
+
+所有自定义 Hook 通过 `hooks/index.ts` 统一导出，同时导出 React Query 的 query key 常量（`characterKeys`、`chatKeys`、`favoriteKeys`）。
 
 ## Service Worker 缓存
 

@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import * as characterController from './characters.controller.js';
 import * as userCharacterService from './characters.user.service.js';
 import * as characterService from './characters.service.js';
+import { getAllPngReviews } from './reviews.repository.js';
 import { BadRequestError } from '../../common/errors.js';
 import { getConfig } from '../../config/index.js';
 import { getUserDirectories } from '../users/users.repository.js';

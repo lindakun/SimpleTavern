@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { logger } from '../../common/logger.js';
+import { getAllSeedReviews, addSeedReview } from './reviews.repository.js';
 
 interface Review {
     id: string;
@@ -82,8 +83,11 @@ export function addReviewToCharacter(characterId: string, review: Review): SeedC
     const char = chars.find(c => c.id === characterId);
     if (!char) return null;
 
-    if (!char.reviews) char.reviews = [];
-    char.reviews = [review, ...char.reviews];
+    // 持久化到 seed-reviews.json
+    const savedReviews = addSeedReview(characterId, review);
+
+    // 同步内存中的评价列表
+    char.reviews = savedReviews;
 
     // 重新计算评分
     const totalRating = char.reviews.reduce((sum, r) => sum + r.rating, 0);

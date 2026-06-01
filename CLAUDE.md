@@ -179,6 +179,17 @@ server.ts ← app.ts ← modules/*/
   └── parser/         ← 格式解析（PNG 角色卡读取）
 ```
 
+### 其他后端目录
+
+| 目录 | 文件 | 职责 |
+|------|------|------|
+| **common/** | `errors.ts`, `result.ts`, `logger.ts`, `utils.ts` | 公共工具：错误层次、Result 模式、日志、通用工具函数 |
+| **config/** | `env.ts`, `index.ts` | 环境变量加载、配置聚合 |
+| **infrastructure/storage/** | `disk-cache.ts` | `MemoryLimitedMap<V>` — 内存受限的 LRU Map，用于缓存场景 |
+| **data/** | `seed-characters.json` | 种子角色数据（内置角色，用于发现页展示） |
+| **types/** | `api.types.ts`, `config.types.ts`, `models.types.ts`, `declarations.d.ts` | 全局 TypeScript 类型定义 |
+| **shared/middleware/** | `cors.ts`, `error-handler.ts`, `auth-guard.ts`, `request-context.ts` | 共享中间件 |
+
 ### 代码约定
 
 - **Controller**: try/catch 包裹，成功调用 `res.json()`，失败调用 `next(err)`，由全局 `errorHandler` 统一处理
@@ -209,7 +220,7 @@ server.ts ← app.ts ← modules/*/
 |------|------|------|
 | **auth** | `auth.controller.ts`, `auth.service.ts`, `auth.routes.ts`, `google.service.ts` | 登录/登出/密码恢复/管理员用户管理/Google OAuth |
 | **users** | `users.repository.ts`, `users.service.ts`, `favorites.controller.ts`, `favorites.routes.ts` | 用户数据层、收藏、设置 |
-| **characters** | `characters.controller.ts`, `characters.service.ts`, `characters.repository.ts`, `characters.validator.ts`, `characters.parser.ts`, `characters.importer.ts`, `characters.user.service.ts`, `characters.public.routes.ts`, `characters.public.import.routes.ts`, `admin-characters.controller.ts`, `admin-characters.routes.ts`, `discover.controller.ts`, `discover.routes.ts`, `seed.service.ts` | 角色 CRUD、PNG 角色卡读写、导入/导出、用户发布、发现/种子角色 |
+| **characters** | `characters.controller.ts`, `characters.service.ts`, `characters.repository.ts`, `characters.validator.ts`, `characters.parser.ts`, `characters.importer.ts`, `characters.user.service.ts`, `characters.public.routes.ts`, `characters.public.import.routes.ts`, `admin-characters.controller.ts`, `admin-characters.routes.ts`, `discover.controller.ts`, `discover.routes.ts`, `seed.service.ts` | 角色 CRUD、PNG 角色卡读写、导入/导出、用户发布、发现/种子角色（种子数据来自 `data/seed-characters.json`） |
 | **chats** | `chats.controller.ts`, `chats.service.ts`, `chats.repository.ts`, `chats.public.routes.ts` | 聊天读写、JSONL 文件操作、路径安全检查 |
 | **backends** | `chat-completions/`, `llm-config.ts`, `types.ts` | AI 聊天补全（OpenAI-compatible）、LLM 配置、多 provider 支持 |
 | **worlds** | `worlds.routes.ts`, `worlds.service.ts`, `admin-worlds.controller.ts`, `public-worlds.controller.ts` | 世界书管理（管理员CRUD/用户端列表） |
@@ -230,6 +241,24 @@ server.ts ← app.ts ← modules/*/
   - `/version` → `max-age=3600`（1 小时）
   - `/api/discover` → `max-age=300`（5 分钟）
   - `/api/chat/providers` → `max-age=600`（10 分钟）
+
+### 后端关键依赖
+
+| 依赖 | 用途 |
+|------|------|
+| `helmet` | HTTP 安全头 |
+| `csrf-sync` | CSRF 防护 |
+| `rate-limiter-flexible` | 请求限流 |
+| `archiver` | 文件压缩（角色导出） |
+| `multer` | 文件上传 |
+| `google-auth-library` | Google OAuth 认证 |
+| `cookie-session` | Cookie-based 会话 |
+| `compression` | gzip 压缩 |
+| `node-persist` | 用户数据持久化（JSON key-value） |
+| `png-chunk-text` / `png-chunks-extract` | PNG 角色卡 JSON 读写 |
+| `sanitize-filename` | 文件名安全处理 |
+| `yaml` | config.yaml 解析 |
+| `chalk` | 日志着色 |
 
 ## 前端架构
 
@@ -311,6 +340,7 @@ src/
   │   ├── characters.ts  ← 角色 API
   │   ├── chat.ts        ← 聊天 API
   │   ├── users.ts       ← 用户 API
+  │   ├── worlds.ts      ← 世界书 API
   │   ├── google-oauth.ts ← Google OAuth
   │   └── index.ts       ← 统一导出
   ├── contexts/          ← React Context
@@ -321,7 +351,74 @@ src/
   │   └── index.ts       ← 统一导出
   ├── sw-register.ts     ← Service Worker 注册（生产环境）
   ├── types.ts           ← TypeScript 类型定义
-  └── data.ts            ← 静态数据（FAQ 等）
+  ├── data.ts            ← 静态数据（FAQ 等）
+  └── utils/             ← 工具函数
+      └── chatMessages.ts ← 聊天消息格式转换（fromStoredChatMessages / toStoredChatMessages）
+```
+
+### 自定义 Hooks
+
+所有自定义 Hook 通过 `hooks/index.ts` 统一导出，同时导出 React Query 的 query key 常量：
+
+```typescript
+// hooks/index.ts 统一导出
+export { useDiscoverCharacters, useMyCharacters, useCreateCharacter, ... } from './useCharacters';
+export { useChatThreads, useChatThread, useSendMessage, ... } from './useChat';
+export { useLogin, useRegister, useLogout, useCurrentUser, ... } from './useAuth';
+export { useFavorites, useAddFavorite, useRemoveFavorite, ... } from './useFavorites';
+
+// React Query key 常量
+export { characterKeys, chatKeys, favoriteKeys } from './...';
+```
+
+## 管理后台架构
+
+管理后台运行在 **3002 端口**，使用独立的前端应用，与主前端（3000 端口）完全分离。
+
+### 技术栈
+
+- **React 19** + TypeScript
+- **Vite 6** + `@vitejs/plugin-react`
+- **Tailwind CSS v4** + `@tailwindcss/vite`（零配置文件）
+- **react-router-dom** v7（管理后台使用路由库，与主前端手动路由不同）
+- **@tanstack/react-query**（服务端状态管理）
+- **lucide-react**（图标）
+- **zod**（schema 验证）
+
+### 页面结构
+
+```
+admin/src/
+  ├── App.tsx              ← 应用入口，路由配置
+  ├── main.tsx             ← React 挂载点
+  ├── types.ts             ← TypeScript 类型定义
+  ├── api/
+  │   ├── client.ts        ← fetch 封装 + 认证头
+  │   └── admin.ts         ← 管理员 API 调用
+  ├── hooks/
+  │   └── useAdminApi.ts   ← 管理员 API 自定义 Hook
+  └── pages/
+      ├── Login.tsx        ← 管理员登录
+      ├── Dashboard.tsx    ← 仪表盘（数据统计概览）
+      ├── Characters.tsx   ← 角色管理（全量查询/编辑/删除）
+      ├── Users.tsx        ← 用户管理（创建/删除/禁用/提权）
+      ├── Worlds.tsx       ← 世界书管理（CRUD/导入）
+      └── Layout.tsx       ← 后台布局（侧边栏导航）
+```
+
+### 认证方式
+
+管理员登录后，通过 cookie-session 维持会话，请求时携带认证 cookie。API 请求通过 `api/client.ts` 统一封装，自动附加认证头。
+
+### 构建命令
+
+```bash
+cd /Users/linda/code/SimpleTavern/admin
+npm install
+npm run dev      # Vite 开发服务器
+npm run build    # tsc --noEmit && vite build
+npm run preview  # Vite 预览构建产物
+npm run lint     # tsc --noEmit 类型检查
 ```
 
 ## Service Worker 缓存
