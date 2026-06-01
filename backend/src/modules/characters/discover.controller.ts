@@ -5,7 +5,7 @@ import * as seedService from './seed.service.js';
 import * as userCharacterService from './characters.user.service.js';
 import { readCharacterCardFromFile } from './characters.parser.js';
 import { getAllImportedReviews, addImportedReview } from './reviews.repository.js';
-import { addPngReview } from './reviews.repository.js';
+import { getAllPngReviews, addPngReview } from './reviews.repository.js';
 import { BadRequestError } from '../../common/errors.js';
 import { getConfig } from '../../config/index.js';
 import { logger } from '../../common/logger.js';

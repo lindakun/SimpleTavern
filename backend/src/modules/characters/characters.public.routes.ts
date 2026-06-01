@@ -93,7 +93,7 @@ export function createPublicCharacterRoutes(): Router {
         }
     });
 
-    // 获取当前用户的 PNG 角色卡列表（映射为前端 Character 格式）
+    // 获取当前用户的 PNG 角色卡列表（映射为前端 Character 格式，含持久化评价）
     router.get('/users/png-characters', (req, res, next) => {
         try {
             const handle = getHandle(req);
@@ -103,32 +103,46 @@ export function createPublicCharacterRoutes(): Router {
             const dirs = getUserDirectories(config.dataRoot, handle);
             const pngChars = characterService.getAllCharacters(dirs.characters, dirs.chats, false);
 
-            const characters = pngChars.map(c => ({
-                id: String(c.avatar || ''),
-                name: String(c.name || ''),
-                avatar: `/api/characters/avatar/${encodeURIComponent(String(c.avatar || ''))}`,
-                creator: String((c.data as any)?.creator || ''),
-                rating: 0,
-                reviewCount: 0,
-                tags: Array.isArray(c.tags) ? c.tags : [],
-                description: String(c.description || (c.data as any)?.description || ''),
-                // V3 字段
-                personality: String((c.data as any)?.personality || ''),
-                scenario: String((c.data as any)?.scenario || ''),
-                first_mes: String((c.data as any)?.first_mes || ''),
-                mes_example: String((c.data as any)?.mes_example || ''),
-                creator_notes: String((c.data as any)?.creator_notes || ''),
-                system_prompt: String((c.data as any)?.system_prompt || ''),
-                post_history_instructions: String((c.data as any)?.post_history_instructions || ''),
-                alternate_greetings: Array.isArray((c.data as any)?.alternate_greetings) ? (c.data as any).alternate_greetings : [],
-                character_version: String((c.data as any)?.character_version || '1.0'),
-                extensions: (c.data as any)?.extensions || {},
-                // 兼容旧字段
-                tagline: '',
-                worldBook: String((c.data as any)?.extensions?.world || ''),
-                voiceType: 'sweet' as const,
-                status: 'online' as const,
-            }));
+            // 加载用户 PNG 角色的持久化评价
+            const pngReviews = getAllPngReviews();
+
+            const characters = pngChars.map(c => {
+                const fileName = String(c.avatar || '');
+                const relativeKey = `${handle}/characters/${fileName}`;
+                const reviews = pngReviews[relativeKey] || [];
+                const totalRating = reviews.reduce((sum: number, r: any) => sum + r.rating, 0);
+                const avgRating = reviews.length > 0
+                    ? parseFloat((totalRating / reviews.length).toFixed(1))
+                    : 0;
+
+                return {
+                    id: fileName,
+                    name: String(c.name || ''),
+                    avatar: `/api/characters/avatar/${encodeURIComponent(fileName)}`,
+                    creator: String((c.data as any)?.creator || ''),
+                    rating: avgRating,
+                    reviewCount: reviews.length,
+                    reviews,
+                    tags: Array.isArray(c.tags) ? c.tags : [],
+                    description: String(c.description || (c.data as any)?.description || ''),
+                    // V3 字段
+                    personality: String((c.data as any)?.personality || ''),
+                    scenario: String((c.data as any)?.scenario || ''),
+                    first_mes: String((c.data as any)?.first_mes || ''),
+                    mes_example: String((c.data as any)?.mes_example || ''),
+                    creator_notes: String((c.data as any)?.creator_notes || ''),
+                    system_prompt: String((c.data as any)?.system_prompt || ''),
+                    post_history_instructions: String((c.data as any)?.post_history_instructions || ''),
+                    alternate_greetings: Array.isArray((c.data as any)?.alternate_greetings) ? (c.data as any).alternate_greetings : [],
+                    character_version: String((c.data as any)?.character_version || '1.0'),
+                    extensions: (c.data as any)?.extensions || {},
+                    // 兼容旧字段
+                    tagline: '',
+                    worldBook: String((c.data as any)?.extensions?.world || ''),
+                    voiceType: 'sweet' as const,
+                    status: 'online' as const,
+                };
+            });
 
             res.json(characters);
         } catch (err) {
