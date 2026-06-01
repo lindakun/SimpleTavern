@@ -153,7 +153,7 @@ export default function ProfileScreen({
   };
 
   return (
-    <div className="relative min-h-screen bg-background-deep text-[#e3e1ee] pb-24">
+    <div className="relative flex-1 overflow-y-auto bg-background-deep text-[#e3e1ee] safe-content-bottom">
       {/* Background cyber ambiance */}
       <div className="absolute top-0 right-0 w-80 h-80 bg-accent-pink opacity-10 blur-[110px] pointer-events-none" />
       <div className="absolute top-1/2 left-0 w-80 h-80 bg-accent-purple opacity-5 blur-[110px] pointer-events-none" />

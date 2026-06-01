@@ -51,7 +51,7 @@ export default function LoginScreen({ onNavigate, onLogin, onGoogleLogin }: Logi
   };
 
   return (
-    <div className="relative min-h-screen flex flex-col justify-between bg-background-deep p-6">
+    <div className="relative flex-1 flex flex-col justify-between bg-background-deep p-6">
       {/* Glow Rings */}
       <div className="absolute top-1/4 -left-10 w-40 h-40 bg-accent-pink opacity-5 blur-[100px] pointer-events-none" />
       <div className="absolute bottom-1/4 -right-10 w-60 h-60 bg-accent-purple opacity-5 blur-[120px] pointer-events-none" />

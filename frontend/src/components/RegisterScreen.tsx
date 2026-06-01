@@ -83,7 +83,7 @@ export default function RegisterScreen({ onNavigate, onRegister }: RegisterScree
   };
 
   return (
-    <div className="relative min-h-screen flex flex-col justify-between bg-background-deep p-6">
+    <div className="relative flex-1 flex flex-col justify-between bg-background-deep p-6">
       {/* Glow */}
       <div className="absolute top-1/3 -left-10 w-48 h-48 bg-accent-pink opacity-5 blur-[100px] pointer-events-none" />
       <div className="absolute bottom-1/3 -right-10 w-48 h-48 bg-accent-purple opacity-5 blur-[100px] pointer-events-none" />

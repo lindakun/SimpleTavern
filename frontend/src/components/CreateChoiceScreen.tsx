@@ -12,7 +12,7 @@ export default function CreateChoiceScreen({ onNavigate }: CreateChoiceScreenPro
   const [importing, setImporting] = useState(false);
 
   return (
-    <div className="relative min-h-screen bg-[#090A0F] text-[#E0E0E6] flex flex-col justify-between p-6">
+    <div className="relative flex-1 overflow-y-auto bg-[#090A0F] text-[#E0E0E6] flex flex-col justify-between p-6">
       {/* Heavy colorful blur backgrounds */}
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-80 h-80 bg-accent-pink/10 rounded-full blur-[120px] pointer-events-none" />
 

@@ -68,7 +68,7 @@ export default function CharacterDetailScreen({
   };
 
   return (
-    <div className="relative min-h-screen bg-[#0B0720] text-[#e3e1ee] pb-28">
+    <div className="relative flex-1 overflow-y-auto bg-[#0B0720] text-[#e3e1ee] safe-content-bottom">
       {/* Glow Effects */}
       <div className="absolute top-0 left-0 w-80 h-80 bg-accent-pink opacity-10 blur-[100px] pointer-events-none" />
       <div className="absolute top-1/2 right-0 w-80 h-80 bg-accent-purple opacity-5 blur-[120px] pointer-events-none" />

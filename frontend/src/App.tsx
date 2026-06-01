@@ -462,7 +462,7 @@ export default function App() {
 
   if (!currentCharacter && requiresCharacter) {
     return (
-      <div className="min-h-screen w-full bg-[#090A0F] text-[#E0E0E6] flex items-center justify-center">
+      <div className="h-dvh w-full bg-[#090A0F] text-[#E0E0E6] flex items-center justify-center">
         <div className="text-center space-y-4">
           <div className="text-4xl">🔄</div>
           <p className="text-sm text-on-surface-variant">加载中...</p>
@@ -472,7 +472,7 @@ export default function App() {
   }
 
   return (
-    <div className="h-screen w-full bg-[#090A0F] text-[#E0E0E6] flex flex-col justify-self-center overflow-x-hidden max-w-lg mx-auto shadow-[0_0_80px_rgba(9,10,15,0.95)] border-x border-white/5 relative">
+    <div className="h-dvh w-full bg-[#090A0F] text-[#E0E0E6] flex flex-col justify-self-center overflow-x-hidden max-w-lg mx-auto shadow-[0_0_80px_rgba(9,10,15,0.95)] border-x border-white/5 relative">
       <AnimatePresence mode="wait">
         <Suspense fallback={<div className="h-full w-full bg-[#090A0F] text-[#E0E0E6] flex items-center justify-center"><div className="text-center space-y-4"><div className="text-4xl">🔄</div><p className="text-sm text-on-surface-variant">加载中...</p></div></div>}>
         <div

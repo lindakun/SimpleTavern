@@ -29,7 +29,7 @@ export default function GoogleCallback() {
   }, []);
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background-deep">
+    <div className="h-dvh flex items-center justify-center bg-background-deep">
       <div className="text-center space-y-3">
         <div className="w-8 h-8 border-2 border-accent-pink border-t-transparent rounded-full animate-spin mx-auto" />
         <p className="text-sm text-on-surface-variant">正在完成登录...</p>

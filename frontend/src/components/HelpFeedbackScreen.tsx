@@ -34,7 +34,7 @@ export default function HelpFeedbackScreen({ faqs, onNavigate }: HelpFeedbackScr
   };
 
   return (
-    <div className="relative min-h-screen bg-[#090A0F] text-[#E0E0E6] pb-24">
+    <div className="relative flex-1 overflow-y-auto bg-[#090A0F] text-[#E0E0E6] safe-content-bottom">
       {/* Glow decorations */}
       <div className="absolute top-0 left-0 w-80 h-80 bg-accent-pink/5 rounded-full blur-[100px] pointer-events-none" />
       <div className="absolute top-1/2 right-0 w-80 h-80 bg-accent-purple/5 rounded-full blur-[120px] pointer-events-none" />

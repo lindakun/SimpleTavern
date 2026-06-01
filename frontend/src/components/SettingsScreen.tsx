@@ -35,7 +35,7 @@ export default function SettingsScreen({ onNavigate }: SettingsScreenProps) {
   };
 
   return (
-    <div className="relative min-h-screen bg-[#090A0F] text-[#E0E0E6] pb-24 animate-subtle-fadeIn">
+    <div className="relative flex-1 overflow-y-auto bg-[#090A0F] text-[#E0E0E6] safe-content-bottom animate-subtle-fadeIn">
       {/* Background neon style decoration */}
       <div className="absolute top-1/4 -left-10 w-48 h-48 bg-accent-pink opacity-5 blur-[100px] pointer-events-none" />
       <div className="absolute bottom-1/4 -right-10 w-48 h-48 bg-accent-purple opacity-5 blur-[100px] pointer-events-none" />

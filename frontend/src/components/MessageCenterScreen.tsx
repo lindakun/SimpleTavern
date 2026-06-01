@@ -154,7 +154,7 @@ export default function MessageCenterScreen({
   const isAllSelected = chatList.length > 0 && selectedIds.size === chatList.length;
 
   return (
-    <div className="relative min-h-screen bg-background-deep text-white pb-24">
+    <div className="relative flex-1 overflow-y-auto bg-background-deep text-white safe-content-bottom">
       {/* Heavy colorful glowing neon overlays */}
       <div className="absolute top-0 left-0 w-96 h-96 bg-accent-pink opacity-10 blur-[130px] pointer-events-none" />
       <div className="absolute bottom-0 right-0 w-96 h-96 bg-accent-purple opacity-10 blur-[130px] pointer-events-none" />

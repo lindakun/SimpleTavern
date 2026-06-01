@@ -62,7 +62,7 @@ export class ErrorBoundary extends Component<Props, State> {
 // 内部错误展示组件
 function ErrorFallback({ error, onReset }: { error: Error | null; onReset: () => void }) {
   return (
-    <div className="min-h-screen bg-[#090A0F] text-[#E0E0E6] flex items-center justify-center p-6">
+    <div className="h-full bg-[#090A0F] text-[#E0E0E6] flex items-center justify-center p-6">
       <div className="bg-surface-container/50 border border-red-500/30 rounded-2xl p-8 max-w-md w-full text-center space-y-4">
         <div className="text-4xl mb-2">⚠️</div>
         <h2 className="text-lg font-bold text-red-400">系统发生异常</h2>

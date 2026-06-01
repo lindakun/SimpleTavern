@@ -240,7 +240,7 @@ export default function CreateCharacterScreen({ onNavigate, onPublish, editChara
   };
 
   return (
-    <div className="relative min-h-screen bg-[#090A0F] text-[#E0E0E6] pb-24">
+    <div className="relative flex-1 overflow-y-auto bg-[#090A0F] text-[#E0E0E6] safe-content-bottom">
       {/* Header */}
       <header className="sticky top-0 z-40 bg-[#0F111A]/90 backdrop-blur-md px-6 h-16 flex items-center justify-between border-b border-white/5">
         <button

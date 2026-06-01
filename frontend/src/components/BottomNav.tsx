@@ -37,8 +37,8 @@ export default function BottomNav({ currentScreen, onNavigate, unreadCount, inli
   const activeTab = resolveActiveTab(currentScreen);
 
   const navClass = inline
-    ? 'flex-shrink-0 w-full bg-surface-elevated/90 backdrop-blur-xl border-t border-outline-variant/40'
-    : 'fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-lg z-50 bg-surface-elevated/90 backdrop-blur-xl border-t border-outline-variant/40';
+    ? 'flex-shrink-0 w-full bg-surface-elevated/90 backdrop-blur-xl border-t border-outline-variant/40 safe-bottom'
+    : 'fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-lg z-50 bg-surface-elevated/90 backdrop-blur-xl border-t border-outline-variant/40 safe-bottom';
 
   return (
     <nav className={navClass}>
