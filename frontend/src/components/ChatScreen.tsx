@@ -54,7 +54,7 @@ export default function ChatScreen({
   };
 
   return (
-    <div className="relative h-screen max-w-lg mx-auto bg-background-deep text-white flex flex-col overflow-hidden">
+    <div className="relative h-full max-w-lg mx-auto bg-background-deep text-white flex flex-col overflow-hidden">
       {/* Glow */}
       <div className="absolute top-1/6 -left-20 w-72 h-72 bg-accent-pink/5 rounded-full blur-[100px] pointer-events-none" />
       <div className="absolute bottom-1/6 -right-20 w-72 h-72 bg-accent-purple/5 rounded-full blur-[100px] pointer-events-none" />
