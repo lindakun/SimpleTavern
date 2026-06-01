@@ -95,3 +95,8 @@ body {
 .safe-content-bottom {
   padding-bottom: calc(4rem + env(safe-area-inset-bottom, 0px));
 }
+
+/* Extra padding for pages with both action bar and bottom nav (CharacterDetailScreen) */
+.safe-content-double {
+  padding-bottom: calc(8rem + env(safe-area-inset-bottom, 0px));
+}
