@@ -103,7 +103,7 @@ export default function ChatScreen({
       </header>
 
       {/* Messages Scroll Area */}
-      <main ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto px-4 py-6 space-y-4 select-text scrollbar-thin">
+      <main ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto px-4 py-6 flex flex-col justify-end gap-4 select-text scrollbar-thin">
         {/* Default Greeting */}
         <div className="flex items-start gap-2.5 animate-subtle-fadeIn">
           <LazyImage
