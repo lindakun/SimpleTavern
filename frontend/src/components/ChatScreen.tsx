@@ -103,7 +103,7 @@ export default function ChatScreen({
       </header>
 
       {/* Messages Scroll Area */}
-      <main ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-6 space-y-4 select-text scrollbar-thin">
+      <main ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto px-4 py-6 space-y-4 select-text scrollbar-thin">
         {/* Default Greeting */}
         <div className="flex items-start gap-2.5 animate-subtle-fadeIn">
           <LazyImage
@@ -212,12 +212,12 @@ export default function ChatScreen({
             }}
             placeholder={`给 ${character.name} 发送秘密信号...`}
             rows={1}
-            className="flex-grow bg-transparent text-xs text-white focus:outline-none placeholder:text-on-surface-variant/40 resize-none leading-relaxed py-1.5"
+            className="flex-grow bg-transparent text-xs text-white focus:outline-none placeholder:text-on-surface-variant/40 resize-none leading-relaxed py-1.5 max-h-24 min-h-[1.5rem]"
           />
           <button
             type="submit"
             disabled={!inputText.trim() || isTyping}
-            className="p-2 aspect-square bg-gradient-to-r from-accent-pink to-accent-purple text-white hover:brightness-110 active:scale-95 disabled:opacity-40 rounded-lg transition-transform cursor-pointer flex items-center justify-center"
+            className="p-2 w-8 h-8 shrink-0 bg-gradient-to-r from-accent-pink to-accent-purple text-white hover:brightness-110 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg transition-all flex items-center justify-center"
           >
             <Send className="w-3.5 h-3.5" />
           </button>
