@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   useAllCharacters,
@@ -33,10 +33,6 @@ export default function Characters() {
   const [batchDeleting, setBatchDeleting] = useState(false);
   const [batchDeleteConfirm, setBatchDeleteConfirm] = useState(false);
   const [batchDeleteProgress, setBatchDeleteProgress] = useState({ current: 0, total: 0 });
-
-  useEffect(() => {
-    console.log('[DEBUG] batchDeleteConfirm changed:', batchDeleteConfirm);
-  }, [batchDeleteConfirm]);
 
   // 获取角色的唯一键
   const getCharKey = (c: AdminCharacterItem): string => {
@@ -119,7 +115,6 @@ export default function Characters() {
 
   // 批量删除
   const handleBatchDelete = async () => {
-    console.log('[DEBUG] handleBatchDelete START, selected:', selectedKeys.size);
     const targets = filtered.filter(c => selectedKeys.has(getCharKey(c)));
     setBatchDeleting(true);
     setBatchDeleteProgress({ current: 0, total: targets.length });
@@ -385,10 +380,7 @@ export default function Characters() {
               取消选择
             </button>
             <button
-              onClick={() => {
-                console.log('[DEBUG] click batch delete button, selected:', selectedKeys.size);
-                setBatchDeleteConfirm(true);
-              }}
+              onClick={() => setBatchDeleteConfirm(true)}
               className="flex items-center gap-1.5 px-4 py-1.5 bg-red-500/20 border border-red-500/40 text-red-400 text-xs font-semibold rounded-xl hover:bg-red-500/30 active:scale-95 transition-all cursor-pointer"
             >
               <Trash2 className="w-3.5 h-3.5" />
