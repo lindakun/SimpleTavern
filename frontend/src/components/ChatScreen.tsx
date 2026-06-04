@@ -32,6 +32,21 @@ export default function ChatScreen({
     }
   }, [messages, isTyping]);
 
+  // 键盘回避：当输入框聚焦时，确保它在可视区域内
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    const handleVisualViewport = () => {
+      if (document.activeElement === inputRef.current && window.visualViewport) {
+        // 在移动端键盘弹出时，输入框应该可见
+        inputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+    };
+
+    window.visualViewport?.addEventListener('resize', handleVisualViewport);
+    return () => window.visualViewport?.removeEventListener('resize', handleVisualViewport);
+  }, []);
+
   const handleSend = async (e?: React.FormEvent, retryText?: string) => {
     if (e) e.preventDefault();
     const textToSend = retryText ?? inputText;
@@ -103,7 +118,7 @@ export default function ChatScreen({
       </header>
 
       {/* Messages Scroll Area */}
-      <main ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto px-4 py-6 flex flex-col justify-end gap-4 select-text scrollbar-thin">
+      <main ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto px-4 py-6 flex flex-col justify-end gap-4 select-text scrollbar-thin scrollable-touch">
         {/* Default Greeting */}
         <div className="flex items-start gap-2.5 animate-subtle-fadeIn">
           <LazyImage
@@ -202,6 +217,7 @@ export default function ChatScreen({
           </button>
 
           <textarea
+            ref={inputRef}
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
             onKeyDown={(e) => {
@@ -212,7 +228,7 @@ export default function ChatScreen({
             }}
             placeholder={`给 ${character.name} 发送秘密信号...`}
             rows={1}
-            className="flex-grow bg-transparent text-xs text-white focus:outline-none placeholder:text-on-surface-variant/40 resize-none leading-relaxed py-1.5 max-h-24 min-h-[1.5rem]"
+            className="flex-grow bg-transparent text-base text-white focus:outline-none placeholder:text-on-surface-variant/40 resize-none leading-relaxed py-1.5 max-h-24 min-h-[1.5rem]"
           />
           <button
             type="submit"

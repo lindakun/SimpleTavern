@@ -57,7 +57,7 @@ export default function LoginScreen({ onNavigate, onLogin, onGoogleLogin }: Logi
       <div className="absolute bottom-1/4 -right-10 w-60 h-60 bg-accent-purple opacity-5 blur-[120px] pointer-events-none" />
 
       {/* Top Bar Navigation */}
-      <header className="fixed top-0 left-1/2 -translate-x-1/2 w-full max-w-lg z-50 flex items-center justify-between px-6 h-16 bg-background-deep/80 backdrop-blur-xl border-b border-outline-variant/30">
+      <header className="fixed top-0 left-1/2 -translate-x-1/2 w-full max-w-lg z-50 flex items-center justify-between px-6 h-16 bg-background-deep/80 backdrop-blur-xl border-b border-outline-variant/30 safe-top">
         <button
           onClick={() => onNavigate(ScreenId.WELCOME)}
           className="flex items-center gap-1.5 pl-2 pr-3 py-1.5 rounded-full bg-surface-container/60 hover:bg-surface-elevated border border-accent-pink/30 hover:border-accent-pink/60 transition-all duration-200 cursor-pointer text-white shadow-[0_0_10px_rgba(232,121,199,0.1)] group/back"
@@ -76,7 +76,7 @@ export default function LoginScreen({ onNavigate, onLogin, onGoogleLogin }: Logi
       </header>
 
       {/* Main Form Fields */}
-      <main className="flex-1 flex flex-col items-center justify-center pt-24 pb-12 w-full max-w-md mx-auto z-10">
+      <main className="flex-1 flex flex-col items-center justify-center pt-28 pb-12 w-full max-w-md mx-auto z-10">
         {/* Avatar badge */}
         <div className="relative w-28 h-28 mb-6 group">
           <div className="absolute inset-0 rounded-full bg-gradient-to-tr from-accent-pink to-accent-purple opacity-20 blur-xl group-hover:opacity-40 transition-opacity duration-500" />
@@ -118,7 +118,7 @@ export default function LoginScreen({ onNavigate, onLogin, onGoogleLogin }: Logi
                 value={handle}
                 onChange={(e) => setHandle(e.target.value)}
                 placeholder="输入用户名或注册邮箱"
-                className="w-full bg-surface-elevated/40 border border-outline-variant/50 focus:border-accent-pink rounded-xl px-4 py-3 text-white text-sm outline-none transition-all duration-300 backdrop-blur-md"
+                className="w-full bg-surface-elevated/40 border border-outline-variant/50 focus:border-accent-pink rounded-xl px-4 py-3.5 text-white text-sm outline-none transition-all duration-300 backdrop-blur-md"
               />
               <span className="font-mono text-sm absolute right-4 top-1/2 -translate-y-1/2 text-on-surface-variant/50">@</span>
             </div>
@@ -144,7 +144,7 @@ export default function LoginScreen({ onNavigate, onLogin, onGoogleLogin }: Logi
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
-                className="w-full bg-surface-elevated/40 border border-outline-variant/50 focus:border-accent-pink rounded-xl px-4 py-3 pr-10 text-white text-sm outline-none transition-all duration-300 backdrop-blur-md"
+                className="w-full bg-surface-elevated/40 border border-outline-variant/50 focus:border-accent-pink rounded-xl px-4 py-3.5 pr-10 text-white text-sm outline-none transition-all duration-300 backdrop-blur-md"
               />
               <button
                 type="button"

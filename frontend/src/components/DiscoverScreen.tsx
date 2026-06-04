@@ -38,7 +38,7 @@ export default function DiscoverScreen({
   }), [characters, searchQuery, selectedTag]);
 
   return (
-    <div className="relative flex-1 overflow-y-auto bg-background-deep text-white safe-content-bottom">
+    <div className="relative flex-1 overflow-y-auto bg-background-deep text-white safe-content-bottom scrollable-touch">
       {/* Light glow effects */}
       <div className="absolute top-0 right-0 w-80 h-80 bg-accent-pink opacity-10 blur-[120px] pointer-events-none" />
       <div className="absolute top-1/2 left-0 w-80 h-80 bg-accent-purple opacity-5 blur-[120px] pointer-events-none" />
@@ -79,9 +79,9 @@ export default function DiscoverScreen({
       {/* Body content */}
       <main className="px-[18px] pt-2 space-y-4 max-w-7xl mx-auto">
 
-        {/* Horizontal tag filter strip */}
+        {/* Horizontal tag filter strip - 移动端触控滚动优化 */}
         <div className="pt-0">
-          <div className="flex gap-2.5 overflow-x-auto pb-0 w-[319px] max-w-full mx-auto scrollbar-none">
+          <div className="flex gap-2.5 overflow-x-auto pb-2 w-[319px] max-w-full mx-auto scrollable-touch scrollbar-none">
             {allTags.map((tag) => (
               <button
                 key={tag}
@@ -106,13 +106,13 @@ export default function DiscoverScreen({
               没有找到匹配的AI角色
             </div>
           ) : filteredCharacters.length === 0 ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {Array.from({ length: 6 }).map((_, i) => (
                 <CharacterCardSkeleton key={i} />
               ))}
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {filteredCharacters.map((c) => {
                 const isFavorite = favoriteIds.includes(c.id);
 

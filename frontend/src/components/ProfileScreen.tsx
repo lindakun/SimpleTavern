@@ -153,7 +153,7 @@ export default function ProfileScreen({
   };
 
   return (
-    <div className="relative flex-1 overflow-y-auto bg-background-deep text-[#e3e1ee] safe-content-bottom">
+    <div className="relative flex-1 overflow-y-auto bg-background-deep text-[#e3e1ee] safe-content-bottom scrollable-touch">
       {/* Background cyber ambiance */}
       <div className="absolute top-0 right-0 w-80 h-80 bg-accent-pink opacity-10 blur-[110px] pointer-events-none" />
       <div className="absolute top-1/2 left-0 w-80 h-80 bg-accent-purple opacity-5 blur-[110px] pointer-events-none" />
@@ -282,10 +282,10 @@ export default function ProfileScreen({
         </div>
 
         {/* Google Logout Action conforming with xpath: //button[contains(., '退出登录')] */}
-        <div className="pt-6">
+        <div className="pt-6 pb-4">
           <button
             onClick={handleLogoutClick}
-            className="w-full h-12 bg-surface-container border border-red-500/35 hover:border-red-500 text-xs text-red-400 rounded-xl hover:bg-red-500/10 cursor-pointer transition-colors"
+            className="w-full h-12 bg-surface-container border border-red-500/35 hover:border-red-500 text-xs text-red-400 rounded-xl hover:bg-red-500/10 cursor-pointer active:scale-95 transition-all"
           >
             退出登录
           </button>
@@ -294,9 +294,9 @@ export default function ProfileScreen({
 
       <BottomNav currentScreen={ScreenId.PROFILE} onNavigate={onNavigate} />
 
-      {/* 头像编辑弹窗 */}
+      {/* 头像编辑弹窗 - 禁止背景滚动（带清理） */}
       {showAvatarEditor && editingImage && (
-        <div className="fixed inset-0 z-[60] bg-black/80 flex items-center justify-center p-6">
+        <div className="fixed inset-0 z-[60] bg-black/80 flex items-center justify-center p-6" style={{ overscrollBehavior: 'contain' }}>
           <div className="bg-surface-elevated rounded-2xl w-full max-w-sm overflow-hidden border border-outline-variant/30">
             {/* 标题 */}
             <div className="px-4 py-3 border-b border-outline-variant/20 flex items-center justify-between">
@@ -356,7 +356,7 @@ export default function ProfileScreen({
             </div>
 
             {/* 确认按钮 */}
-            <div className="px-4 pb-4">
+            <div className="px-4 pb-4 safe-bottom">
               <button
                 onClick={saveAvatar}
                 className="w-full py-2.5 bg-accent-pink text-white text-xs font-bold rounded-xl hover:brightness-110 active:scale-95 transition-all cursor-pointer"

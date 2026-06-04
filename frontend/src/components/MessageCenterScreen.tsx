@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import { ScreenId, Character, ChatThread } from '../types';
 import { RotateCw, Pin, PinOff, Trash2, X, CheckSquare, Square } from 'lucide-react';
 import BottomNav from './BottomNav';
@@ -52,6 +52,12 @@ export default function MessageCenterScreen({
   const { data: threadList = [], refetch: refetchThreads } = useChatThreads();
   const batchDelete = useBatchDeleteChats();
   const togglePin = useTogglePinChat();
+  const longPressTimer = useRef<ReturnType<typeof setTimeout>>();
+
+  // 组件卸载时清理长按 timer
+  useEffect(() => {
+    return () => clearTimeout(longPressTimer.current);
+  }, []);
 
   // 选择模式状态
   const [isSelectionMode, setIsSelectionMode] = useState(false);
@@ -262,9 +268,24 @@ export default function MessageCenterScreen({
                 }}
                 onContextMenu={(e) => {
                   e.preventDefault();
+                  e.stopPropagation();
                   if (!isSelectionMode) {
                     enterSelectionMode(item.characterId);
                   }
+                }}
+                onTouchStart={() => {
+                  // 手机端长按触发选择模式
+                  longPressTimer.current = setTimeout(() => {
+                    if (!isSelectionMode) {
+                      enterSelectionMode(item.characterId);
+                    }
+                  }, 600);
+                }}
+                onTouchEnd={() => {
+                  clearTimeout(longPressTimer.current);
+                }}
+                onTouchMove={() => {
+                  clearTimeout(longPressTimer.current);
                 }}
                 className={`bg-surface-container/40 hover:bg-surface-container border p-4 rounded-xl flex items-center gap-4 cursor-pointer transition-all duration-200 ${
                   isSelected
@@ -349,9 +370,9 @@ export default function MessageCenterScreen({
         </div>
       </main>
 
-      {/* 批量操作底栏 */}
+      {/* 批量操作底栏 - 带安全区域 */}
       {isSelectionMode && (
-        <div className="fixed bottom-16 left-0 right-0 z-50 max-w-lg mx-auto">
+        <div className="fixed bottom-16 left-0 right-0 z-50 max-w-lg mx-auto safe-bottom">
           <div className="bg-[#0F111A]/95 backdrop-blur-md border-t border-accent-pink/20 px-6 py-3 flex items-center justify-between">
             <button
               onClick={exitSelectionMode}

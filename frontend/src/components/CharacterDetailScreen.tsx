@@ -99,8 +99,8 @@ export default function CharacterDetailScreen({
         </button>
       </header>
 
-      {/* Hero Visual Area with Blurred Backing */}
-      <div className="relative w-full h-[320px] overflow-hidden border-b border-outline-variant/30">
+      {/* Hero Visual Area with Blurred Backing - 使用 min/max 响应式高度 */}
+      <div className="relative w-full min-h-[240px] max-h-[320px] h-[45vh] overflow-hidden border-b border-outline-variant/30">
         {/* Full-screen blur backdrop */}
         <LazyImage
           alt=""
@@ -258,7 +258,7 @@ export default function CharacterDetailScreen({
       </main>
 
       {/* Sticky Bottom Actions Strip */}
-      <div className="fixed bottom-16 left-1/2 -translate-x-1/2 w-full max-w-lg z-30 px-6 py-4 bg-background-deep/90 border-t border-outline-variant/30 flex items-center justify-center gap-4 shadow-[0_-5px_25px_rgba(11,7,32,0.8)]">
+      <div className="fixed bottom-16 left-1/2 -translate-x-1/2 w-full max-w-lg z-30 px-6 py-4 bg-background-deep/90 border-t border-outline-variant/30 flex items-center justify-center gap-4 shadow-[0_-5px_25px_rgba(11,7,32,0.8)] safe-bottom">
         <button
           onClick={() => onNavigate(ScreenId.DISCOVER)}
           className="flex-1 h-12 bg-surface-elevated/80 hover:bg-surface-elevated border border-outline-variant/40 text-[#ffd8ee] rounded-xl font-bold text-xs shadow-md active:scale-95 transition-transform cursor-pointer"

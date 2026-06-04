@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap&text=YuzuAINeonFrontierExplorethe0123456789');
 @import "tailwindcss";
 
 @theme {
@@ -86,9 +86,57 @@ body {
   background: rgba(236, 72, 153, 0.50);
 }
 
-/* Safe area padding for bottom navigation on iOS */
+/* ---- iOS 输入框缩放修复 ---- */
+input, textarea, select {
+  font-size: 16px !important;
+}
+
+/* iPhone 横屏下也应用 16px 防止缩放 */
+@supports (-webkit-touch-callout: none) {
+  input, textarea, select {
+    font-size: 16px !important;
+  }
+}
+
+/* ---- iOS 弹性滚动优化 ---- */
+.scrollable-touch {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+/* ---- 触摸反馈工具类 ---- */
+.tap-highlight-none {
+  -webkit-tap-highlight-color: transparent;
+}
+
+.tap-active {
+  -webkit-tap-highlight-color: transparent;
+}
+
+.tap-active:active {
+  transform: scale(0.96);
+  transition: transform 0.1s ease;
+}
+
+.tap-dim:active {
+  opacity: 0.7;
+  transition: opacity 0.1s ease;
+}
+
+/* ---- 滚动条优化（手指滑动区域宽一些） ---- */
+.scrollbar-thin-mobile {
+  scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+/* ---- 安全区域 ---- */
 .safe-bottom {
   padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.safe-top {
+  padding-top: env(safe-area-inset-top, 0px);
 }
 
 /* Content padding to avoid being hidden behind the bottom nav + safe area */
@@ -99,4 +147,41 @@ body {
 /* Extra padding for pages with both action bar and bottom nav (CharacterDetailScreen) */
 .safe-content-double {
   padding-bottom: calc(8rem + env(safe-area-inset-bottom, 0px));
+}
+
+/* 固定头部安全区域 */
+.header-safe {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+/* ---- 防止页面滚动穿透（用于弹窗） ---- */
+body.no-scroll {
+  overflow: hidden !important;
+  position: fixed;
+  width: 100%;
+  height: 100%;
+}
+
+/* ---- 触摸选择优化 ---- */
+.user-select-none {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* ---- 按钮最小触摸面积 (44px 规范) ---- */
+.touch-target {
+  min-width: 44px;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ---- 减少动画（低电量/弱设备） ---- */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

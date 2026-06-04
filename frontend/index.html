@@ -2,8 +2,26 @@
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <title>SimpleTavern</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no" />
+
+    <!-- 主题色（状态栏适配） -->
+    <meta name="theme-color" content="#090A0F" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#090A0F" />
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#090A0F" />
+
+    <!-- iOS Safari 全屏体验 -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Yuzu AI" />
+
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="/manifest.json" />
+
+    <!-- 预连接 Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+
+    <title>Yuzu AI</title>
   </head>
   <body>
     <div id="root"></div>

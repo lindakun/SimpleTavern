@@ -89,7 +89,7 @@ export default function RegisterScreen({ onNavigate, onRegister }: RegisterScree
       <div className="absolute bottom-1/3 -right-10 w-48 h-48 bg-accent-purple opacity-5 blur-[100px] pointer-events-none" />
 
       {/* Header with arrow_back */}
-      <header className="fixed top-0 left-1/2 -translate-x-1/2 w-full max-w-lg z-50 flex items-center justify-between px-6 h-16 bg-background-deep/80 backdrop-blur-xl border-b border-outline-variant/30">
+      <header className="fixed top-0 left-1/2 -translate-x-1/2 w-full max-w-lg z-50 flex items-center justify-between px-6 h-16 bg-background-deep/80 backdrop-blur-xl border-b border-outline-variant/30 safe-top">
         <button
           onClick={() => onNavigate(ScreenId.WELCOME)}
           className="flex items-center gap-1.5 pl-2 pr-3 py-1.5 rounded-full bg-surface-container/60 hover:bg-surface-elevated border border-accent-pink/30 hover:border-accent-pink/60 transition-all duration-200 cursor-pointer text-white shadow-[0_0_10px_rgba(232,121,199,0.1)] group/back"
@@ -108,7 +108,7 @@ export default function RegisterScreen({ onNavigate, onRegister }: RegisterScree
       </header>
 
       {/* Main Container */}
-      <main className="flex-1 flex flex-col items-center justify-center pt-24 pb-12 w-full max-w-md mx-auto z-10">
+      <main className="flex-1 flex flex-col items-center justify-center pt-28 pb-12 w-full max-w-md mx-auto z-10">
         <div className="relative w-32 h-32 mb-6 rounded-full overflow-hidden border-2 border-accent-pink/50 shadow-[0_0_20px_rgba(232,121,199,0.3)]">
           <img
             alt="Join Header Portrait"
