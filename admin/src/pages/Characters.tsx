@@ -1,4 +1,5 @@
 import { useState, useMemo, useRef } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   useAllCharacters,
   useAdminDeleteCharacter,
@@ -6,11 +7,13 @@ import {
   useAdminEditCharacter,
   useAdminImportUgirl,
   useUsers,
+  characterKeys,
 } from '../hooks/useAdminApi';
-import { Search, Trash2, X, Check, User, Pencil, Upload, ChevronDown, ChevronRight, Download, Folder } from 'lucide-react';
+import { Search, Trash2, X, Check, User, Pencil, Upload, ChevronDown, ChevronRight, Download, Folder, Square, CheckSquare, Loader } from 'lucide-react';
 import type { AdminCharacterItem, UgirlImportResult } from '../types';
 
 export default function Characters() {
+  const qc = useQueryClient();
   const { data: characters = [], isLoading, error } = useAllCharacters();
   const { data: users = [] } = useUsers();
   const deleteChar = useAdminDeleteCharacter();
@@ -24,6 +27,18 @@ export default function Characters() {
   const [importAvatarsDir, setImportAvatarsDir] = useState('/ugirl_avatars');
   const [importResult, setImportResult] = useState<UgirlImportResult | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // 批量删除状态
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
+  const [batchDeleting, setBatchDeleting] = useState(false);
+  const [batchDeleteConfirm, setBatchDeleteConfirm] = useState(false);
+  const [batchDeleteProgress, setBatchDeleteProgress] = useState({ current: 0, total: 0 });
+
+  // 获取角色的唯一键
+  const getCharKey = (c: AdminCharacterItem): string => {
+    const fileName = getFileName(c);
+    return `${c._owner}|${c._source}|${fileName || c.id || ''}`;
+  };
 
   // 过滤条件
   const [ownerFilter, setOwnerFilter] = useState('ALL');
@@ -79,6 +94,54 @@ export default function Characters() {
     const name = c._fileName || c.avatar || '';
     if (name.endsWith('.png')) return name;
     return '';
+  };
+
+  // 复选框处理
+  const toggleSelect = (key: string) => {
+    setSelectedKeys(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedKeys.size === filtered.length) {
+      setSelectedKeys(new Set());
+    } else {
+      setSelectedKeys(new Set(filtered.map(getCharKey)));
+    }
+  };
+
+  // 批量删除
+  const handleBatchDelete = async () => {
+    const targets = filtered.filter(c => selectedKeys.has(getCharKey(c)));
+    setBatchDeleting(true);
+    setBatchDeleteProgress({ current: 0, total: targets.length });
+
+    for (let i = 0; i < targets.length; i++) {
+      const c = targets[i];
+      const fileName = getFileName(c);
+      try {
+        if (c._source === 'published') {
+          await deletePublished.mutateAsync({
+            handle: c._owner,
+            characterId: c.id || fileName,
+          });
+        } else {
+          await deleteChar.mutateAsync({
+            handle: c._owner,
+            avatar_url: fileName,
+          });
+        }
+      } catch { /* 单个失败继续 */ }
+      setBatchDeleteProgress({ current: i + 1, total: targets.length });
+    }
+
+    setSelectedKeys(new Set());
+    setBatchDeleting(false);
+    setBatchDeleteConfirm(false);
+    qc.invalidateQueries({ queryKey: characterKeys.all });
   };
 
   return (
@@ -301,6 +364,55 @@ export default function Characters() {
         )}
       </div>
 
+      {/* 批量操作栏 */}
+      {selectedKeys.size > 0 && !batchDeleting && (
+        <div className="flex items-center justify-between bg-accent-pink/10 border border-accent-pink/25 rounded-xl px-5 py-2.5">
+          <span className="text-xs text-white">
+            已选择 <span className="text-accent-pink font-bold">{selectedKeys.size}</span> 个角色
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setSelectedKeys(new Set())}
+              className="px-3 py-1.5 text-xs text-on-surface-variant hover:text-white rounded-lg transition-colors cursor-pointer"
+            >
+              取消选择
+            </button>
+            <button
+              onClick={() => setBatchDeleteConfirm(true)}
+              className="flex items-center gap-1.5 px-4 py-1.5 bg-red-500/20 border border-red-500/40 text-red-400 text-xs font-semibold rounded-xl hover:bg-red-500/30 active:scale-95 transition-all cursor-pointer"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              删除所选
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 批量删除进度 */}
+      {batchDeleting && (
+        <div className="flex items-center gap-3 bg-accent-pink/5 border border-accent-pink/20 rounded-xl px-4 py-3">
+          <Loader className="w-4 h-4 text-accent-pink animate-spin" />
+          <div className="flex-1">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-xs text-white">正在删除...</span>
+              <span className="text-[10px] text-on-surface-variant font-mono">
+                {batchDeleteProgress.current} / {batchDeleteProgress.total}
+              </span>
+            </div>
+            <div className="w-full h-1.5 bg-surface-container rounded-full overflow-hidden">
+              <div
+                className="h-full bg-gradient-to-r from-accent-pink to-accent-purple rounded-full transition-all duration-300"
+                style={{
+                  width: `${batchDeleteProgress.total > 0
+                    ? (batchDeleteProgress.current / batchDeleteProgress.total) * 100
+                    : 0}%`,
+                }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
       {error && (
         <div className="bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3 text-xs text-red-400">
           加载失败：{(error as Error).message}
@@ -320,6 +432,18 @@ export default function Characters() {
             <table className="w-full text-xs">
               <thead>
                 <tr className="border-b border-outline-variant/20 text-on-surface-variant font-mono">
+                  <th className="w-10 px-3 py-3">
+                    <button
+                      onClick={toggleSelectAll}
+                      className="p-0.5 rounded hover:text-white transition-colors cursor-pointer"
+                      title={selectedKeys.size === filtered.length ? '取消全选' : '全选'}
+                    >
+                      {selectedKeys.size === filtered.length && filtered.length > 0
+                        ? <CheckSquare className="w-4 h-4 text-accent-pink" />
+                        : <Square className="w-4 h-4 text-on-surface-variant/50" />
+                      }
+                    </button>
+                  </th>
                   <th className="text-left px-5 py-3 font-semibold">角色名称</th>
                   <th className="text-left px-5 py-3 font-semibold">拥有者</th>
                   <th className="text-left px-5 py-3 font-semibold">标签</th>
@@ -330,15 +454,34 @@ export default function Characters() {
               <tbody>
                 {filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="text-center py-12 text-on-surface-variant">
+                    <td colSpan={6} className="text-center py-12 text-on-surface-variant">
                       没有找到匹配的角色
                     </td>
                   </tr>
                 ) : (
-                  filtered.map((char, i) => {
+                  filtered.map((char) => {
                     const fileName = getFileName(char);
+                    const charKey = getCharKey(char);
+                    const isSelected = selectedKeys.has(charKey);
+                    const isSeed = char._source === 'seed';
                     return (
-                    <tr key={`${char._owner}_${fileName}_${i}`} className="border-b border-outline-variant/10 hover:bg-surface-container/50 transition-colors">
+                    <tr
+                      key={charKey}
+                      className={`border-b border-outline-variant/10 transition-colors ${isSelected ? 'bg-accent-pink/5' : 'hover:bg-surface-container/50'}`}
+                    >
+                      <td className="w-10 px-3 py-3">
+                        {!isSeed && (
+                          <button
+                            onClick={() => toggleSelect(charKey)}
+                            className="p-0.5 rounded hover:text-white transition-colors cursor-pointer"
+                          >
+                            {isSelected
+                              ? <CheckSquare className="w-4 h-4 text-accent-pink" />
+                              : <Square className="w-4 h-4 text-on-surface-variant/30" />
+                            }
+                          </button>
+                        )}
+                      </td>
                       <td className="px-5 py-3">
                         <div className="flex items-center gap-2.5">
                           <div className="w-7 h-7 rounded-lg bg-accent-purple/15 flex items-center justify-center text-[10px] font-bold text-accent-purple overflow-hidden flex-shrink-0">
@@ -378,7 +521,7 @@ export default function Characters() {
                       </td>
                       <td className="px-5 py-3 text-right">
                         <div className="flex items-center justify-end gap-1">
-                          {char._source === 'seed' ? (
+                          {isSeed ? (
                             <span className="text-[9px] text-on-surface-variant/30 font-mono italic px-2">内置</span>
                           ) : (
                             <>
@@ -436,6 +579,63 @@ export default function Characters() {
                 )}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* 批量删除确认弹窗 */}
+      {batchDeleteConfirm && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-6">
+          <div className="w-full max-w-sm bg-surface border border-outline-variant/20 rounded-2xl overflow-hidden">
+            <div className="px-5 py-4 border-b border-outline-variant/20">
+              <h2 className="text-sm font-bold text-white font-mono">确认批量删除</h2>
+            </div>
+            <div className="p-5 space-y-4">
+              <div className="flex items-start gap-3">
+                <div className="w-8 h-8 rounded-xl bg-red-500/15 flex items-center justify-center flex-shrink-0">
+                  <Trash2 className="w-4 h-4 text-red-400" />
+                </div>
+                <div>
+                  <p className="text-sm text-white font-medium">确定删除 {selectedKeys.size} 个角色？</p>
+                  <p className="text-xs text-on-surface-variant mt-1">
+                    此操作不可撤销，角色及其聊天记录将被永久删除。
+                  </p>
+                </div>
+              </div>
+
+              <div className="max-h-32 overflow-y-auto space-y-1 bg-surface-container/30 rounded-xl p-3">
+                {filtered
+                  .filter(c => selectedKeys.has(getCharKey(c)))
+                  .slice(0, 20)
+                  .map(c => (
+                    <div key={getCharKey(c)} className="text-xs text-on-surface-variant font-mono flex items-center gap-2">
+                      <X className="w-3 h-3 text-red-400/60 flex-shrink-0" />
+                      <span className="truncate">{c.name || '未命名'}</span>
+                      <span className="text-[10px] text-on-surface-variant/30 ml-auto">{c._owner}</span>
+                    </div>
+                  ))}
+                {selectedKeys.size > 20 && (
+                  <div className="text-xs text-on-surface-variant/40 text-center pt-1">
+                    ...及其他 {selectedKeys.size - 20} 个
+                  </div>
+                )}
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setBatchDeleteConfirm(false)}
+                  className="flex-1 py-2.5 bg-surface-elevated border border-outline-variant/30 text-xs text-on-surface-variant rounded-xl hover:text-white transition-colors cursor-pointer"
+                >
+                  取消
+                </button>
+                <button
+                  onClick={handleBatchDelete}
+                  className="flex-1 py-2.5 bg-red-500/20 border border-red-500/40 text-red-400 text-xs font-bold rounded-xl hover:bg-red-500/30 active:scale-95 transition-all cursor-pointer"
+                >
+                  确认删除
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
