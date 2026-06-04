@@ -2,8 +2,8 @@
  * Admin API 调用封装
  */
 
-import { api } from './client';
-import type { UserViewModel, CreateUserRequest, UserActionRequest, AdminCharacterItem, AdminWorldItem, WorldInfoData } from '../types';
+import { api, apiRequest } from './client';
+import type { UserViewModel, CreateUserRequest, UserActionRequest, AdminCharacterItem, AdminWorldItem, WorldInfoData, UgirlImportResult } from '../types';
 
 export const adminApi = {
   // 获取用户列表
@@ -89,4 +89,18 @@ export const adminApi = {
   // 导入世界书（上传 .json 文件）
   adminImportWorld: (file: File) =>
     api.upload<{ ok: boolean; name: string }>('/api/worlds/admin-import', file),
+
+  // ===== ugirl 批量导入 =====
+
+  // 批量导入 ugirl 角色
+  adminImportUgirl: (file: File, handle: string, avatarsDir?: string) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('handle', handle);
+    if (avatarsDir) formData.append('avatars_dir', avatarsDir);
+    return apiRequest<UgirlImportResult>('/api/characters/admin-import-ugirl', {
+      method: 'POST',
+      body: formData,
+    });
+  },
 };

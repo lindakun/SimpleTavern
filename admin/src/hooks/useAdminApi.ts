@@ -140,6 +140,20 @@ export function useAdminEditCharacter() {
   });
 }
 
+// ===== ugirl 批量导入 Hook =====
+
+// 批量导入 ugirl 角色
+export function useAdminImportUgirl() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ file, handle, avatarsDir }: { file: File; handle: string; avatarsDir?: string }) =>
+      adminApi.adminImportUgirl(file, handle, avatarsDir),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: characterKeys.all });
+    },
+  });
+}
+
 // ===== 世界书管理 Hooks =====
 
 export const worldKeys = {

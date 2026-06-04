@@ -1,9 +1,13 @@
 import { Request, Response, NextFunction } from 'express';
+import path from 'node:path';
+import fs from 'node:fs';
 import { getAllUsers, getUserDirectories } from '../users/users.repository.js';
 import { getAllCharacters, removeCharacter, processCharacter, editCharacter } from './characters.service.js';
 import { getSeedCharacters } from './seed.service.js';
 import { getUserCharacters, deleteUserCharacter } from './characters.user.service.js';
+import { importUgirlCharacters } from './characters.ugirl-importer.js';
 import { getConfig } from '../../config/index.js';
+import { logger } from '../../common/logger.js';
 
 /**
  * 管理员 - 获取所有用户的所有角色
@@ -138,6 +142,64 @@ export async function adminEditCharacter(req: Request, res: Response, next: Next
         res.json({ ok: true });
     } catch (err) {
         next(err);
+    }
+}
+
+/**
+ * 管理员 - 批量导入 ugirl 角色
+ * POST /api/characters/admin-import-ugirl
+ * 接收: JSON 文件上传 + handle(目标用户) + avatars_dir(可选本地头像目录)
+ */
+export async function adminImportUgirl(req: Request, res: Response, next: NextFunction): Promise<void> {
+    const config = getConfig();
+    const file = (req as any).file;
+
+    try {
+        if (!file) {
+            res.status(400).json({ error: 'BAD_REQUEST', message: '请上传 ugirl JSON 文件' });
+            return;
+        }
+
+        const handle = String(req.body.handle || 'admin');
+        const avatarsDir = req.body.avatars_dir ? String(req.body.avatars_dir) : undefined;
+
+        // 验证目标用户存在
+        const users = await getAllUsers();
+        const targetUser = users.find(u => u.handle === handle);
+        if (!targetUser) {
+            res.status(400).json({ error: 'BAD_REQUEST', message: `目标用户 "${handle}" 不存在` });
+            return;
+        }
+
+        const dirs = getUserDirectories(config.dataRoot, handle);
+
+        // 确保 characters 目录存在
+        if (!fs.existsSync(dirs.characters)) {
+            fs.mkdirSync(dirs.characters, { recursive: true });
+        }
+
+        // 验证 avatars_dir（如果提供）
+        if (avatarsDir && !fs.existsSync(avatarsDir)) {
+            res.status(400).json({ error: 'BAD_REQUEST', message: `头像目录不存在: ${avatarsDir}` });
+            return;
+        }
+
+        logger.info(`管理员导入 ugirl 角色: handle=${handle}, avatarsDir=${avatarsDir}, file=${file.originalname}`);
+
+        const result = await importUgirlCharacters(
+            file.path,
+            dirs.characters,
+            avatarsDir,
+        );
+
+        res.json(result);
+    } catch (err) {
+        next(err);
+    } finally {
+        // 确保临时上传文件被清理
+        if (file?.path) {
+            try { fs.unlinkSync(file.path); } catch { /* 文件可能已被清理 */ }
+        }
     }
 }
 

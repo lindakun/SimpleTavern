@@ -1,5 +1,8 @@
 import { Router } from 'express';
-import { adminGetAllCharacters, adminDeleteCharacter, adminEditCharacter, adminDeletePublishedCharacter } from './admin-characters.controller.js';
+import multer from 'multer';
+import path from 'node:path';
+import { adminGetAllCharacters, adminDeleteCharacter, adminEditCharacter, adminDeletePublishedCharacter, adminImportUgirl } from './admin-characters.controller.js';
+import { getConfig } from '../../config/index.js';
 
 export function createAdminCharacterRoutes(): Router {
     const router = Router();
@@ -15,6 +18,11 @@ export function createAdminCharacterRoutes(): Router {
 
     // 删除指定用户的发布角色
     router.post('/admin-delete-published', adminDeletePublishedCharacter);
+
+    // 批量导入 ugirl 角色（文件上传）
+    const config = getConfig();
+    const upload = multer({ dest: path.join(config.dataRoot, 'uploads') });
+    router.post('/admin-import-ugirl', upload.single('file'), adminImportUgirl);
 
     return router;
 }

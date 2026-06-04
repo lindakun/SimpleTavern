@@ -68,6 +68,19 @@ export interface WorldInfoData {
   extensions?: Record<string, unknown>;
 }
 
+// ugirl 批量导入结果
+export interface UgirlImportResult {
+  total: number;
+  success: number;
+  failed: number;
+  results: Array<{
+    name: string;
+    status: 'success' | 'failed';
+    fileName?: string;
+    error?: string;
+  }>;
+}
+
 // 管理员角色数据（来自后端 admin-all 接口）
 export interface AdminCharacterItem {
   _owner: string;
