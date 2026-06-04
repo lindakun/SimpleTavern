@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import sharp from 'sharp';
 import { createCharacter } from './characters.service.js';
 import { logger } from '../../common/logger.js';
 
@@ -65,9 +66,9 @@ function extractAvatarFileName(avatarLocal: string): string {
 
 /**
  * 加载本地头像文件
- * 只支持 PNG，其他格式返回 null
+ * 使用 sharp 自动转换任意图片格式为 PNG
  */
-function loadLocalAvatar(avatarsDir: string | undefined, avatarLocal: string | undefined): Buffer | undefined {
+async function loadLocalAvatar(avatarsDir: string | undefined, avatarLocal: string | undefined): Promise<Buffer | undefined> {
     if (!avatarsDir || !avatarLocal) return undefined;
 
     const fileName = extractAvatarFileName(avatarLocal);
@@ -79,12 +80,18 @@ function loadLocalAvatar(avatarsDir: string | undefined, avatarLocal: string | u
     }
 
     const ext = path.extname(fullPath).toLowerCase();
-    if (ext !== '.png') {
-        logger.warn(`非 PNG 头像，跳过嵌入: ${fullPath} (${ext})`);
+
+    try {
+        if (ext === '.png') {
+            return fs.readFileSync(fullPath);
+        }
+        // 非 PNG 格式 — 使用 sharp 转换为 PNG
+        logger.info(`转换头像格式: ${fullPath} (${ext}) → PNG`);
+        return await sharp(fullPath).png().toBuffer();
+    } catch (err: any) {
+        logger.warn(`头像加载失败: ${fullPath} - ${err.message}`);
         return undefined;
     }
-
-    return fs.readFileSync(fullPath);
 }
 
 /**
@@ -181,7 +188,7 @@ export async function importUgirlCharacters(
         const item = items[i];
         try {
             const v3Data = buildV3CharacterData(item);
-            const avatarBuffer = loadLocalAvatar(avatarsDir, item.avatar_local);
+            const avatarBuffer = await loadLocalAvatar(avatarsDir, item.avatar_local);
 
             const fileName = createCharacter(
                 item.name,
