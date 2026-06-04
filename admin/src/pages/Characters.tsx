@@ -119,8 +119,8 @@ export default function Characters() {
     setBatchDeleting(true);
     setBatchDeleteProgress({ current: 0, total: targets.length });
 
-    for (let i = 0; i < targets.length; i++) {
-      const c = targets[i];
+    let completed = 0;
+    const promises = targets.map(async (c) => {
       const fileName = getFileName(c);
       try {
         if (c._source === 'published') {
@@ -137,8 +137,11 @@ export default function Characters() {
       } catch (err) {
         console.error('[批量删除] 删除角色失败:', c.name, err);
       }
-      setBatchDeleteProgress({ current: i + 1, total: targets.length });
-    }
+      completed++;
+      setBatchDeleteProgress({ current: completed, total: targets.length });
+    });
+
+    await Promise.allSettled(promises);
 
     setSelectedKeys(new Set());
     setBatchDeleting(false);
