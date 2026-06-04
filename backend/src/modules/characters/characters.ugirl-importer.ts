@@ -54,44 +54,52 @@ export interface UgirlImportResult {
     }>;
 }
 
-/**
- * 从 avatar_local 路径中提取文件名
- * avatar_local 格式示例: output\test_avatars\fHWdkN.png
- */
+/** 支持的文件扩展名（按优先级排列） */
+const SUPPORTED_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.webp', '.jfif'];
+
+/** 从 avatar_local 路径中提取文件名 */
 function extractAvatarFileName(avatarLocal: string): string {
-    // 兼容 Windows \ 和 Unix / 路径分隔符
-    const normalized = avatarLocal.replace(/\\/g, '/');
+    const normalized = avatarLocal.replace(/\\\\/g, '/');
     return path.basename(normalized);
 }
 
 /**
- * 加载本地头像文件
- * 使用 sharp 自动转换任意图片格式为 PNG
+ * 加载图片文件，非 PNG 格式用 sharp 转换为 PNG
  */
-async function loadLocalAvatar(avatarsDir: string | undefined, avatarLocal: string | undefined): Promise<Buffer | undefined> {
-    if (!avatarsDir || !avatarLocal) return undefined;
+async function loadAndConvertImage(filePath: string): Promise<Buffer> {
+    const ext = path.extname(filePath).toLowerCase();
+    if (ext === '.png') return fs.readFileSync(filePath);
 
-    const fileName = extractAvatarFileName(avatarLocal);
-    const fullPath = path.join(avatarsDir, fileName);
+    logger.info(`转换头像格式: ${path.basename(filePath)} (${ext}) -> PNG`);
+    return await sharp(filePath).png().toBuffer();
+}
 
-    if (!fs.existsSync(fullPath)) {
-        logger.warn(`头像文件不存在: ${fullPath}`);
-        return undefined;
-    }
-
-    const ext = path.extname(fullPath).toLowerCase();
-
-    try {
-        if (ext === '.png') {
-            return fs.readFileSync(fullPath);
+/**
+ * 在头像目录中查找角色的头像文件
+ * 策略: 1. avatar_local -> 2. 角色 ID -> 3. 角色名
+ */
+async function findAvatarFile(
+    avatarsDir: string,
+    item: UgirlItem,
+): Promise<Buffer | undefined> {
+    // 策略 1: avatar_local 指定的文件名
+    if (item.avatar_local) {
+        const fileName = extractAvatarFileName(item.avatar_local);
+        const fullPath = path.join(avatarsDir, fileName);
+        if (fs.existsSync(fullPath)) {
+            return await loadAndConvertImage(fullPath);
         }
-        // 非 PNG 格式 — 使用 sharp 转换为 PNG
-        logger.info(`转换头像格式: ${fullPath} (${ext}) → PNG`);
-        return await sharp(fullPath).png().toBuffer();
-    } catch (err: any) {
-        logger.warn(`头像加载失败: ${fullPath} - ${err.message}`);
-        return undefined;
     }
+
+    // 策略 2: 按角色 ID 查找
+    for (const ext of SUPPORTED_EXTENSIONS) {
+        const fullPath = path.join(avatarsDir, `${item.id}${ext}`);
+        if (fs.existsSync(fullPath)) {
+            return await loadAndConvertImage(fullPath);
+        }
+    }
+
+    return undefined;
 }
 
 /**
@@ -103,7 +111,6 @@ function buildV3CharacterData(item: UgirlItem): Record<string, unknown> {
         tags.push('NSFW');
     }
 
-    // 将完整介绍作为 description（如果 short_introduction 太短则用 introduction）
     const description = (item.short_introduction || item.introduction || '').slice(0, 500);
 
     return {
@@ -143,7 +150,6 @@ function buildV3CharacterData(item: UgirlItem): Record<string, unknown> {
                     depth: 4,
                     role: 'system',
                 },
-                // 保留 ugirl 原始元数据
                 ugirl_id: item.id,
                 ugirl_popularity: item.popularity,
                 ugirl_rating_avg: item.rating_avg,
@@ -166,13 +172,12 @@ export async function importUgirlCharacters(
     const raw = fs.readFileSync(jsonFilePath, 'utf-8');
     const data = JSON.parse(raw);
 
-    // 支持两种格式：直接数组 或 { metadata, items }
     const items: UgirlItem[] = Array.isArray(data)
         ? data
         : (data.items as UgirlItem[]) || [];
 
     if (!items.length) {
-        throw new Error('JSON 文件中没有找到有效的角色数据（需要 items 数组）');
+        throw new Error('JSON 文件中没有找到有效的角色数据');
     }
 
     logger.info(`开始导入 ugirl 角色: 共 ${items.length} 个`);
@@ -188,7 +193,9 @@ export async function importUgirlCharacters(
         const item = items[i];
         try {
             const v3Data = buildV3CharacterData(item);
-            const avatarBuffer = await loadLocalAvatar(avatarsDir, item.avatar_local);
+            const avatarBuffer = avatarsDir
+                ? await findAvatarFile(avatarsDir, item)
+                : undefined;
 
             const fileName = createCharacter(
                 item.name,
@@ -204,7 +211,10 @@ export async function importUgirlCharacters(
                 fileName,
             });
 
-            logger.info(`[${i + 1}/${items.length}] 导入成功: ${item.name} → ${fileName}`);
+            if (i % 50 === 0 || i === items.length - 1) {
+                logger.info(`[${i + 1}/${items.length}] ${item.name} -> ${fileName}` +
+                    (avatarBuffer ? ' (含头像)' : ' (无头像)'));
+            }
         } catch (err: any) {
             result.failed++;
             result.results.push({
