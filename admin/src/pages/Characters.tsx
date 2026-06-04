@@ -21,7 +21,7 @@ export default function Characters() {
   const importUgirl = useAdminImportUgirl();
   const [showImport, setShowImport] = useState(false);
   const [importHandle, setImportHandle] = useState('admin');
-  const [importAvatarsDir, setImportAvatarsDir] = useState('/Users/linda/code/ugirl_craw/output/test_avatars');
+  const [importAvatarsDir, setImportAvatarsDir] = useState('/ugirl_avatars');
   const [importResult, setImportResult] = useState<UgirlImportResult | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
