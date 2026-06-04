@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   useAllCharacters,
@@ -33,6 +33,10 @@ export default function Characters() {
   const [batchDeleting, setBatchDeleting] = useState(false);
   const [batchDeleteConfirm, setBatchDeleteConfirm] = useState(false);
   const [batchDeleteProgress, setBatchDeleteProgress] = useState({ current: 0, total: 0 });
+
+  useEffect(() => {
+    console.log('[DEBUG] batchDeleteConfirm changed:', batchDeleteConfirm);
+  }, [batchDeleteConfirm]);
 
   // 获取角色的唯一键
   const getCharKey = (c: AdminCharacterItem): string => {
