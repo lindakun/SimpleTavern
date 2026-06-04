@@ -134,7 +134,9 @@ export default function Characters() {
             avatar_url: fileName,
           });
         }
-      } catch { /* 单个失败继续 */ }
+      } catch (err) {
+        console.error('[批量删除] 删除角色失败:', c.name, err);
+      }
       setBatchDeleteProgress({ current: i + 1, total: targets.length });
     }
 
