@@ -111,6 +111,7 @@ async function callLlmApi(config: LlmConfig, messages: ChatMessage[]): Promise<s
             messages,
             temperature: 0.9,
             max_tokens: 8192,
+            thinking: false,
         }),
     });
 
@@ -159,6 +160,7 @@ async function callLlmApiStream(config: LlmConfig, messages: ChatMessage[]): Pro
             temperature: 0.9,
             max_tokens: 8192,
             stream: true,
+            thinking: false,
         }),
     });
 
