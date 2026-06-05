@@ -3,6 +3,20 @@ import { getLlmConfigs, getActiveLlm } from '../llm-config.js';
 import { logger } from '../../../common/logger.js';
 
 /**
+ * 清理 prompt 中的特殊 Unicode 字符，避免 Ollama/llama-server tokenizer 解析失败
+ * 主要处理：数学尖括号 ⟨⟩ 等会被误解析为 chat template token 的字符
+ */
+function sanitizeText(text: string): string {
+    return text
+        .replace(/⟨/g, '<')  // ⟨ → <  (数学左尖括号)
+        .replace(/⟩/g, '>')  // ⟩ → >  (数学右尖括号)
+        .replace(/⟪/g, '<<') // ⟪ → <<
+        .replace(/⟫/g, '>>') // ⟫ → >>
+        .replace(/⟦/g, '[')  // ⟦ → [
+        .replace(/⟧/g, ']'); // ⟧ → ]
+}
+
+/**
  * 构建角色扮演的消息列表
  * 将用户请求 + 角色 V3 卡信息转换为 LLM 消息格式
  */
@@ -49,16 +63,16 @@ function buildMessages(req: ChatRequest): ChatMessage[] {
 4. Show your character's personality traits in your responses.`;
     }
 
-    messages.push({ role: 'system', content: systemPrompt });
+    messages.push({ role: 'system', content: sanitizeText(systemPrompt) });
 
     // 如果有 first_mes，作为 assistant 的初始消息
     if (req.first_mes) {
         const charName = req.characterName || 'Character';
         messages.push({
             role: 'assistant',
-            content: req.first_mes
+            content: sanitizeText(req.first_mes
                 .replace(/\{\{char\}\}/gi, charName)
-                .replace(/\{\{user\}\}/gi, 'User'),
+                .replace(/\{\{user\}\}/gi, 'User')),
         });
     }
 
@@ -76,18 +90,18 @@ function buildMessages(req: ChatRequest): ChatMessage[] {
         for (const msg of recentHistory) {
             messages.push({
                 role: msg.role === 'user' ? 'user' : 'assistant',
-                content: msg.text,
+                content: sanitizeText(msg.text),
             });
         }
     }
 
     // 历史记录后指令
     if (req.post_history_instructions) {
-        messages.push({ role: 'system', content: req.post_history_instructions });
+        messages.push({ role: 'system', content: sanitizeText(req.post_history_instructions) });
     }
 
     // 当前消息
-    messages.push({ role: 'user', content: req.message });
+    messages.push({ role: 'user', content: sanitizeText(req.message) });
 
     return messages;
 }
@@ -159,7 +173,6 @@ async function callLlmApiStream(config: LlmConfig, messages: ChatMessage[]): Pro
             temperature: 0.9,
             max_tokens: 8192,
             stream: true,
-            thinking: false,
         }),
     });
 
