@@ -63,7 +63,7 @@ export async function chatStream(req: Request, res: Response, _next: NextFunctio
                             const parsed = JSON.parse(data);
                             const delta = parsed.choices?.[0]?.delta?.content;
                             if (delta) {
-                                // 将 delta 内容封装为 SSE 事件发送给前端
+                                // 只转发实际内容，跳过 reasoning/thinking 字段
                                 res.write(`data: ${JSON.stringify({ text: delta })}\n\n`);
                             }
                         } catch {

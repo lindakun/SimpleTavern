@@ -111,7 +111,6 @@ async function callLlmApi(config: LlmConfig, messages: ChatMessage[]): Promise<s
             messages,
             temperature: 0.9,
             max_tokens: 8192,
-            thinking: false,
         }),
     });
 
@@ -130,7 +129,7 @@ async function callLlmApi(config: LlmConfig, messages: ChatMessage[]): Promise<s
 
     const firstChoice = data.choices[0];
     const finishReason = firstChoice.finish_reason;
-    const content = firstChoice.message?.content ?? firstChoice.delta?.content;
+    const content = firstChoice.message?.content ?? firstChoice.delta?.content ?? '';
 
     if (finishReason && finishReason !== 'stop') {
         logger.warn(`LLM 非正常结束, finish_reason=${finishReason}, content=${JSON.stringify(content)}`);
