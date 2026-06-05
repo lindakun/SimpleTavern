@@ -40,6 +40,76 @@ export function useChatApi() {
     sendMessage: (params: SendMessageParams) =>
       post<SendMessageResponse>('/api/chat', params, { timeout: 180000 }),
 
+    // 流式聊天 — 通过 SSE 逐 token 接收，onChunk 每次收到文本片段时调用
+    sendMessageStream: async (
+      params: SendMessageParams,
+      onChunk: (text: string) => void,
+      onDone: () => void,
+      onError: (err: Error) => void,
+    ) => {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 180000); // 3分钟超时
+
+      try {
+        const response = await fetch('/api/chat/stream', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify(params),
+          signal: controller.signal,
+        });
+
+        if (!response.ok) {
+          const errData = await response.json().catch(() => ({}));
+          throw new Error((errData as any)?.error || `HTTP ${response.status}`);
+        }
+
+        if (!response.body) {
+          throw new Error('浏览器不支持流式响应');
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              const data = line.slice(6).trim();
+              if (data === '[DONE]') {
+                onDone();
+                return;
+              }
+              try {
+                const parsed = JSON.parse(data);
+                if (parsed.error) {
+                  onError(new Error(parsed.error));
+                  return;
+                }
+                if (parsed.text) {
+                  onChunk(parsed.text);
+                }
+              } catch {
+                // 跳过无法解析的行
+              }
+            }
+          }
+        }
+        onDone();
+      } catch (err: unknown) {
+        onError(err instanceof Error ? err : new Error('流式请求失败'));
+      } finally {
+        clearTimeout(timeoutId);
+      }
+    },
+
     // 获取聊天线程列表
     getThreads: () =>
       get<ChatThread[]>('/api/chat/threads'),

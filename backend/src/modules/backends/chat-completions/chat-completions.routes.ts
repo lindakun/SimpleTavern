@@ -9,6 +9,8 @@ export function createChatRoutes(): Router {
 
     // 通用聊天接口 — 前端聊天入口
     router.post('/chat', chatController.chat);
+    // 流式聊天接口 — SSE 逐 token 推送
+    router.post('/chat/stream', chatController.chatStream);
     router.get('/chat/providers', chatController.getProviders);
 
     return router;

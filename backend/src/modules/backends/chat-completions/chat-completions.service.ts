@@ -62,9 +62,18 @@ function buildMessages(req: ChatRequest): ChatMessage[] {
         });
     }
 
-    // 历史消息
+    // 历史消息 — 只保留最近 N 轮对话，防止上下文窗口溢出
+    const MAX_HISTORY_MESSAGES = 30; // 约 15 轮对话（user + assistant）
     if (req.history && req.history.length > 0) {
-        for (const msg of req.history) {
+        const recentHistory = req.history.length > MAX_HISTORY_MESSAGES
+            ? req.history.slice(-MAX_HISTORY_MESSAGES)
+            : req.history;
+
+        if (req.history.length > MAX_HISTORY_MESSAGES) {
+            logger.debug(`历史消息已截断: ${req.history.length} → ${MAX_HISTORY_MESSAGES} 条`);
+        }
+
+        for (const msg of recentHistory) {
             messages.push({
                 role: msg.role === 'user' ? 'user' : 'assistant',
                 content: msg.text,
@@ -84,7 +93,7 @@ function buildMessages(req: ChatRequest): ChatMessage[] {
 }
 
 /**
- * 通过 OpenAI-compatible API 发送聊天补全请求
+ * 通过 OpenAI-compatible API 发送聊天补全请求（非流式）
  */
 async function callLlmApi(config: LlmConfig, messages: ChatMessage[]): Promise<string> {
     const url = `${config.baseUrl.replace(/\/+$/, '')}/chat/completions`;
@@ -127,6 +136,64 @@ async function callLlmApi(config: LlmConfig, messages: ChatMessage[]): Promise<s
     }
 
     return content || '';
+}
+
+/**
+ * 通过 OpenAI-compatible API 流式发送聊天补全请求
+ * 返回 ReadableStream<Uint8Array>，逐 token 产出 SSE 数据
+ */
+async function callLlmApiStream(config: LlmConfig, messages: ChatMessage[]): Promise<ReadableStream<Uint8Array>> {
+    const url = `${config.baseUrl.replace(/\/+$/, '')}/chat/completions`;
+
+    logger.debug(`LLM 流式请求: ${url}, model=${config.model}`);
+
+    const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${config.apiKey}`,
+        },
+        body: JSON.stringify({
+            model: config.model,
+            messages,
+            temperature: 0.9,
+            max_tokens: 8192,
+            stream: true,
+        }),
+    });
+
+    if (!response.ok) {
+        const errorText = await response.text().catch(() => 'Unknown error');
+        throw new Error(`LLM API 错误 (${response.status}): ${errorText}`);
+    }
+
+    if (!response.body) {
+        throw new Error('LLM API 未返回流式响应体');
+    }
+
+    return response.body;
+}
+
+/**
+ * 流式处理聊天请求 — 返回 SSE ReadableStream
+ */
+export async function processChatStream(req: ChatRequest): Promise<ReadableStream<Uint8Array>> {
+    const configs = getLlmConfigs();
+
+    let activeConfig: LlmConfig | undefined;
+    if (req.provider) {
+        activeConfig = configs.find(c => c.id === req.provider || c.name === req.provider);
+    }
+    if (!activeConfig) {
+        activeConfig = getActiveLlm();
+    }
+
+    if (!activeConfig) {
+        throw new Error('未配置 LLM，无法使用流式聊天');
+    }
+
+    const messages = buildMessages(req);
+    return callLlmApiStream(activeConfig, messages);
 }
 
 /**

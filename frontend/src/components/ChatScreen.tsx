@@ -20,17 +20,20 @@ export default function ChatScreen({
   onGoBack,
 }: ChatScreenProps) {
   const [inputText, setInputText] = useState('');
-  const [isTyping, setIsTyping] = useState(false);
   const [lastError, setLastError] = useState<string | null>(null);
   const [failedText, setFailedText] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Auto-scroll when messages update
+  // 判断 AI 是否正在流式回复：最后一条是 AI 消息但内容为空
+  const lastMsg = messages[messages.length - 1];
+  const isStreaming = lastMsg?.role === 'model' && lastMsg?.text === '';
+
+  // Auto-scroll when messages update or streaming
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages, isTyping]);
+  }, [messages, isStreaming]);
 
   // 键盘回避：当输入框聚焦时，确保它在可视区域内
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -50,10 +53,10 @@ export default function ChatScreen({
   const handleSend = async (e?: React.FormEvent, retryText?: string) => {
     if (e) e.preventDefault();
     const textToSend = retryText ?? inputText;
-    if (!textToSend.trim() || isTyping) return;
+    // 阻止重复发送：如果最后一条 AI 消息正在流式接收中
+    if (!textToSend.trim() || isStreaming) return;
 
     setInputText('');
-    setIsTyping(true);
     setLastError(null);
     setFailedText(null);
 
@@ -63,8 +66,6 @@ export default function ChatScreen({
       const message = err instanceof Error ? err.message : '消息发送失败';
       setLastError(message);
       setFailedText(textToSend);
-    } finally {
-      setIsTyping(false);
     }
   };
 
@@ -183,8 +184,8 @@ export default function ChatScreen({
           );
         })}
 
-        {/* Active model typing states */}
-        {isTyping && (
+        {/* 流式接收中：AI 占位消息的内容实时更新，此处显示空占位时的加载动画 */}
+        {isStreaming && (
           <div className="flex items-start gap-2.5 animate-pulse">
             <LazyImage alt={character.name} src={character.avatar} className="w-8 h-8 rounded-full object-cover border border-outline-variant/40" />
             <div className="bg-surface-container/60 border border-outline-variant/20 px-4 py-3 rounded-2xl rounded-tl-none">
@@ -232,7 +233,7 @@ export default function ChatScreen({
           />
           <button
             type="submit"
-            disabled={!inputText.trim() || isTyping}
+            disabled={!inputText.trim() || isStreaming}
             className="p-2 w-8 h-8 shrink-0 bg-gradient-to-r from-accent-pink to-accent-purple text-white hover:brightness-110 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg transition-all flex items-center justify-center"
           >
             <Send className="w-3.5 h-3.5" />
