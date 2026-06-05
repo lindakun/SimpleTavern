@@ -39,6 +39,9 @@ export async function chatStream(req: Request, res: Response, _next: NextFunctio
             provider,
         });
 
+        logger.info('SSE 流已建立，开始读取...');
+        let chunkCount = 0;
+
         const reader = llmStream.getReader();
         const decoder = new TextDecoder();
         let buffer = '';
@@ -63,6 +66,7 @@ export async function chatStream(req: Request, res: Response, _next: NextFunctio
                             const parsed = JSON.parse(data);
                             const delta = parsed.choices?.[0]?.delta?.content;
                             if (delta) {
+                                chunkCount++;
                                 // 只转发实际内容，跳过 reasoning/thinking 字段
                                 res.write(`data: ${JSON.stringify({ text: delta })}\n\n`);
                             }
@@ -77,6 +81,7 @@ export async function chatStream(req: Request, res: Response, _next: NextFunctio
         }
 
         res.write('data: [DONE]\n\n');
+        logger.info(`SSE 流结束, 共发送 ${chunkCount} 个 token`);
         res.end();
     } catch (err: any) {
         logger.error('Chat Stream API 错误:', err);

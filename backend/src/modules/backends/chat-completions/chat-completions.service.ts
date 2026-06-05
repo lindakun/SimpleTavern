@@ -159,7 +159,8 @@ async function callLlmApi(config: LlmConfig, messages: ChatMessage[]): Promise<s
 async function callLlmApiStream(config: LlmConfig, messages: ChatMessage[]): Promise<ReadableStream<Uint8Array>> {
     const url = `${config.baseUrl.replace(/\/+$/, '')}/chat/completions`;
 
-    logger.debug(`LLM 流式请求: ${url}, model=${config.model}`);
+    logger.info(`LLM 流式请求: ${url}, model=${config.model}, messages=${messages.length}`);
+    const startTime = Date.now();
 
     const response = await fetch(url, {
         method: 'POST',
@@ -185,6 +186,7 @@ async function callLlmApiStream(config: LlmConfig, messages: ChatMessage[]): Pro
         throw new Error('LLM API 未返回流式响应体');
     }
 
+    logger.info(`LLM 流式响应已连接, 耗时: ${Date.now() - startTime}ms`);
     return response.body;
 }
 
