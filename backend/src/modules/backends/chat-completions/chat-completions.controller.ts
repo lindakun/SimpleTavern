@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import * as chatService from './chat-completions.service.js';
+import { getActiveLlm } from '../llm-config.js';
 import { logger } from '../../../common/logger.js';
 
 /**
@@ -134,5 +135,6 @@ export async function chat(req: Request, res: Response, _next: NextFunction): Pr
  */
 export async function getProviders(_req: Request, res: Response): Promise<void> {
     const providers = chatService.getProviders();
-    res.json({ providers, active: providers[0]?.id || null });
+    const active = getActiveLlm();
+    res.json({ providers, active: active?.id || null });
 }
