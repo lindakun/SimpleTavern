@@ -12,7 +12,7 @@ services:
       - PORT=8001
       - NODE_ENV=production
       - SIMPLE_TAVERN_DATA_ROOT=/data
-      - SIMPLE_TAVERN_ACTIVE_LLM=llm_0
+      # ACTIVE_LLM 由 backend/.env 控制，不在此硬编码
       # Google OAuth credentials should be set in backend/.env
       # SIMPLE_TAVERN_GOOGLE_CLIENT_ID=
       # SIMPLE_TAVERN_GOOGLE_CLIENT_SECRET=
