@@ -45,7 +45,7 @@ function getImportedCharacters(): any[] {
             result.push({
                 id: `imported_${path.parse(file).name}`,
                 name,
-                avatar: '',
+                avatar: `/api/characters/avatar/${encodeURIComponent(file)}`,
                 creator: charData?.creator || 'Imported',
                 rating: avgRating,
                 reviewCount: reviews.length,
@@ -155,7 +155,7 @@ export function addReview(req: Request, res: Response, next: NextFunction): void
                     res.json({
                         id,
                         name: charData?.name || path.parse(matchedFile).name,
-                        avatar: '',
+                        avatar: `/api/characters/avatar/${encodeURIComponent(matchedFile)}`,
                         creator: charData?.creator || 'Imported',
                         rating: avgRating,
                         reviewCount: reviews.length,
@@ -205,7 +205,7 @@ export function addReview(req: Request, res: Response, next: NextFunction): void
                         res.json({
                             id,
                             name: charData?.name || '',
-                            avatar: '',
+                            avatar: `/api/characters/avatar/${encodeURIComponent(id)}`,
                             creator: charData?.creator || 'Imported',
                             rating: avgRating,
                             reviewCount: reviews.length,
