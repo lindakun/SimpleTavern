@@ -5,6 +5,7 @@ import * as characterController from './characters.controller.js';
 import * as userCharacterService from './characters.user.service.js';
 import * as characterService from './characters.service.js';
 import { getAllPngReviews } from './reviews.repository.js';
+import { readCharacterCardFromFile } from './characters.parser.js';
 import { BadRequestError } from '../../common/errors.js';
 import { getConfig } from '../../config/index.js';
 import { getUserDirectories } from '../users/users.repository.js';
@@ -185,6 +186,7 @@ export function createPublicCharacterRoutes(): Router {
             const config = getConfig();
 
             // 辅助函数：尝试从指定目录提供文件
+            // 如果角色PNG中嵌入了 ugirl_url，则302重定向到原始头像
             const tryServeFromDir = (charDir: string): boolean => {
                 const resolvedDir = path.resolve(charDir);
                 const filePath = path.resolve(resolvedDir, req.params.filename);
@@ -196,6 +198,19 @@ export function createPublicCharacterRoutes(): Router {
 
                 if (!fs.existsSync(filePath)) {
                     return false;
+                }
+
+                // 尝试从PNG中提取ugirl原始头像URL
+                try {
+                    const jsonStr = readCharacterCardFromFile(filePath);
+                    const charData = JSON.parse(jsonStr);
+                    const ugirlUrl = (charData as any)?.data?.extensions?.ugirl_url;
+                    if (ugirlUrl && typeof ugirlUrl === 'string' && ugirlUrl.startsWith('http')) {
+                        res.redirect(302, ugirlUrl);
+                        return true;
+                    }
+                } catch {
+                    // PNG中没有角色数据或无法解析，继续正常提供文件
                 }
 
                 res.setHeader('Cache-Control', 'public, max-age=3600');

@@ -1,4 +1,5 @@
 import express from 'express';
+import type { Request, Response } from 'express';
 import helmet from 'helmet';
 import compression from 'compression';
 import cookieSession from 'cookie-session';
@@ -46,8 +47,14 @@ export function createApp(config: ServerConfig): express.Express {
     // ---- 安全头 ----
     app.use(helmet({ contentSecurityPolicy: false }));
 
-    // ---- 压缩 ----
-    app.use(compression());
+    // ---- 压缩（跳过 SSE 流式端点，否则会缓冲破坏实时性） ----
+    app.use(compression({
+        filter: (req: Request, res: Response) => {
+            if (req.path === '/api/chat/stream') return false;
+            // 使用 compression 模块默认 filter（基于 Content-Type 判断是否可压缩）
+            return compression.filter(req, res);
+        },
+    }));
 
     // ---- 请求体解析（跳过 multipart/form-data，由 multer 处理） ----
     app.use(express.json({ limit: '500mb', type: ['application/json', 'application/csp-report'] }));

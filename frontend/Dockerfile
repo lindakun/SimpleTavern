@@ -19,7 +19,7 @@ server {
     root /usr/share/nginx/html;
     index index.html;
 
-    # API 代理到后端
+    # API 代理到后端（禁用缓冲以支持 SSE 流式响应）
     location /api/ {
         proxy_pass http://backend:8001/api/;
         proxy_http_version 1.1;
@@ -27,6 +27,10 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
     }
 
     # SPA 路由：所有非文件请求返回 index.html
