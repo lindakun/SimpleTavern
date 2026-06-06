@@ -176,15 +176,13 @@ export function createPublicCharacterRoutes(): Router {
         }
     });
 
-    // 获取角色 PNG 头像图片（公开，通过 session 获取用户目录）
-    // 非 default-user 用户也能查看 default-user 的头像
+    // 获取角色 PNG 头像图片（公开访问，无需登录）
+    // 未登录时直接从 default-user 目录提供（用于 Discovery 页面）
+    // 已登录时先查当前用户目录，再回退到 default-user 目录
     router.get('/characters/avatar/:filename', (req, res, next) => {
         try {
             const handle = getHandle(req);
-            if (!handle) { res.status(403).json({ error: 'Unauthorized' }); return; }
-
             const config = getConfig();
-            const dirs = getUserDirectories(config.dataRoot, handle);
 
             // 辅助函数：尝试从指定目录提供文件
             const tryServeFromDir = (charDir: string): boolean => {
@@ -205,10 +203,13 @@ export function createPublicCharacterRoutes(): Router {
                 return true;
             };
 
-            // 先查当前用户目录
-            if (tryServeFromDir(dirs.characters)) return;
+            if (handle) {
+                // 已登录：先查当前用户目录
+                const dirs = getUserDirectories(config.dataRoot, handle);
+                if (tryServeFromDir(dirs.characters)) return;
+            }
 
-            // 回退到 default-user 目录
+            // 回退到 default-user 目录（用户不是 default-user 或未登录时）
             if (handle !== 'default-user') {
                 const defaultDirs = getUserDirectories(config.dataRoot, 'default-user');
                 if (tryServeFromDir(defaultDirs.characters)) return;
