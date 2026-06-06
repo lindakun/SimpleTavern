@@ -93,7 +93,52 @@ export function createPublicCharacterRoutes(): Router {
         }
     });
 
+    // 辅助函数：将原始角色数据映射为前端 Character 格式
+    function mapPngCharacters(pngChars: Record<string, unknown>[], handle: string, pngReviews: Record<string, any[]>): any[] {
+        return pngChars.map(c => {
+            const fileName = String(c.avatar || '');
+            const relativeKey = `${handle}/characters/${fileName}`;
+            const reviews = pngReviews[relativeKey] || [];
+            // 也尝试 default-user 的评价
+            const defaultKey = `default-user/characters/${fileName}`;
+            const allReviews = [...reviews, ...(pngReviews[defaultKey] || [])];
+            const totalRating = allReviews.reduce((sum: number, r: any) => sum + r.rating, 0);
+            const avgRating = allReviews.length > 0
+                ? parseFloat((totalRating / allReviews.length).toFixed(1))
+                : 0;
+
+            return {
+                id: fileName,
+                name: String(c.name || ''),
+                avatar: `/api/characters/avatar/${encodeURIComponent(fileName)}`,
+                creator: String((c.data as any)?.creator || ''),
+                rating: avgRating,
+                reviewCount: allReviews.length,
+                reviews: allReviews,
+                tags: Array.isArray(c.tags) ? c.tags : [],
+                description: String(c.description || (c.data as any)?.description || ''),
+                // V3 字段
+                personality: String((c.data as any)?.personality || ''),
+                scenario: String((c.data as any)?.scenario || ''),
+                first_mes: String((c.data as any)?.first_mes || ''),
+                mes_example: String((c.data as any)?.mes_example || ''),
+                creator_notes: String((c.data as any)?.creator_notes || ''),
+                system_prompt: String((c.data as any)?.system_prompt || ''),
+                post_history_instructions: String((c.data as any)?.post_history_instructions || ''),
+                alternate_greetings: Array.isArray((c.data as any)?.alternate_greetings) ? (c.data as any).alternate_greetings : [],
+                character_version: String((c.data as any)?.character_version || '1.0'),
+                extensions: (c.data as any)?.extensions || {},
+                // 兼容旧字段
+                tagline: '',
+                worldBook: String((c.data as any)?.extensions?.world || ''),
+                voiceType: 'sweet' as const,
+                status: 'online' as const,
+            };
+        });
+    }
+
     // 获取当前用户的 PNG 角色卡列表（映射为前端 Character 格式，含持久化评价）
+    // 非 default-user 用户也能看到 default-user 的角色
     router.get('/users/png-characters', (req, res, next) => {
         try {
             const handle = getHandle(req);
@@ -106,43 +151,24 @@ export function createPublicCharacterRoutes(): Router {
             // 加载用户 PNG 角色的持久化评价
             const pngReviews = getAllPngReviews();
 
-            const characters = pngChars.map(c => {
-                const fileName = String(c.avatar || '');
-                const relativeKey = `${handle}/characters/${fileName}`;
-                const reviews = pngReviews[relativeKey] || [];
-                const totalRating = reviews.reduce((sum: number, r: any) => sum + r.rating, 0);
-                const avgRating = reviews.length > 0
-                    ? parseFloat((totalRating / reviews.length).toFixed(1))
-                    : 0;
+            const characters = mapPngCharacters(pngChars, handle, pngReviews);
 
-                return {
-                    id: fileName,
-                    name: String(c.name || ''),
-                    avatar: `/api/characters/avatar/${encodeURIComponent(fileName)}`,
-                    creator: String((c.data as any)?.creator || ''),
-                    rating: avgRating,
-                    reviewCount: reviews.length,
-                    reviews,
-                    tags: Array.isArray(c.tags) ? c.tags : [],
-                    description: String(c.description || (c.data as any)?.description || ''),
-                    // V3 字段
-                    personality: String((c.data as any)?.personality || ''),
-                    scenario: String((c.data as any)?.scenario || ''),
-                    first_mes: String((c.data as any)?.first_mes || ''),
-                    mes_example: String((c.data as any)?.mes_example || ''),
-                    creator_notes: String((c.data as any)?.creator_notes || ''),
-                    system_prompt: String((c.data as any)?.system_prompt || ''),
-                    post_history_instructions: String((c.data as any)?.post_history_instructions || ''),
-                    alternate_greetings: Array.isArray((c.data as any)?.alternate_greetings) ? (c.data as any).alternate_greetings : [],
-                    character_version: String((c.data as any)?.character_version || '1.0'),
-                    extensions: (c.data as any)?.extensions || {},
-                    // 兼容旧字段
-                    tagline: '',
-                    worldBook: String((c.data as any)?.extensions?.world || ''),
-                    voiceType: 'sweet' as const,
-                    status: 'online' as const,
-                };
-            });
+            // 非 default-user 用户也显示 default-user 创建的角色
+            if (handle !== 'default-user') {
+                const defaultDirs = getUserDirectories(config.dataRoot, 'default-user');
+                if (fs.existsSync(defaultDirs.characters)) {
+                    const defaultPngChars = characterService.getAllCharacters(
+                        defaultDirs.characters, defaultDirs.chats, false,
+                    );
+                    const existingIds = new Set(characters.map(c => String(c.id)));
+                    const defaultMapped = mapPngCharacters(defaultPngChars, 'default-user', pngReviews);
+                    for (const dc of defaultMapped) {
+                        if (!existingIds.has(String(dc.id))) {
+                            characters.push(dc);
+                        }
+                    }
+                }
+            }
 
             res.json(characters);
         } catch (err) {
@@ -151,6 +177,7 @@ export function createPublicCharacterRoutes(): Router {
     });
 
     // 获取角色 PNG 头像图片（公开，通过 session 获取用户目录）
+    // 非 default-user 用户也能查看 default-user 的头像
     router.get('/characters/avatar/:filename', (req, res, next) => {
         try {
             const handle = getHandle(req);
@@ -158,22 +185,36 @@ export function createPublicCharacterRoutes(): Router {
 
             const config = getConfig();
             const dirs = getUserDirectories(config.dataRoot, handle);
-            const resolvedDir = path.resolve(dirs.characters);
-            const filePath = path.resolve(resolvedDir, req.params.filename);
 
-            // 防止路径遍历
-            if (!filePath.startsWith(resolvedDir + path.sep) && filePath !== resolvedDir) {
-                res.status(403).json({ error: 'Forbidden' });
-                return;
+            // 辅助函数：尝试从指定目录提供文件
+            const tryServeFromDir = (charDir: string): boolean => {
+                const resolvedDir = path.resolve(charDir);
+                const filePath = path.resolve(resolvedDir, req.params.filename);
+
+                // 防止路径遍历
+                if (!filePath.startsWith(resolvedDir + path.sep) && filePath !== resolvedDir) {
+                    return false;
+                }
+
+                if (!fs.existsSync(filePath)) {
+                    return false;
+                }
+
+                res.setHeader('Cache-Control', 'public, max-age=3600');
+                res.sendFile(filePath);
+                return true;
+            };
+
+            // 先查当前用户目录
+            if (tryServeFromDir(dirs.characters)) return;
+
+            // 回退到 default-user 目录
+            if (handle !== 'default-user') {
+                const defaultDirs = getUserDirectories(config.dataRoot, 'default-user');
+                if (tryServeFromDir(defaultDirs.characters)) return;
             }
 
-            if (!fs.existsSync(filePath)) {
-                res.status(404).json({ error: 'Not found' });
-                return;
-            }
-
-            res.setHeader('Cache-Control', 'public, max-age=3600');
-            res.sendFile(filePath);
+            res.status(404).json({ error: 'Not found' });
         } catch (err) {
             next(err);
         }

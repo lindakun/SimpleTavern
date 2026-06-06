@@ -7,6 +7,7 @@ import * as userCharacterService from './characters.user.service.js';
 import { BadRequestError, NotFoundError } from '../../common/errors.js';
 import { getConfig } from '../../config/index.js';
 import { getUserDirectories } from '../users/users.repository.js';
+import { logger } from '../../common/logger.js';
 
 function getUserDirs(req: Request) {
     const session = req.session as Record<string, any>;
@@ -15,14 +16,44 @@ function getUserDirs(req: Request) {
     return getUserDirectories(config.dataRoot, handle);
 }
 
+/** 获取 default-user 的角色目录（供全局共享） */
+function getDefaultUserDirs() {
+    const config = getConfig();
+    return getUserDirectories(config.dataRoot, 'default-user');
+}
+
+/** 当前登录用户是否为 default-user */
+function isDefaultUser(req: Request): boolean {
+    const session = req.session as Record<string, any>;
+    return session?.handle === 'default-user';
+}
+
 /**
  * POST /api/characters/all
+ * 非 default-user 用户也会看到 default-user 创建的角色
  */
 export function getAllCharacters(req: Request, res: Response, next: NextFunction): void {
     try {
         const dirs = getUserDirs(req);
         const shallow = req.body?.shallow === true;
         const characters = characterService.getAllCharacters(dirs.characters, dirs.chats, shallow);
+
+        // 非 default-user 用户也能查看 default-user 的角色
+        if (!isDefaultUser(req)) {
+            const defaultDirs = getDefaultUserDirs();
+            if (fs.existsSync(defaultDirs.characters)) {
+                const defaultChars = characterService.getAllCharacters(
+                    defaultDirs.characters, defaultDirs.chats, shallow,
+                );
+                const existingNames = new Set(characters.map(c => String(c.avatar)));
+                for (const dc of defaultChars) {
+                    if (!existingNames.has(String(dc.avatar))) {
+                        characters.push(dc);
+                    }
+                }
+            }
+        }
+
         res.json(characters);
     } catch (err) {
         next(err);
@@ -31,12 +62,35 @@ export function getAllCharacters(req: Request, res: Response, next: NextFunction
 
 /**
  * POST /api/characters/get
+ * 非 default-user 用户也能获取 default-user 的角色
  */
 export function getCharacter(req: Request, res: Response, next: NextFunction): void {
     try {
         const dirs = getUserDirs(req);
         const avatarUrl = String(req.body.avatar_url || '');
-        const character = characterService.getCharacter(avatarUrl, dirs.characters, dirs.chats);
+
+        let character: Record<string, unknown> | null = null;
+
+        // 先查当前用户目录
+        const ownFilePath = path.join(dirs.characters, avatarUrl);
+        if (fs.existsSync(ownFilePath)) {
+            character = characterService.getCharacter(avatarUrl, dirs.characters, dirs.chats);
+        }
+
+        // 回退到 default-user 目录
+        if (!character && !isDefaultUser(req)) {
+            const defaultDirs = getDefaultUserDirs();
+            const defaultFilePath = path.join(defaultDirs.characters, avatarUrl);
+            if (fs.existsSync(defaultFilePath)) {
+                character = characterService.getCharacter(avatarUrl, defaultDirs.characters, defaultDirs.chats);
+            }
+        }
+
+        if (!character) {
+            res.status(404).json({ error: 'Character not found' });
+            return;
+        }
+
         res.json(character);
     } catch (err) {
         if (err instanceof NotFoundError) {
