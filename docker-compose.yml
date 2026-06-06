@@ -21,8 +21,8 @@ services:
     volumes:
       # 共享原项目的数据目录（本地开发）
       - ${SIMPLE_TAVERN_DATA_ROOT:-/Users/linda/code/SillyTavern/data}:/data
-      # ugirl 头像目录（可选，用于批量导入）
-      - /home/ubuntu/code/ugirl_craw/output/test_avatars:/ugirl_avatars:ro
+      # ugirl 数据目录（JSON + avatars_processed，用于批量导入）
+      - /home/ubuntu/code/ugirl_craw/output:/ugirl_data:ro
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:8001/version"]
