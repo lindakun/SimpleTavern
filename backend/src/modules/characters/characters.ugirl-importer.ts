@@ -65,13 +65,19 @@ function extractAvatarFileName(avatarLocal: string): string {
 
 /**
  * 加载图片文件，非 PNG 格式用 sharp 转换为 PNG
+ * 如果转换失败(如HEIF格式不支持),返回 undefined
  */
-async function loadAndConvertImage(filePath: string): Promise<Buffer> {
+async function loadAndConvertImage(filePath: string): Promise<Buffer | undefined> {
     const ext = path.extname(filePath).toLowerCase();
     if (ext === '.png') return fs.readFileSync(filePath);
 
-    logger.info(`转换头像格式: ${path.basename(filePath)} (${ext}) -> PNG`);
-    return await sharp(filePath).png().toBuffer();
+    try {
+        logger.info(`转换头像格式: ${path.basename(filePath)} (${ext}) -> PNG`);
+        return await sharp(filePath).png().toBuffer();
+    } catch (err: any) {
+        logger.warn(`头像转换失败 (${path.basename(filePath)}): ${err.message}`);
+        return undefined;
+    }
 }
 
 /**
@@ -87,7 +93,8 @@ async function findAvatarFile(
         const fileName = extractAvatarFileName(item.avatar_local);
         const fullPath = path.join(avatarsDir, fileName);
         if (fs.existsSync(fullPath)) {
-            return await loadAndConvertImage(fullPath);
+            const buffer = await loadAndConvertImage(fullPath);
+            if (buffer) return buffer;
         }
     }
 
@@ -95,7 +102,8 @@ async function findAvatarFile(
     for (const ext of SUPPORTED_EXTENSIONS) {
         const fullPath = path.join(avatarsDir, `${item.id}${ext}`);
         if (fs.existsSync(fullPath)) {
-            return await loadAndConvertImage(fullPath);
+            const buffer = await loadAndConvertImage(fullPath);
+            if (buffer) return buffer;
         }
     }
 
