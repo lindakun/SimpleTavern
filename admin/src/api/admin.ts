@@ -2,7 +2,7 @@
  * Admin API 调用封装
  */
 
-import { api, apiRequest } from './client';
+import { api } from './client';
 import type { UserViewModel, CreateUserRequest, UserActionRequest, AdminCharacterItem, AdminWorldItem, WorldInfoData, UgirlImportResult } from '../types';
 
 export const adminApi = {
@@ -92,15 +92,10 @@ export const adminApi = {
 
   // ===== ugirl 批量导入 =====
 
-  // 批量导入 ugirl 角色
-  adminImportUgirl: (file: File, handle: string, avatarsDir?: string) => {
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('handle', handle);
-    if (avatarsDir) formData.append('avatars_dir', avatarsDir);
-    return apiRequest<UgirlImportResult>('/api/characters/admin-import-ugirl', {
-      method: 'POST',
-      body: formData,
-    });
-  },
+  // 批量导入 ugirl 角色（传入服务器上的 JSON 文件路径）
+  adminImportUgirl: (filePath: string, handle: string) =>
+    api.post<UgirlImportResult>('/api/characters/admin-import-ugirl', {
+      file_path: filePath,
+      handle,
+    }),
 };

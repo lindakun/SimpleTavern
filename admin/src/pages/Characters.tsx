@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from 'react';
+import { useState, useMemo } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   useAllCharacters,
@@ -9,7 +9,7 @@ import {
   useUsers,
   characterKeys,
 } from '../hooks/useAdminApi';
-import { Search, Trash2, X, Check, User, Pencil, Upload, ChevronDown, ChevronRight, Download, Folder, Square, CheckSquare, Loader } from 'lucide-react';
+import { Search, Trash2, X, Check, User, Pencil, Upload, ChevronDown, ChevronRight, Folder, Square, CheckSquare, Loader } from 'lucide-react';
 import type { AdminCharacterItem, UgirlImportResult } from '../types';
 
 export default function Characters() {
@@ -24,9 +24,8 @@ export default function Characters() {
   const importUgirl = useAdminImportUgirl();
   const [showImport, setShowImport] = useState(false);
   const [importHandle, setImportHandle] = useState('admin');
-  const [importAvatarsDir, setImportAvatarsDir] = useState('/ugirl_avatars');
+  const [importFilePath, setImportFilePath] = useState('');
   const [importResult, setImportResult] = useState<UgirlImportResult | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // 批量删除状态
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
@@ -207,10 +206,10 @@ export default function Characters() {
           className="w-full flex items-center justify-between px-5 py-3 text-sm text-white font-mono hover:bg-surface-container/50 transition-colors cursor-pointer"
         >
           <div className="flex items-center gap-2.5">
-            <Download className="w-4 h-4 text-accent-pink" />
+            <Upload className="w-4 h-4 text-accent-pink" />
             <span className="font-semibold">批量导入 ugirl 角色</span>
             <span className="text-[10px] text-on-surface-variant/50 font-normal">
-              从 JSON 文件批量导入角色卡
+              从服务器 JSON 文件批量导入角色卡
             </span>
           </div>
           {showImport ? <ChevronDown className="w-4 h-4 text-on-surface-variant/50" /> : <ChevronRight className="w-4 h-4 text-on-surface-variant/50" />}
@@ -219,81 +218,69 @@ export default function Characters() {
         {showImport && (
           <div className="px-5 pb-5 space-y-4">
             {/* 目标用户选择 */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <div className="space-y-1.5">
-                <label className="text-[11px] font-semibold text-on-surface-variant ml-1">
-                  导入到用户
-                </label>
-                <div className="flex items-center gap-2 bg-surface-container/50 border border-outline-variant/20 rounded-xl px-3 py-2">
-                  <User className="w-3.5 h-3.5 text-on-surface-variant/60 flex-shrink-0" />
-                  <select
-                    value={importHandle}
-                    onChange={(e) => setImportHandle(e.target.value)}
-                    className="bg-transparent text-xs text-white outline-none cursor-pointer w-full"
-                  >
-                    {users.map((u) => (
-                      <option key={u.handle} value={u.handle}>{u.handle}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <div className="space-y-1.5 md:col-span-2">
-                <label className="text-[11px] font-semibold text-on-surface-variant ml-1">
-                  头像目录 <span className="text-on-surface-variant/40 font-normal">（可选，服务器路径）</span>
-                </label>
-                <div className="flex items-center gap-2 bg-surface-container/50 border border-outline-variant/20 rounded-xl px-3 py-2">
-                  <Folder className="w-3.5 h-3.5 text-on-surface-variant/60 flex-shrink-0" />
-                  <input
-                    type="text"
-                    value={importAvatarsDir}
-                    onChange={(e) => setImportAvatarsDir(e.target.value)}
-                    placeholder="/path/to/test_avatars"
-                    className="bg-transparent text-xs text-white outline-none w-full placeholder:text-on-surface-variant/30"
-                  />
-                </div>
+            <div className="space-y-1.5">
+              <label className="text-[11px] font-semibold text-on-surface-variant ml-1">
+                导入到用户
+              </label>
+              <div className="flex items-center gap-2 bg-surface-container/50 border border-outline-variant/20 rounded-xl px-3 py-2">
+                <User className="w-3.5 h-3.5 text-on-surface-variant/60 flex-shrink-0" />
+                <select
+                  value={importHandle}
+                  onChange={(e) => setImportHandle(e.target.value)}
+                  className="bg-transparent text-xs text-white outline-none cursor-pointer w-full"
+                >
+                  {users.map((u) => (
+                    <option key={u.handle} value={u.handle}>{u.handle}</option>
+                  ))}
+                </select>
               </div>
             </div>
 
-            {/* 文件上传 + 操作按钮 */}
-            <div className="flex items-center gap-3">
-              <div className="flex-1">
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".json"
-                  onChange={() => {
-                    // 清空上次结果
-                    setImportResult(null);
-                  }}
-                  className="w-full text-xs text-on-surface-variant file:mr-3 file:py-1.5 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-accent-purple/20 file:text-accent-pink file:cursor-pointer hover:file:bg-accent-purple/30 transition-colors file:transition-colors cursor-pointer"
-                />
-              </div>
-              <button
-                onClick={async () => {
-                  const file = fileInputRef.current?.files?.[0];
-                  if (!file) return;
+            {/* JSON 文件路径 */}
+            <div className="space-y-1.5">
+              <label className="text-[11px] font-semibold text-on-surface-variant ml-1">
+                JSON 文件路径 <span className="text-on-surface-variant/40 font-normal">（服务器上的绝对路径，头像目录自动从同级 avatars_processed 解析）</span>
+              </label>
+              <div className="flex items-center gap-3">
+                <div className="flex-1 flex items-center gap-2 bg-surface-container/50 border border-outline-variant/20 rounded-xl px-3 py-2">
+                  <Folder className="w-3.5 h-3.5 text-on-surface-variant/60 flex-shrink-0" />
+                  <input
+                    type="text"
+                    value={importFilePath}
+                    onChange={(e) => {
+                      setImportFilePath(e.target.value);
+                      setImportResult(null);
+                    }}
+                    placeholder="/home/user/ugirl_craw/output/ugirl_recommended_all_processed.json"
+                    className="bg-transparent text-xs text-white outline-none w-full placeholder:text-on-surface-variant/30"
+                  />
+                </div>
+                <button
+                  onClick={async () => {
+                    const trimmed = importFilePath.trim();
+                    if (!trimmed) return;
 
-                  setImportResult(null);
-                  try {
-                    const result = await importUgirl.mutateAsync({
-                      file,
-                      handle: importHandle,
-                      avatarsDir: importAvatarsDir.trim() || undefined,
-                    });
-                    setImportResult(result as UgirlImportResult);
-                    // 重置文件输入
-                    if (fileInputRef.current) fileInputRef.current.value = '';
-                  } catch {
-                    // error handled by mutation
-                  }
-                }}
-                disabled={importUgirl.isPending}
-                className="flex items-center gap-2 px-5 py-2 bg-gradient-to-r from-accent-pink to-accent-purple text-white text-xs font-bold rounded-xl hover:brightness-110 active:scale-95 disabled:opacity-50 transition-all cursor-pointer"
-              >
-                <Upload className="w-3.5 h-3.5" />
-                {importUgirl.isPending ? '导入中...' : '开始导入'}
-              </button>
+                    setImportResult(null);
+                    try {
+                      const result = await importUgirl.mutateAsync({
+                        filePath: trimmed,
+                        handle: importHandle,
+                      });
+                      setImportResult(result as UgirlImportResult);
+                    } catch {
+                      // error handled by mutation
+                    }
+                  }}
+                  disabled={importUgirl.isPending || !importFilePath.trim()}
+                  className="flex items-center gap-2 px-5 py-2 bg-gradient-to-r from-accent-pink to-accent-purple text-white text-xs font-bold rounded-xl hover:brightness-110 active:scale-95 disabled:opacity-50 transition-all cursor-pointer whitespace-nowrap"
+                >
+                  <Upload className="w-3.5 h-3.5" />
+                  {importUgirl.isPending ? '导入中...' : '开始导入'}
+                </button>
+              </div>
+              <p className="text-[10px] text-on-surface-variant/40 ml-1">
+                头像将从 JSON 文件所在目录及同级 <code className="text-accent-pink/60">avatars_processed/</code> 目录自动查找
+              </p>
             </div>
 
             {/* 导入进度提示 */}

@@ -146,8 +146,8 @@ export function useAdminEditCharacter() {
 export function useAdminImportUgirl() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ file, handle, avatarsDir }: { file: File; handle: string; avatarsDir?: string }) =>
-      adminApi.adminImportUgirl(file, handle, avatarsDir),
+    mutationFn: ({ filePath, handle }: { filePath: string; handle: string }) =>
+      adminApi.adminImportUgirl(filePath, handle),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: characterKeys.all });
     },

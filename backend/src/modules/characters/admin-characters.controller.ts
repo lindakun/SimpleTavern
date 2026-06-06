@@ -148,20 +148,26 @@ export async function adminEditCharacter(req: Request, res: Response, next: Next
 /**
  * 管理员 - 批量导入 ugirl 角色
  * POST /api/characters/admin-import-ugirl
- * 接收: JSON 文件上传 + handle(目标用户) + avatars_dir(可选本地头像目录)
+ * 接收: { file_path: 服务器上的 JSON 文件路径, handle: 目标用户名 }
+ * 头像目录基于 JSON 文件所在目录自动解析（avatars_processed 子目录）
  */
 export async function adminImportUgirl(req: Request, res: Response, next: NextFunction): Promise<void> {
     const config = getConfig();
-    const file = (req as any).file;
 
     try {
-        if (!file) {
-            res.status(400).json({ error: 'BAD_REQUEST', message: '请上传 ugirl JSON 文件' });
+        const { file_path, handle: handleRaw } = req.body as { file_path?: string; handle?: string };
+
+        if (!file_path || typeof file_path !== 'string') {
+            res.status(400).json({ error: 'BAD_REQUEST', message: '请提供服务器上的 JSON 文件路径 (file_path)' });
             return;
         }
 
-        const handle = String(req.body.handle || 'admin');
-        const avatarsDir = req.body.avatars_dir ? String(req.body.avatars_dir) : undefined;
+        if (!fs.existsSync(file_path)) {
+            res.status(400).json({ error: 'BAD_REQUEST', message: `文件不存在: ${file_path}` });
+            return;
+        }
+
+        const handle = String(handleRaw || 'admin');
 
         // 验证目标用户存在
         const users = await getAllUsers();
@@ -178,28 +184,16 @@ export async function adminImportUgirl(req: Request, res: Response, next: NextFu
             fs.mkdirSync(dirs.characters, { recursive: true });
         }
 
-        // 验证 avatars_dir（如果提供）
-        if (avatarsDir && !fs.existsSync(avatarsDir)) {
-            res.status(400).json({ error: 'BAD_REQUEST', message: `头像目录不存在: ${avatarsDir}` });
-            return;
-        }
-
-        logger.info(`管理员导入 ugirl 角色: handle=${handle}, avatarsDir=${avatarsDir}, file=${file.originalname}`);
+        logger.info(`管理员导入 ugirl 角色: handle=${handle}, file_path=${file_path}`);
 
         const result = await importUgirlCharacters(
-            file.path,
+            file_path,
             dirs.characters,
-            avatarsDir,
         );
 
         res.json(result);
     } catch (err) {
         next(err);
-    } finally {
-        // 确保临时上传文件被清理
-        if (file?.path) {
-            try { fs.unlinkSync(file.path); } catch { /* 文件可能已被清理 */ }
-        }
     }
 }
 
