@@ -63,17 +63,27 @@ function extractAvatarFileName(avatarLocal: string): string {
     return path.basename(normalized);
 }
 
+/** PNG 文件签名 magic bytes */
+const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]);
+
 /**
  * 加载图片文件，非 PNG 格式用 sharp 转换为 PNG
+ * 先检查文件实际签名而非仅依赖扩展名（有些文件扩展名是 .png 但内容是 HEIF）
  * 如果转换失败(如HEIF格式不支持),返回 undefined
  */
 async function loadAndConvertImage(filePath: string): Promise<Buffer | undefined> {
     const ext = path.extname(filePath).toLowerCase();
-    if (ext === '.png') return fs.readFileSync(filePath);
+    const raw = fs.readFileSync(filePath);
 
+    // 检查文件是否确实是 PNG 格式（通过 magic bytes）
+    if (raw.length >= 8 && raw.slice(0, 8).equals(PNG_SIGNATURE)) {
+        return raw;
+    }
+
+    // 不是真正的 PNG，尝试用 sharp 转换
     try {
         logger.info(`转换头像格式: ${path.basename(filePath)} (${ext}) -> PNG`);
-        return await sharp(filePath).png().toBuffer();
+        return await sharp(raw).png().toBuffer();
     } catch (err: any) {
         logger.warn(`头像转换失败 (${path.basename(filePath)}): ${err.message}`);
         return undefined;
