@@ -634,18 +634,18 @@ location /sw.js {
 
 ### 部署分支
 
-> ⚠️ **重要**：当前生产环境部署的是 `feature/iteration-p0` 分支，**不是** `main`。`deploy-prd.sh` 已修复为自动检测当前分支并 reset 到对应的远程分支（而非硬编码 `origin/main`）。修改部署脚本前务必确认此逻辑。
+当前生产环境使用 `main` 分支。`deploy-prd.sh` 自动检测当前分支并 reset 到对应的远程分支（而非硬编码 `origin/main`）。
 
 ### 部署流程
 ```bash
 # 1. 本地提交代码到 GitHub
 git add -A
 git commit -m "feat: xxx"
-git push origin feature/iteration-p0
+git push origin main
 
 # 2. 一键部署（先 reset 再 deploy）
 ssh ubuntu@129.146.164.152 \
-  "cd /opt/simpletavern && sudo git fetch origin feature/iteration-p0 && sudo git reset --hard origin/feature/iteration-p0 && sudo bash deploy-prd.sh"
+  "cd /opt/simpletavern && sudo git fetch origin main && sudo git reset --hard origin/main && sudo bash deploy-prd.sh"
 ```
 
 > ⚠️ **注意**：必须先在服务器 `git reset --hard` 确保本地代码与远程一致，再执行 `deploy-prd.sh`。部署脚本会自动备份数据、递增 SW 版本号、重建容器、检查健康状态。
@@ -700,7 +700,7 @@ docker logs -f simple-tavern-backend
 cd /opt/simpletavern && docker compose restart
 
 # 手动拉取最新代码
-cd /opt/simpletavern && sudo git fetch origin feature/iteration-p0 && sudo git reset --hard origin/feature/iteration-p0
+cd /opt/simpletavern && sudo git fetch origin main && sudo git reset --hard origin/main
 ```
 
 ## 已知陷阱与踩坑记录
