@@ -139,7 +139,7 @@ export default function SwipeableRow({
 
       {/* 前景内容 — onClick 阻止滑动后的误触 */}
       <div
-        className="relative bg-surface-container/40 transition-transform duration-200 ease-out"
+        className="relative bg-surface-container transition-transform duration-200 ease-out"
         style={{ transform: `translateX(${translateX}px)` }}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
