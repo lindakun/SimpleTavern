@@ -6,7 +6,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useCharacterApi } from '../api/characters';
-import type { Review } from '../types';
+import type { Review, Character } from '../types';
 
 // Query Keys - 集中管理
 export const characterKeys = {
@@ -154,8 +154,8 @@ export function useCopyCharacter() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ characterId, sourceHandle }: { characterId: string; sourceHandle: string }) =>
-      api.copyCharacter(characterId, sourceHandle),
+    mutationFn: (character: Character) =>
+      api.copyCharacter(character),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: characterKeys.myCharacters() });
       queryClient.invalidateQueries({ queryKey: characterKeys.discover() });

@@ -13,7 +13,7 @@ interface CharacterDetailScreenProps {
   onGoBack?: () => void;
   onAddReview: (characterId: string, review: Review) => void;
   onSelectCharacter: (id: string) => void;
-  onCopyCharacter?: (characterId: string, sourceHandle: string) => void;
+  onCopyCharacter?: (character: Character) => void;
   favoriteIds: string[];
   toggleFavorite: (id: string) => void;
 }
@@ -413,7 +413,7 @@ export default function CharacterDetailScreen({
         {character.privacyType === 'public' && onCopyCharacter && (
           <button
             onClick={() => {
-              onCopyCharacter(character.id, character.creator);
+              onCopyCharacter(character);
               track('copy_character', { character_id: character.id, source: 'detail_page' });
             }}
             className="h-12 px-4 bg-accent-green/10 hover:bg-accent-green/20 border border-accent-green/30 text-accent-green rounded-xl font-bold text-xs active:scale-95 transition-all cursor-pointer flex items-center gap-2"

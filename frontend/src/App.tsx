@@ -300,9 +300,9 @@ export default function App() {
   }, [characterApi, showToast]);
 
   // 复制公共角色
-  const handleCopyCharacter = useCallback(async (characterId: string, sourceHandle: string) => {
+  const handleCopyCharacter = useCallback(async (character: Character) => {
     try {
-      const copy = await characterApi.copyCharacter(characterId, sourceHandle);
+      const copy = await characterApi.copyCharacter(character);
       setCharacters(prev => [copy, ...prev.filter(c => c.id !== copy.id)]);
       showToast(`已复制角色「${copy.name}」到我的角色（私有）`, 'success');
     } catch (err: unknown) {

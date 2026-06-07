@@ -19,25 +19,37 @@ export function createPublicCharacterRoutes(): Router {
 
     router.post('/characters/publish', characterController.publishCharacter);
 
-    // 复制公共角色到当前用户
+    // 复制公共角色到当前用户（前端传入角色完整数据）
     router.post('/characters/copy', async (req, res, next) => {
         try {
             const handle = getHandle(req);
             if (!handle) { res.status(403).json({ error: 'Unauthorized' }); return; }
 
-            const characterId = String(req.body.characterId || '');
-            const sourceHandle = String(req.body.sourceHandle || '');
-            if (!characterId || !sourceHandle) {
-                res.status(400).json({ error: 'characterId and sourceHandle are required' });
+            if (!req.body.name) {
+                res.status(400).json({ error: 'name is required' });
                 return;
             }
 
-            const copy = await userCharacterService.copyPublicCharacter(sourceHandle, characterId, handle);
-            if (!copy) {
-                res.status(404).json({ error: 'Character not found or not public' });
-                return;
-            }
-
+            const copy = await userCharacterService.publishCharacter(handle, {
+                name: req.body.name,
+                description: req.body.description || '',
+                personality: req.body.personality || '',
+                scenario: req.body.scenario || '',
+                first_mes: req.body.first_mes || '',
+                mes_example: req.body.mes_example || '',
+                creator_notes: req.body.creator_notes || '',
+                system_prompt: req.body.system_prompt || '',
+                post_history_instructions: req.body.post_history_instructions || '',
+                alternate_greetings: req.body.alternate_greetings || [],
+                tags: req.body.tags || [],
+                creator: handle,
+                character_version: req.body.character_version || '1.0',
+                avatar: req.body.avatar || '',
+                tagline: req.body.tagline || '',
+                worldBook: req.body.worldBook || '',
+                voiceType: req.body.voiceType || 'sweet',
+                privacyType: 'private',
+            });
             res.json(copy);
         } catch (err) {
             next(err);

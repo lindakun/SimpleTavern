@@ -65,8 +65,8 @@ export function useCharacterApi() {
     updateCharacterPrivacy: (characterId: string, privacyType: 'public' | 'private') =>
       post<Character>('/api/users/characters/privacy', { characterId, privacyType }),
 
-    // 复制公共角色
-    copyCharacter: (characterId: string, sourceHandle: string) =>
-      post<Character>('/api/characters/copy', { characterId, sourceHandle }),
+    // 复制公共角色（前端传入完整角色数据）
+    copyCharacter: (character: Character) =>
+      post<Character>('/api/characters/copy', character),
   };
 }
