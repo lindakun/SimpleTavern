@@ -19,13 +19,10 @@ export default function MyCharactersScreen({
   onDeleteCharacter,
   currentUser,
 }: MyCharactersScreenProps) {
-  // 显示用户自己的角色：custom_ 前缀（用户发布）+ .png 结尾（导入的 PNG 角色卡）
+  // 显示用户自己的角色：custom_ 前缀（用户发布）+ .png 结尾（用户目录下的 PNG 角色卡）
   const authorCharacters = characters.filter((c) => {
-    if (c.id.startsWith('custom_')) {
-      return !currentUser || c.creator === currentUser;
-    }
-    if (c.id.endsWith('.png')) {
-      return true;
+    if (c.id.startsWith('custom_') || c.id.endsWith('.png')) {
+      return !currentUser || !c.creator || c.creator === currentUser;
     }
     return false;
   });
