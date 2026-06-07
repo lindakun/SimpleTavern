@@ -54,6 +54,9 @@ export interface Character {
 
   // 世界书名称（用于详情页展示）
   worldBookName?: string;
+
+  // 图片导出时的原始文件名
+  avatar_url?: string;
 }
 
 export interface Review {
@@ -73,7 +76,10 @@ export interface ChatMessage {
 
 export interface ChatThread {
   characterId: string;
+  characterName?: string;
   lastMessageText?: string;
+  lastActive?: string;
+  messageCount?: number;
   unreadCount: number;
   messages: ChatMessage[];
   updatedAt?: string;
@@ -94,4 +100,12 @@ export interface AppState {
   chatThreads: Record<string, ChatThread>; // characterId -> Thread
   favoriteIds: string[]; // Dynamically added favorites
   isLoading: boolean;
+}
+
+/** 聊天消息发送状态 */
+export type SendState = 'idle' | 'sending' | 'streaming' | 'error';
+
+/** 每个角色的发送状态 */
+export interface CharacterSendState {
+  state: SendState;
 }

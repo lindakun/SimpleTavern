@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { ScreenId } from '../types';
 import { X, Zap, Edit, Sparkles } from 'lucide-react';
 import { useToast } from './Toast';

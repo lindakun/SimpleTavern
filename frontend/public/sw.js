@@ -2,17 +2,42 @@
  * SimpleTavern Service Worker
  *
  * 缓存策略:
- * - Stale-While-Revalidate: 先返回缓存，后台静默更新
- * - Cache-First: 缓存优先，未命中才请求网络
- * - Network-First: 网络优先，离线时返回缓存
+ * - 安装阶段预缓存关键静态资源（离线可用）
+ * - Stale-While-Revalidate: API 数据（先返回缓存，后台静默更新）
+ * - Cache-First: 不变数据（缓存优先，未命中才请求）
+ * - Network-First: 实时数据（网络优先，离线降级到缓存）
  */
 
 const BUILD_VERSION = '2026-05-30-2';
 const CACHE_NAME = 'simpletavern-' + BUILD_VERSION;
 
+// ─── 预缓存资源清单（安装时全部缓存）───
+const PRECACHE_ASSETS = [
+  '/',
+  '/yuzuai_logo.png',
+  '/manifest.json',
+];
+
 // ─── 生命周期事件 ───
 
-self.addEventListener('install', () => {
+self.addEventListener('install', (event) => {
+  event.waitUntil(
+    (async () => {
+      const cache = await caches.open(CACHE_NAME);
+      // 预缓存关键静态资源
+      await Promise.allSettled(
+        PRECACHE_ASSETS.map((url) =>
+          fetch(url, { cache: 'no-store' }).then((response) => {
+            if (response.ok) {
+              cache.put(url, response);
+            }
+          }).catch(() => {
+            // 预缓存失败不阻塞安装
+          }),
+        ),
+      );
+    })(),
+  );
   self.skipWaiting();
 });
 
@@ -22,11 +47,61 @@ self.addEventListener('activate', (event) => {
       Promise.all(
         keys
           .filter((key) => key !== CACHE_NAME && key.startsWith('simpletavern-'))
-          .map((key) => caches.delete(key))
-      )
-    )
+          .map((key) => caches.delete(key)),
+      ),
+    ),
   );
   self.clients.claim();
+});
+
+// ─── Push 通知 ───
+
+self.addEventListener('push', (event) => {
+  if (!event.data) return;
+
+  try {
+    const data = event.data.json();
+    const title = data.title || 'Yuzu AI';
+    const options = {
+      body: data.body || '',
+      icon: '/yuzuai_logo.png',
+      badge: '/yuzuai_logo.png',
+      data: data.url || '/',
+      tag: data.tag || 'simpletavern',
+      requireInteraction: data.requireInteraction || false,
+    };
+
+    event.waitUntil(self.registration.showNotification(title, options));
+  } catch {
+    // 非 JSON 数据，显示简单通知
+    event.waitUntil(
+      self.registration.showNotification('Yuzu AI', {
+        body: event.data.text(),
+        icon: '/yuzuai_logo.png',
+      }),
+    );
+  }
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const url = event.notification.data || '/';
+
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window' }).then((clientList) => {
+      // 如果已有打开的窗口，聚焦它
+      for (const client of clientList) {
+        if (client.url.includes(self.location.origin) && 'focus' in client) {
+          client.focus();
+          return;
+        }
+      }
+      // 否则打开新窗口
+      if (self.clients.openWindow) {
+        self.clients.openWindow(url);
+      }
+    }),
+  );
 });
 
 // ─── 请求拦截 ───
@@ -41,10 +116,14 @@ self.addEventListener('fetch', (event) => {
   if (url.pathname === '/sw.js') return;
 
   // 静态资源（JS/CSS/图片/字体）→ Stale-While-Revalidate
-  // ⚠️ 不能使用 Cache-First：部署后 chunk 文件名(hash)变更，
-  //    Cache-First 会用旧 app shell 引用已不存在的旧 chunk 名 → 动态导入失败
   if (isStaticAsset(url.pathname)) {
     event.respondWith(staleWhileRevalidate(request));
+    return;
+  }
+
+  // HTML 导航请求 → Network-First（确保获取最新应用壳）
+  if (request.mode === 'navigate') {
+    event.respondWith(networkFirst(request));
     return;
   }
 

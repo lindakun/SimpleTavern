@@ -15,21 +15,22 @@ export function SkeletonBlock({
   return (
     <div
       className={`
-        bg-surface-container/50 rounded
-        ${animate ? 'animate-pulse' : ''}
+        bg-surface-container/50 rounded relative overflow-hidden
+        ${animate ? 'skeleton-shimmer' : ''}
         ${className}
       `}
     />
   );
 }
 
-// 角色卡片骨架屏
+// 角色卡片骨架屏 — 尺寸对齐 DiscoverScreen 真实卡片
+// 真实卡片: rounded-2xl overflow-hidden, aspect-[4/3] 图片区, p-4 信息区
 export function CharacterCardSkeleton() {
   return (
     <div className="rounded-2xl overflow-hidden bg-surface-container/30 border border-outline-variant/20">
-      {/* 图片区域 */}
+      {/* 图片区域 — 与真实卡片 aspect-[4/3] 一致 */}
       <SkeletonBlock className="aspect-[4/3] rounded-none" />
-      {/* 信息区域 */}
+      {/* 信息区域 — 与真实卡片 p-4 space-y-3 一致 */}
       <div className="p-4 space-y-3">
         <div className="flex items-center justify-between">
           <SkeletonBlock className="h-4 w-24" />

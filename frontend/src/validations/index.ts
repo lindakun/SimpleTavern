@@ -5,8 +5,6 @@
 export {
   CreateCharacterSchema,
   PartialCreateCharacterSchema,
-  VoiceTypeSchema,
-  CharacterStatusSchema,
   TagSchema,
   validateCharacterForm,
   formatValidationErrors,

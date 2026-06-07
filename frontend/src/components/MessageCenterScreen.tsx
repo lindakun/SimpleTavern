@@ -1,8 +1,9 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { ScreenId, Character, ChatThread } from '../types';
-import { RotateCw, Pin, PinOff, Trash2, X, CheckSquare, Square } from 'lucide-react';
+import { RotateCw, Pin, Trash2, X, CheckSquare, Square } from 'lucide-react';
 import BottomNav from './BottomNav';
 import LazyImage from './LazyImage';
+import SwipeableRow, { chatSwipeActions } from './SwipeableRow';
 import { useToast } from './Toast.tsx';
 import { useChatThreads, useBatchDeleteChats, useTogglePinChat, chatKeys } from '../hooks/useChat';
 import { useQueryClient } from '@tanstack/react-query';
@@ -15,7 +16,6 @@ interface ThreadItem {
   lastActive: string;
   messageCount: number;
   pinned: boolean;
-  // 对应的 Character（可能找到也可能找不到）
   character?: Character;
 }
 
@@ -28,16 +28,69 @@ interface MessageCenterScreenProps {
   onTogglePinChat?: (characterId: string, pinned: boolean) => void;
 }
 
-/**
- * 根据 characterId（聊天目录名，如"奥利弗"）在角色列表中查找匹配的角色
- * 匹配规则：角色 id 去 .png 后缀等于 characterId
- */
 function findCharacter(characters: Character[], characterId: string): Character | undefined {
   return characters.find(c => {
     const cid = c.id.replace(/\.png$/, '');
     return cid === characterId;
   });
 }
+
+// ─── 辅助子组件 ───
+
+function AvatarSection({ item }: { item: ThreadItem }) {
+  return (
+    <div className="relative flex-shrink-0">
+      {item.avatar ? (
+        <LazyImage
+          src={item.avatar}
+          alt={item.characterName}
+          referrerPolicy="no-referrer"
+          className="w-12 h-12 rounded-full object-cover border border-outline-variant/30"
+        />
+      ) : (
+        <div className="w-12 h-12 rounded-full bg-accent-pink/20 flex items-center justify-center text-accent-pink font-bold text-sm border border-outline-variant/30">
+          {item.characterName.charAt(0)}
+        </div>
+      )}
+      {item.character?.status === 'online' && (
+        <span className="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-green-400 border border-background-deep" />
+      )}
+    </div>
+  );
+}
+
+function MessageBody({
+  item,
+  isSelectionMode,
+}: {
+  item: ThreadItem;
+  isSelectionMode?: boolean;
+}) {
+  return (
+    <div className="flex-grow space-y-1 min-w-0">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-1.5 min-w-0">
+          <span className="font-bold text-sm text-white hover:text-accent-pink truncate">
+            {item.characterName}
+          </span>
+          {item.pinned && !isSelectionMode && (
+            <Pin className="w-3 h-3 text-accent-pink flex-shrink-0" />
+          )}
+        </div>
+        <span className="text-[10px] text-on-surface-variant/40 font-mono flex-shrink-0">
+          {item.lastActive
+            ? new Date(item.lastActive).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+            : ''}
+        </span>
+      </div>
+      <p className="text-xs text-on-surface-variant line-clamp-1">
+        {item.lastMessageText || item.character?.tagline || item.character?.description?.slice(0, 40)}
+      </p>
+    </div>
+  );
+}
+
+// ─── 主组件 ───
 
 export default function MessageCenterScreen({
   characters,
@@ -52,14 +105,12 @@ export default function MessageCenterScreen({
   const { data: threadList = [], refetch: refetchThreads } = useChatThreads();
   const batchDelete = useBatchDeleteChats();
   const togglePin = useTogglePinChat();
-  const longPressTimer = useRef<ReturnType<typeof setTimeout>>();
+  const longPressTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
-  // 组件卸载时清理长按 timer
   useEffect(() => {
     return () => clearTimeout(longPressTimer.current);
   }, []);
 
-  // 选择模式状态
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
@@ -73,14 +124,11 @@ export default function MessageCenterScreen({
     }
   };
 
-  // 合并后端线程数据和本地角色数据
   const chatList = useMemo<ThreadItem[]>(() => {
     return threadList.map(thread => {
       const character = findCharacter(characters, thread.characterId);
-      // 补充 App.tsx 中 chatThreads prop 的本地状态（如 messages）
       const localThread = chatThreads[thread.characterId]
         ?? chatThreads[thread.characterId + '.png'];
-
       return {
         characterId: thread.characterId,
         characterName: thread.characterName || character?.name || thread.characterId,
@@ -94,7 +142,6 @@ export default function MessageCenterScreen({
     });
   }, [threadList, characters, chatThreads]);
 
-  // 选择模式操作
   const enterSelectionMode = (characterId: string) => {
     setIsSelectionMode(true);
     setSelectedIds(new Set([characterId]));
@@ -108,11 +155,8 @@ export default function MessageCenterScreen({
   const toggleSelect = (characterId: string) => {
     setSelectedIds(prev => {
       const next = new Set(prev);
-      if (next.has(characterId)) {
-        next.delete(characterId);
-      } else {
-        next.add(characterId);
-      }
+      if (next.has(characterId)) next.delete(characterId);
+      else next.add(characterId);
       return next;
     });
   };
@@ -125,76 +169,58 @@ export default function MessageCenterScreen({
     }
   };
 
-  // 批量删除
   const handleBatchDelete = async () => {
     if (selectedIds.size === 0) return;
-
     const idsToDelete = Array.from(selectedIds);
     try {
       await batchDelete.mutateAsync(idsToDelete);
-      if (onDeleteChatThreads) {
-        onDeleteChatThreads(idsToDelete);
-      }
+      if (onDeleteChatThreads) onDeleteChatThreads(idsToDelete);
       exitSelectionMode();
-    } catch {
-      // error handled by mutation
-    }
+    } catch { /* handled by mutation */ }
   };
 
-  // 置顶切换
+  // 左滑删除单条
+  const handleDeleteSingle = async (characterId: string) => {
+    try {
+      await batchDelete.mutateAsync([characterId]);
+      if (onDeleteChatThreads) onDeleteChatThreads([characterId]);
+    } catch { /* handled by mutation */ }
+  };
+
   const handleTogglePin = async (characterId: string, currentPinned: boolean) => {
     const newPinned = !currentPinned;
     try {
       await togglePin.mutateAsync({ characterId, pinned: newPinned });
-      if (onTogglePinChat) {
-        onTogglePinChat(characterId, newPinned);
-      }
-    } catch {
-      // error handled by mutation
-    }
+      if (onTogglePinChat) onTogglePinChat(characterId, newPinned);
+    } catch { /* handled by mutation */ }
   };
 
-  // Broadcast term
   const systemBroadcastCharacter = characters.find((c) => c.id === 'ai_broadcast');
-
   const isAllSelected = chatList.length > 0 && selectedIds.size === chatList.length;
 
   return (
     <div className="relative flex-1 overflow-y-auto bg-background-deep text-white safe-content-bottom">
-      {/* Heavy colorful glowing neon overlays */}
       <div className="absolute top-0 left-0 w-96 h-96 bg-accent-pink opacity-10 blur-[130px] pointer-events-none" />
       <div className="absolute bottom-0 right-0 w-96 h-96 bg-accent-purple opacity-10 blur-[130px] pointer-events-none" />
 
-      {/* Sticky top-bar search */}
       <header className="sticky top-0 z-40 bg-[#0F111A]/90 backdrop-blur-md px-6 h-16 flex items-center justify-between border-b border-white/5">
         <h1 className="text-lg font-bold tracking-widest text-[#ffade2] font-headline-lg-mobile">
           {isSelectionMode ? `已选 ${selectedIds.size} 项` : '消息中心'}
         </h1>
         <div className="flex gap-3 items-center">
           {!isSelectionMode && (
-            <button
-              onClick={handleSync}
-              className="p-2 text-on-surface hover:text-[#ffade2] cursor-pointer flex items-center justify-center"
-            >
+            <button onClick={handleSync} className="p-2 text-on-surface hover:text-[#ffade2] cursor-pointer flex items-center justify-center">
               <RotateCw className="w-5 h-5 text-accent-pink" />
             </button>
           )}
           {isSelectionMode ? (
-            <button
-              onClick={exitSelectionMode}
-              className="p-2 text-on-surface hover:text-[#ffade2] cursor-pointer flex items-center justify-center"
-            >
+            <button onClick={exitSelectionMode} className="p-2 text-on-surface hover:text-[#ffade2] cursor-pointer flex items-center justify-center">
               <X className="w-5 h-5 text-on-surface-variant" />
             </button>
           ) : (
             chatList.length > 0 && (
-              <button
-                onClick={() => {
-                  setIsSelectionMode(true);
-                  setSelectedIds(new Set());
-                }}
-                className="text-[11px] px-3 py-1.5 rounded-full bg-accent-pink/10 border border-accent-pink/30 text-[#ffade2] hover:bg-accent-pink/20 transition-colors cursor-pointer"
-              >
+              <button onClick={() => { setIsSelectionMode(true); setSelectedIds(new Set()); }}
+                className="text-[11px] px-3 py-1.5 rounded-full bg-accent-pink/10 border border-accent-pink/30 text-[#ffade2] hover:bg-accent-pink/20 transition-colors cursor-pointer">
                 管理
               </button>
             )
@@ -202,15 +228,10 @@ export default function MessageCenterScreen({
         </div>
       </header>
 
-      {/* Main Inbox items */}
       <main className="max-w-xl mx-auto px-6 py-6 space-y-6 relative z-10 select-none">
-        
-        {/* System broadcast banner */}
         {systemBroadcastCharacter && !isSelectionMode && (
           <div className="bg-gradient-to-r from-accent-pink/10 to-accent-purple/10 border border-accent-pink/20 rounded-2xl p-4 flex gap-4 backdrop-blur-md items-center animate-subtle-fadeIn">
-            <div className="w-10 h-10 rounded-xl bg-accent-pink/15 flex items-center justify-center text-accent-pink text-lg font-mono">
-              📢
-            </div>
+            <div className="w-10 h-10 rounded-xl bg-accent-pink/15 flex items-center justify-center text-accent-pink text-lg font-mono">📢</div>
             <div className="flex-grow space-y-1">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-[#ffade2]">系统广播</span>
@@ -223,20 +244,11 @@ export default function MessageCenterScreen({
           </div>
         )}
 
-        {/* 选择模式下的全选栏 */}
         {isSelectionMode && (
-          <button
-            onClick={toggleSelectAll}
-            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-surface-container/40 border border-outline-variant/20 hover:border-accent-pink/30 transition-all"
-          >
-            {isAllSelected ? (
-              <CheckSquare className="w-5 h-5 text-accent-pink" />
-            ) : (
-              <Square className="w-5 h-5 text-on-surface-variant" />
-            )}
-            <span className="text-xs text-on-surface-variant">
-              {isAllSelected ? '取消全选' : '全选'}
-            </span>
+          <button onClick={toggleSelectAll}
+            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-surface-container/40 border border-outline-variant/20 hover:border-accent-pink/30 transition-all">
+            {isAllSelected ? <CheckSquare className="w-5 h-5 text-accent-pink" /> : <Square className="w-5 h-5 text-on-surface-variant" />}
+            <span className="text-xs text-on-surface-variant">{isAllSelected ? '取消全选' : '全选'}</span>
           </button>
         )}
 
@@ -244,7 +256,6 @@ export default function MessageCenterScreen({
           <h2 className="text-xs font-bold text-on-surface-variant uppercase tracking-widest font-mono">最近会话活跃 (Active)</h2>
         )}
 
-        {/* Messaging Box list */}
         <div className="space-y-3">
           {chatList.length === 0 ? (
             <div className="py-12 text-center text-on-surface-variant text-xs">
@@ -252,139 +263,56 @@ export default function MessageCenterScreen({
             </div>
           ) : chatList.map((item) => {
             const isSelected = selectedIds.has(item.characterId);
-            // 点击时使用角色的完整 ID（含 .png），以便后续 API 调用
             const selectId = item.character?.id || item.characterId;
-            
-            return (
-              <div
-                key={item.characterId}
-                onClick={() => {
-                  if (isSelectionMode) {
-                    toggleSelect(item.characterId);
-                  } else {
-                    onSelectCharacter(selectId);
-                    onNavigate(ScreenId.CHAT);
-                  }
-                }}
-                onContextMenu={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  if (!isSelectionMode) {
-                    enterSelectionMode(item.characterId);
-                  }
-                }}
-                onTouchStart={() => {
-                  // 手机端长按触发选择模式
-                  longPressTimer.current = setTimeout(() => {
-                    if (!isSelectionMode) {
-                      enterSelectionMode(item.characterId);
-                    }
-                  }, 600);
-                }}
-                onTouchEnd={() => {
-                  clearTimeout(longPressTimer.current);
-                }}
-                onTouchMove={() => {
-                  clearTimeout(longPressTimer.current);
-                }}
-                className={`bg-surface-container/40 hover:bg-surface-container border p-4 rounded-xl flex items-center gap-4 cursor-pointer transition-all duration-200 ${
-                  isSelected
-                    ? 'border-accent-pink/60 bg-accent-pink/5'
-                    : 'border-outline-variant/20 hover:border-accent-pink/30'
+
+            const swipeActions = chatSwipeActions(
+              () => handleTogglePin(item.characterId, item.pinned),
+              () => handleDeleteSingle(item.characterId),
+              item.pinned,
+            );
+
+            return isSelectionMode ? (
+              <div key={item.characterId}
+                onClick={() => toggleSelect(item.characterId)}
+                className={`flex items-center gap-4 cursor-pointer p-4 rounded-xl border transition-all ${
+                  isSelected ? 'border-accent-pink/60 bg-accent-pink/5' : 'border-outline-variant/20 bg-surface-container/40'
                 } ${item.pinned ? 'border-l-2 border-l-accent-pink/60' : ''}`}
               >
-                {/* 选择模式复选框 */}
-                {isSelectionMode && (
-                  <button
-                    onClick={(e) => { e.stopPropagation(); toggleSelect(item.characterId); }}
-                    className="flex-shrink-0 cursor-pointer"
-                  >
-                    {isSelected ? (
-                      <CheckSquare className="w-5 h-5 text-accent-pink" />
-                    ) : (
-                      <Square className="w-5 h-5 text-on-surface-variant" />
-                    )}
-                  </button>
-                )}
-
-                {/* Avatar with unread indicator badge */}
-                <div className="relative">
-                  {item.avatar ? (
-                    <LazyImage
-                      src={item.avatar}
-                      alt={item.characterName}
-                      referrerPolicy="no-referrer"
-                      className="w-12 h-12 rounded-full object-cover border border-outline-variant/30"
-                    />
-                  ) : (
-                    <div className="w-12 h-12 rounded-full bg-accent-pink/20 flex items-center justify-center text-accent-pink font-bold text-sm border border-outline-variant/30">
-                      {item.characterName.charAt(0)}
-                    </div>
-                  )}
-                  {item.character?.status === 'online' && (
-                    <span className="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-green-400 border border-background-deep" />
-                  )}
-                </div>
-
-                {/* Message Body snippet */}
-                <div className="flex-grow space-y-1 min-w-0">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-1.5 min-w-0">
-                      <span className="font-bold text-sm text-white hover:text-accent-pink truncate">
-                        {item.characterName}
-                      </span>
-                      {item.pinned && !isSelectionMode && (
-                        <Pin className="w-3 h-3 text-accent-pink flex-shrink-0" />
-                      )}
-                    </div>
-                    <span className="text-[10px] text-on-surface-variant/40 font-mono flex-shrink-0">
-                      {item.lastActive
-                        ? new Date(item.lastActive).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                        : ''}
-                    </span>
-                  </div>
-                  <p className="text-xs text-on-surface-variant line-clamp-1">
-                    {item.lastMessageText || item.character?.tagline || item.character?.description?.slice(0, 40)}
-                  </p>
-                </div>
-
-                {/* 非选择模式下的操作按钮 */}
-                {!isSelectionMode && (
-                  <div className="flex flex-col gap-1.5 flex-shrink-0">
-                    <button
-                      onClick={(e) => { e.stopPropagation(); handleTogglePin(item.characterId, item.pinned); }}
-                      className="p-1.5 rounded-lg hover:bg-surface-container/80 transition-colors cursor-pointer"
-                      title={item.pinned ? '取消置顶' : '置顶'}
-                    >
-                      {item.pinned ? (
-                        <PinOff className="w-4 h-4 text-accent-pink" />
-                      ) : (
-                        <Pin className="w-4 h-4 text-on-surface-variant/40 hover:text-accent-pink" />
-                      )}
-                    </button>
-                  </div>
-                )}
+                <button onClick={(e) => { e.stopPropagation(); toggleSelect(item.characterId); }} className="flex-shrink-0 cursor-pointer">
+                  {isSelected ? <CheckSquare className="w-5 h-5 text-accent-pink" /> : <Square className="w-5 h-5 text-on-surface-variant" />}
+                </button>
+                <AvatarSection item={item} />
+                <MessageBody item={item} isSelectionMode />
               </div>
+            ) : (
+              <SwipeableRow key={item.characterId} actions={swipeActions}>
+                <div
+                  onClick={() => { onSelectCharacter(selectId); onNavigate(ScreenId.CHAT); }}
+                  onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); enterSelectionMode(item.characterId); }}
+                  onTouchStart={() => {
+                    longPressTimer.current = setTimeout(() => enterSelectionMode(item.characterId), 600);
+                  }}
+                  onTouchEnd={() => clearTimeout(longPressTimer.current)}
+                  onTouchMove={() => clearTimeout(longPressTimer.current)}
+                  className={`flex items-center gap-4 cursor-pointer p-4 ${
+                    item.pinned ? 'border-l-2 border-l-accent-pink/60' : ''
+                  }`}
+                >
+                  <AvatarSection item={item} />
+                  <MessageBody item={item} />
+                </div>
+              </SwipeableRow>
             );
           })}
         </div>
       </main>
 
-      {/* 批量操作底栏 - 带安全区域 */}
       {isSelectionMode && (
         <div className="fixed bottom-16 left-0 right-0 z-50 max-w-lg mx-auto safe-bottom">
           <div className="bg-[#0F111A]/95 backdrop-blur-md border-t border-accent-pink/20 px-6 py-3 flex items-center justify-between">
-            <button
-              onClick={exitSelectionMode}
-              className="text-xs text-on-surface-variant hover:text-white transition-colors cursor-pointer px-3 py-2"
-            >
-              取消
-            </button>
-            <button
-              onClick={handleBatchDelete}
-              disabled={selectedIds.size === 0 || batchDelete.isPending}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-500/20 border border-red-500/40 text-red-300 hover:bg-red-500/30 disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer text-xs font-semibold"
-            >
+            <button onClick={exitSelectionMode} className="text-xs text-on-surface-variant hover:text-white transition-colors cursor-pointer px-3 py-2">取消</button>
+            <button onClick={handleBatchDelete} disabled={selectedIds.size === 0 || batchDelete.isPending}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-500/20 border border-red-500/40 text-red-300 hover:bg-red-500/30 disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer text-xs font-semibold">
               <Trash2 className="w-3.5 h-3.5" />
               {batchDelete.isPending ? '删除中...' : `删除 (${selectedIds.size})`}
             </button>
@@ -392,7 +320,6 @@ export default function MessageCenterScreen({
         </div>
       )}
 
-      {/* Global Fixed Navigation Bar */}
       <BottomNav currentScreen={ScreenId.MESSAGE_CENTER} onNavigate={onNavigate} />
     </div>
   );

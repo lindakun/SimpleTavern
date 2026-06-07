@@ -21,6 +21,16 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 
+    <!-- 预加载关键资源（LCP 优化） -->
+    <link rel="preload" href="/yuzuai_logo.png" as="image" fetchpriority="high" />
+
+    <!-- 字体预加载（只加载首屏需要的子集字符） -->
+    <link rel="preload" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap&text=YuzuAINeonFrontierExplorethe0123456789" as="style" />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap&text=YuzuAINeonFrontierExplorethe0123456789" />
+
+    <!-- DNS 预解析 -->
+    <link rel="dns-prefetch" href="https://lh3.googleusercontent.com" />
+
     <title>Yuzu AI</title>
   </head>
   <body>

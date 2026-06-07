@@ -1,8 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { ScreenId, Character, ChatMessage } from '../types';
-import { Volume2, Send, ChevronLeft } from 'lucide-react';
+import { ScreenId, Character, ChatMessage, SendState } from '../types';
+import { Volume2, Send, Loader2, AlertCircle, ChevronLeft } from 'lucide-react';
 import BottomNav from './BottomNav';
 import LazyImage from './LazyImage';
+import { track } from '../utils/analytics';
 
 interface ChatScreenProps {
   character: Character;
@@ -10,6 +11,7 @@ interface ChatScreenProps {
   onSendMessage: (characterId: string, text: string) => Promise<void>;
   onNavigate: (screen: ScreenId) => void;
   onGoBack?: () => void;
+  sendState?: SendState;
 }
 
 export default function ChatScreen({
@@ -18,15 +20,17 @@ export default function ChatScreen({
   onSendMessage,
   onNavigate,
   onGoBack,
+  sendState = 'idle',
 }: ChatScreenProps) {
   const [inputText, setInputText] = useState('');
   const [lastError, setLastError] = useState<string | null>(null);
   const [failedText, setFailedText] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // 判断 AI 是否正在流式回复：最后一条是 AI 消息但内容为空
+  // 判断 AI 是否正在流式回复：最后一条是 AI 消息但内容为空 或 sendState 为 streaming/sending
   const lastMsg = messages[messages.length - 1];
-  const isStreaming = lastMsg?.role === 'model' && lastMsg?.text === '';
+  const isStreaming = sendState === 'streaming' || (lastMsg?.role === 'model' && lastMsg?.text === '');
+  const isSending = sendState === 'sending';
 
   // Auto-scroll when messages update or streaming
   useEffect(() => {
@@ -53,8 +57,8 @@ export default function ChatScreen({
   const handleSend = async (e?: React.FormEvent, retryText?: string) => {
     if (e) e.preventDefault();
     const textToSend = retryText ?? inputText;
-    // 阻止重复发送：如果最后一条 AI 消息正在流式接收中
-    if (!textToSend.trim() || isStreaming) return;
+    // 阻止重复发送：如果正在发送或流式接收中
+    if (!textToSend.trim() || isStreaming || isSending) return;
 
     setInputText('');
     setLastError(null);
@@ -62,6 +66,7 @@ export default function ChatScreen({
 
     try {
       await onSendMessage(character.id, textToSend);
+      track('send_message', { character_id: character.id, message_length: textToSend.length });
     } catch (err) {
       const message = err instanceof Error ? err.message : '消息发送失败';
       setLastError(message);
@@ -233,10 +238,32 @@ export default function ChatScreen({
           />
           <button
             type="submit"
-            disabled={!inputText.trim() || isStreaming}
-            className="p-2 w-8 h-8 shrink-0 bg-gradient-to-r from-accent-pink to-accent-purple text-white hover:brightness-110 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg transition-all flex items-center justify-center"
+            disabled={!inputText.trim() || isStreaming || isSending}
+            className={`p-2 w-8 h-8 shrink-0 rounded-lg transition-all flex items-center justify-center ${
+              sendState === 'error'
+                ? 'bg-red-500/20 border border-red-500/40 text-red-300 hover:bg-red-500/30'
+                : 'bg-gradient-to-r from-accent-pink to-accent-purple text-white hover:brightness-110'
+            } active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed`}
+            title={
+              sendState === 'sending' ? '发送中...' :
+              sendState === 'streaming' ? 'AI 回复中...' :
+              sendState === 'error' ? '重试' :
+              '发送'
+            }
           >
-            <Send className="w-3.5 h-3.5" />
+            {sendState === 'sending' ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : sendState === 'streaming' ? (
+              <span className="flex gap-[2px]">
+                <span className="w-1 h-1 rounded-full bg-white animate-bounce" style={{ animationDelay: '0ms' }} />
+                <span className="w-1 h-1 rounded-full bg-white animate-bounce" style={{ animationDelay: '120ms' }} />
+                <span className="w-1 h-1 rounded-full bg-white animate-bounce" style={{ animationDelay: '240ms' }} />
+              </span>
+            ) : sendState === 'error' ? (
+              <AlertCircle className="w-3.5 h-3.5" />
+            ) : (
+              <Send className="w-3.5 h-3.5" />
+            )}
           </button>
         </form>
         {lastError && (
@@ -250,6 +277,17 @@ export default function ChatScreen({
                 重试
               </button>
             )}
+          </div>
+        )}
+        {/* 发送状态提示 */}
+        {isSending && !lastError && (
+          <div className="text-[10px] text-accent-pink/60 font-mono text-center animate-pulse">
+            正在连接神经矩阵...
+          </div>
+        )}
+        {sendState === 'streaming' && !lastError && (
+          <div className="text-[10px] text-[#ffade2]/60 font-mono text-center">
+            AI 正在生成回复...
           </div>
         )}
       </div>
