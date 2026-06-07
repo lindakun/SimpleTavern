@@ -219,17 +219,25 @@ export default function App() {
     track('register', { username });
   }, [showToast, userApi, queryClient]);
 
-  const handleLogout = useCallback(() => {
-    userApi.logout().catch(() => {});
+  const handleLogout = useCallback(async () => {
     track('logout');
-    // 彻底清除所有 React Query 缓存（防止残留数据 + 避免自动 refetch 竞态）
+    // 1. 先调后端退出（清除服务端 session）
+    await userApi.logout().catch(() => {});
+    // 2. 清除 Service Worker 缓存（防止 SW 返回旧的 /api/users/me 等缓存数据）
+    if ('caches' in window) {
+      try {
+        const keys = await caches.keys();
+        await Promise.all(keys.filter(k => k.startsWith('simpletavern-')).map(k => caches.delete(k)));
+      } catch { /* ignore */ }
+    }
+    // 3. 清除所有 React Query 缓存
     queryClient.clear();
     setChatThreads({});
     setLoadedChats(new Set());
-    // 显式导航到欢迎页
+    // 4. 显式导航到欢迎页
     setCurrentScreen(ScreenId.WELCOME);
     window.history.pushState({ screen: ScreenId.WELCOME }, '', window.location.pathname);
-    // 重置角色列表为种子角色（清除用户创建的角色）
+    // 5. 重置角色列表为种子角色（清除用户创建的角色）
     characterApi.getDiscoverCharacters()
       .then(data => {
         if (Array.isArray(data)) setCharacters(data);
