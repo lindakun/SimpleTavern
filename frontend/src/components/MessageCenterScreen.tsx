@@ -59,6 +59,26 @@ function AvatarSection({ item }: { item: ThreadItem }) {
   );
 }
 
+/** 安全解析日期字符串，兼容 ISO 8601 和 SillyTavern 格式（"2024-05-30 @13h 45m 12s 123ms"） */
+function parseDateSafe(dateStr: string): Date | null {
+  if (!dateStr) return null;
+
+  // 直接解析（ISO 8601 / Unix timestamp）
+  const direct = new Date(dateStr);
+  if (!isNaN(direct.getTime())) return direct;
+
+  // SillyTavern 格式: "YYYY-MM-DD @HHh MMm SSs MSms"
+  const stMatch = dateStr.match(/^(\d{4}-\d{2}-\d{2}) @(\d{1,2})h (\d{1,2})m (\d{1,2})s/);
+  if (stMatch) {
+    const [, date, hours, mins, secs] = stMatch;
+    const iso = `${date}T${hours.padStart(2, '0')}:${mins.padStart(2, '0')}:${secs.padStart(2, '0')}`;
+    const stParsed = new Date(iso);
+    if (!isNaN(stParsed.getTime())) return stParsed;
+  }
+
+  return null;
+}
+
 function MessageBody({
   item,
   isSelectionMode,
@@ -66,6 +86,8 @@ function MessageBody({
   item: ThreadItem;
   isSelectionMode?: boolean;
 }) {
+  const lastActiveDate = parseDateSafe(item.lastActive);
+
   return (
     <div className="flex-grow space-y-1 min-w-0">
       <div className="flex items-center justify-between gap-2">
@@ -78,8 +100,8 @@ function MessageBody({
           )}
         </div>
         <span className="text-[10px] text-on-surface-variant/40 font-mono flex-shrink-0">
-          {item.lastActive
-            ? new Date(item.lastActive).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          {lastActiveDate
+            ? lastActiveDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
             : ''}
         </span>
       </div>

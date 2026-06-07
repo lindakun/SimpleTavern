@@ -300,7 +300,7 @@ export function getChatThreads(req: Request, res: Response, next: NextFunction):
                 characterId: entry.name,
                 characterName: charName,
                 lastMessageText: lastMsg?.mes || '',
-                lastActive: lastMsg?.send_date || '',
+                lastActive: normalizeSendDate(lastMsg?.send_date),
                 messageCount: Math.max(0, chatData.length - 1),
                 pinned: pinnedSet.has(entry.name),
             });
@@ -389,4 +389,26 @@ export function togglePinChat(req: Request, res: Response, next: NextFunction): 
 
 function tryParseJson(text: string): any {
     try { return JSON.parse(text); } catch { return {}; }
+}
+
+/**
+ * 标准化 send_date 为 ISO 8601 字符串，兼容 SillyTavern 格式
+ */
+function normalizeSendDate(sendDate: string | undefined): string {
+    if (!sendDate) return '';
+
+    // 已经是有效日期（ISO 8601 / Unix timestamp）
+    const direct = new Date(sendDate);
+    if (!isNaN(direct.getTime())) return direct.toISOString();
+
+    // SillyTavern 格式: "YYYY-MM-DD @HHh MMm SSs MSms"
+    const stMatch = sendDate.match(/^(\d{4}-\d{2}-\d{2}) @(\d{1,2})h (\d{1,2})m (\d{1,2})s/);
+    if (stMatch) {
+        const [, date, hours, mins, secs] = stMatch;
+        const isoStr = `${date}T${hours.padStart(2, '0')}:${mins.padStart(2, '0')}:${secs.padStart(2, '0')}`;
+        const stParsed = new Date(isoStr);
+        if (!isNaN(stParsed.getTime())) return stParsed.toISOString();
+    }
+
+    return '';
 }
