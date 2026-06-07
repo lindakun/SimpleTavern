@@ -202,11 +202,14 @@ export default function App() {
   const handleLogout = useCallback(() => {
     userApi.logout().catch(() => {});
     track('logout');
-    // 重置 React Query 缓存
-    queryClient.resetQueries({ queryKey: ['user', 'me'] });
-    queryClient.resetQueries({ queryKey: ['favorites', 'list'] });
+    // 清除 React Query 缓存（用 removeQueries 避免自动 refetch，防止竞态）
+    queryClient.removeQueries({ queryKey: ['user', 'me'] });
+    queryClient.removeQueries({ queryKey: ['favorites', 'list'] });
     setChatThreads({});
     setLoadedChats(new Set());
+    // 显式导航到欢迎页
+    setCurrentScreen(ScreenId.WELCOME);
+    window.history.pushState({ screen: ScreenId.WELCOME }, '', window.location.pathname);
     // 重置角色列表为种子角色（清除用户创建的角色）
     characterApi.getDiscoverCharacters()
       .then(data => {
