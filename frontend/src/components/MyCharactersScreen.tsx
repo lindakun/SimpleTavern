@@ -139,11 +139,11 @@ export default function MyCharactersScreen({
                           {/* 隐私类型标签 */}
                           {c.privacyType === 'public' ? (
                             <span className="px-2 py-0.5 text-[8px] bg-accent-green/10 text-accent-green border border-accent-green/30 rounded font-mono uppercase font-bold">
-                              🔓 公开
+                              公开
                             </span>
                           ) : (
                             <span className="px-2 py-0.5 text-[8px] bg-accent-purple/10 text-accent-purple border border-accent-purple/30 rounded font-mono uppercase font-bold">
-                              🔒 私有
+                              私有
                             </span>
                           )}
                         </div>
@@ -183,10 +183,10 @@ export default function MyCharactersScreen({
                         {c.id.startsWith('custom_') && (
                           <button
                             onClick={() => onUpdatePrivacy?.(c.id, c.privacyType === 'public' ? 'private' : 'public')}
-                            className={`px-4 py-1.5 border text-xs rounded-xl cursor-pointer transition-all ${
+                            className={`px-4 py-1.5 bg-surface-elevated/80 border border-outline-variant/40 text-xs rounded-xl cursor-pointer transition-all ${
                               c.privacyType === 'public'
-                                ? 'bg-accent-green/10 border-accent-green/30 text-accent-green hover:bg-accent-green/20'
-                                : 'bg-accent-purple/10 border-accent-purple/30 text-accent-purple hover:bg-accent-purple/20'
+                                ? 'text-accent-green hover:bg-accent-green/10 hover:border-accent-green/30'
+                                : 'text-accent-purple hover:bg-accent-purple/10 hover:border-accent-purple/30'
                             }`}
                             title={c.privacyType === 'public' ? '设为私有' : '设为公开'}
                           >
