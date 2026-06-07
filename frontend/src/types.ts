@@ -13,6 +13,8 @@ export enum ScreenId {
   MY_FAVORITES = 'my_favorites',               // 我的收藏 - 柚姬AI
   SETTINGS = 'settings',                       // 设置 - 柚姬AI
   HELP_FEEDBACK = 'help_feedback',             // 帮助与反馈 - 柚姬AI
+  FORGOT_PASSWORD = 'forgot_password',           // 忘记密码 - 柚姬AI
+  RESET_PASSWORD = 'reset_password',             // 重置密码 - 柚姬AI
 }
 
 export interface RouteState {

@@ -8,6 +8,7 @@ import { track } from '../utils/analytics';
 
 interface CharacterDetailScreenProps {
   character: Character;
+  userHandle?: string;
   onNavigate: (screen: ScreenId) => void;
   onGoBack?: () => void;
   onAddReview: (characterId: string, review: Review) => void;
@@ -31,6 +32,7 @@ const VISIBLE_REVIEWS = 4;
 
 export default function CharacterDetailScreen({
   character,
+  userHandle,
   onNavigate,
   onAddReview,
   onSelectCharacter,
@@ -44,6 +46,13 @@ export default function CharacterDetailScreen({
   const [worldList, setWorldList] = useState<WorldListItem[]>([]);
   const [showAllReviews, setShowAllReviews] = useState(false);
   const worldApi = useWorldApi();
+
+  // 同步后端评论数据（角色切换或后端更新时同步）
+  useEffect(() => {
+    if (character.reviews) {
+      setNewReviews(character.reviews);
+    }
+  }, [character.reviews]);
 
   // 加载世界书列表
   useEffect(() => {
@@ -100,7 +109,7 @@ export default function CharacterDetailScreen({
 
     const newRev: Review = {
       id: 'rev_' + Date.now(),
-      username: '霓虹特工_Pilot',
+      username: userHandle || '匿名特工',
       rating: userRating,
       comment: commentText,
       date: new Date().toISOString().split('T')[0] || '',

@@ -31,6 +31,8 @@ const MyCharactersScreen = lazy(() => import('./components/MyCharactersScreen'))
 const MyFavoritesScreen = lazy(() => import('./components/MyFavoritesScreen'));
 const SettingsScreen = lazy(() => import('./components/SettingsScreen'));
 const HelpFeedbackScreen = lazy(() => import('./components/HelpFeedbackScreen'));
+const ForgotPasswordScreen = lazy(() => import('./components/ForgotPasswordScreen'));
+const ResetPasswordScreen = lazy(() => import('./components/ResetPasswordScreen'));
 
 export default function App() {
   // 注册 Service Worker（生产环境）
@@ -606,6 +608,14 @@ export default function App() {
             <RegisterScreen onNavigate={handleNavigate} onRegister={handleRegister} onGoogleLogin={handleGoogleLogin} />
           )}
 
+          {currentScreen === ScreenId.FORGOT_PASSWORD && (
+            <ForgotPasswordScreen onNavigate={handleNavigate} />
+          )}
+
+          {currentScreen === ScreenId.RESET_PASSWORD && (
+            <ResetPasswordScreen onNavigate={handleNavigate} />
+          )}
+
           {currentScreen === ScreenId.DISCOVER && (
             <DiscoverScreen
               characters={characters}
@@ -627,6 +637,7 @@ export default function App() {
           {currentScreen === ScreenId.CHARACTER_DETAIL && (
             <CharacterDetailScreen
               character={currentCharacter as Character}
+              userHandle={user?.username}
               favoriteIds={favoriteIds as string[]}
               toggleFavorite={handleToggleFavorite}
               onNavigate={handleNavigate}
