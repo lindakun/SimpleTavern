@@ -15,7 +15,6 @@ import { useFavorites, useToggleFavorite } from './hooks/useFavorites';
 import { useCurrentUser } from './hooks/useAuth';
 
 // Import our modular screens — lazy loaded for code splitting
-import GoogleCallback from './components/GoogleCallback';
 import SplashScreen from './components/SplashScreen';
 const WelcomeScreen = lazy(() => import('./components/WelcomeScreen'));
 const LoginScreen = lazy(() => import('./components/LoginScreen'));
@@ -40,11 +39,6 @@ export default function App() {
   useEffect(() => { registerServiceWorker(); }, []);
   // 初始化埋点
   useEffect(() => { initAnalytics(); }, []);
-
-  // Google OAuth 回调路由 — 弹窗中独立渲染
-  if (window.location.pathname === '/auth/google/callback') {
-    return <GoogleCallback />;
-  }
 
   const queryClient = useQueryClient();
   const [currentScreen, setCurrentScreen] = useState<ScreenId | null>(null);
