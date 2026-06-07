@@ -4,6 +4,7 @@ import { Volume2, Send, Loader2, AlertCircle, ChevronLeft } from 'lucide-react';
 import BottomNav from './BottomNav';
 import LazyImage from './LazyImage';
 import { track } from '../utils/analytics';
+import { formatChatDate } from '../utils/formatDate';
 
 interface ChatScreenProps {
   character: Character;
@@ -173,7 +174,7 @@ export default function ChatScreen({
               >
                 <p className="whitespace-pre-wrap">{msg.text}</p>
                 <div className="flex items-center justify-between mt-2 pt-1 border-t border-white/5 text-on-surface-variant/30 font-mono">
-                  <span className="text-[8px] text-on-surface-variant/40">{msg.timestamp}</span>
+                  <span className="text-[8px] text-on-surface-variant/40">{formatChatDate(msg.timestamp)}</span>
                   {!isUser && (
                     <div className="flex items-end gap-[2px] h-3 px-1.5 py-0.5 rounded-md bg-accent-pink/5 border border-accent-pink/15 shadow-[0_0_8px_rgba(236,72,153,0.15)] overflow-hidden" title="Voice waveform">
                       <span className="w-[1.5px] h-2 bg-gradient-to-t from-accent-pink to-[#ffade2] rounded-full origin-bottom animate-wave-one" />
