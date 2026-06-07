@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 项目概述
 
-本目录是 **SillyTavern 后端重构**的独立工作区。重构代码**全新搭建在此目录下**，与原项目 `/Users/linda/code/SillyTavern/` **完全独立**，两边不共享代码、不互相修改。
+本目录是 **SillyTavern 后端重构**的独立工作区。重构代码**全新搭建在此目录下**，与原项目完全独立，两边不共享代码、不互相修改。
 
 SillyTavern 是一个面向高级用户的 LLM 前端（v1.18.0，AGPL-3.0），后端使用 Node.js/Express，前端使用原生 HTML/CSS/JavaScript。
 
@@ -15,18 +15,22 @@ SillyTavern 是一个面向高级用户的 LLM 前端（v1.18.0，AGPL-3.0），
 ## 新旧项目关系
 
 ```
-/Users/linda/code/SillyTavern/   ← 原项目（不动）
-  ├── src/                       ← 旧后端代码
-  ├── public/                    ← 旧前端（重构期间仍使用此前端）
-  └── data/                      ← 共享数据（新后端只读）
+<原项目目录>/SillyTavern/    ← 原项目（不动）
+  ├── src/                    ← 旧后端代码
+  ├── public/                 ← 旧前端（重构期间仍使用此前端）
+  └── data/                   ← 共享数据（新后端只读）
 
-/Users/linda/code/SimpleTavern/  ← 新项目（前后端分离）
-  ├── backend/                   ← TypeScript 后端
-  │   └── src/                   ← 后端源码
-  ├── frontend/                  ← React 19 前端
-  │   └── src/                   ← 前端源码
-  └── refactor/                  ← 规划文档
+<本项目目录>/SimpleTavern/   ← 新项目（前后端分离）
+  ├── backend/                ← TypeScript 后端
+  │   └── src/                ← 后端源码
+  ├── frontend/               ← React 19 前端
+  │   └── src/                ← 前端源码
+  ├── admin/                  ← 管理后台
+  │   └── src/                ← 管理后台源码
+  └── refactor/               ← 规划文档
 ```
+
+> ⚠️ **注意**：上述路径为结构示意，实际路径因开发环境而异（macOS: `/Users/linda/code/`，Windows: `D:\Coding\`，生产服务器: `/opt/simpletavern/`）。文档中的命令示例请替换为实际路径。
 
 **关键约定**：
 - 后端独立运行在 **8001 端口**（原项目 SillyTavern 在 8000）
@@ -40,7 +44,7 @@ SillyTavern 是一个面向高级用户的 LLM 前端（v1.18.0，AGPL-3.0），
 开发环境使用 **Docker Compose** 部署在本机，三个服务各自运行在独立容器中：
 
 ```
-/Users/linda/code/SimpleTavern/
+SimpleTavern/
   ├── backend/    → simple-tavern-backend    (端口 8001)
   ├── frontend/   → simple-tavern-frontend   (端口 3000)
   ├── admin/      → simple-tavern-admin      (端口 3002)
@@ -57,8 +61,6 @@ SillyTavern 是一个面向高级用户的 LLM 前端（v1.18.0，AGPL-3.0），
 ### 常用 Docker 命令
 
 ```bash
-cd /Users/linda/code/SimpleTavern
-
 # 启动全部服务
 docker compose up -d
 
@@ -92,7 +94,13 @@ docker compose up -d --build
 
 ### 数据挂载
 
-backend 容器挂载本机的 `/Users/linda/code/SillyTavern/data` 作为 `/data`：
+backend 容器挂载的目录：
+
+| 宿主路径 | 容器路径 | 用途 |
+|---------|---------|------|
+| `${SIMPLE_TAVERN_DATA_ROOT}` | `/data` | 主数据目录（角色卡/聊天记录/用户数据） |
+| `/home/ubuntu/code/ugirl_craw/output` | `/ugirl_data:ro` | ugirl 批量导入数据（只读） |
+
 - 角色卡：`/data/<user>/characters/`
 - 聊天记录：`/data/<user>/chats/<character>/`
 - 用户数据：`/data/default-user/`
@@ -107,27 +115,35 @@ backend 容器挂载本机的 `/Users/linda/code/SillyTavern/data` 作为 `/data
 
 # === 或手动分别启动 ===
 # 终端 1: 后端（tsx watch 热重载）
-cd /Users/linda/code/SimpleTavern/backend && npm run dev
+cd backend && npm run dev
 
 # 终端 2: 前端（Vite dev server）
-cd /Users/linda/code/SimpleTavern/frontend && npm run dev
+cd frontend && npm run dev
 ```
 
 ### 构建命令
 
 ```bash
 # === 后端 ===
-cd /Users/linda/code/SimpleTavern/backend
+cd backend
 npm install
 npm run dev                  # tsx watch 热重载
 npm run build                # tsc 编译（tsconfig: strict, NodeNext）
 npm run start                # 无 watch 启动
 
 # === 前端 ===
-cd /Users/linda/code/SimpleTavern/frontend
+cd frontend
 npm install
 npm run dev                  # Vite 开发服务器
 npm run build                # Vite 构建
+npm run preview              # Vite 预览构建产物
+npm run lint                 # tsc --noEmit 类型检查
+
+# === 管理后台 ===
+cd admin
+npm install
+npm run dev                  # Vite 开发服务器
+npm run build                # tsc --noEmit && vite build
 npm run preview              # Vite 预览构建产物
 npm run lint                 # tsc --noEmit 类型检查
 ```
@@ -137,7 +153,7 @@ npm run lint                 # tsc --noEmit 类型检查
 ### 环境变量（backend/.env）
 
 ```bash
-# 数据目录（默认指向 /Users/linda/code/SillyTavern/data）
+# 数据目录（默认指向原 SillyTavern 的 data 目录）
 SIMPLE_TAVERN_DATA_ROOT=/path/to/data
 
 # 日志级别：debug | info | warn | error
@@ -190,6 +206,28 @@ server.ts ← app.ts ← modules/*/
 | **types/** | `api.types.ts`, `config.types.ts`, `models.types.ts`, `declarations.d.ts` | 全局 TypeScript 类型定义 |
 | **shared/middleware/** | `cors.ts`, `error-handler.ts`, `auth-guard.ts`, `request-context.ts` | 共享中间件 |
 
+### TypeScript 配置
+
+`backend/tsconfig.json` 关键配置：
+
+```json
+{
+  "compilerOptions": {
+    "strict": true,
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "outDir": "dist",
+    "rootDir": "src",
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "declaration": true,
+    "sourceMap": true
+  }
+}
+```
+
 ### 代码约定
 
 - **Controller**: try/catch 包裹，成功调用 `res.json()`，失败调用 `next(err)`，由全局 `errorHandler` 统一处理
@@ -205,6 +243,15 @@ server.ts ← app.ts ← modules/*/
 - 路由分为**公开**（注册在 `requireLogin` 之前）和**私有**（注册在之后）
 - 公开路由示例：登录、注册、角色发现、AI 聊天、收藏、用户角色列表、聊天线程、角色导入
 
+#### Cookie Secret 持久化机制
+
+Session 密钥不是硬编码或随机生成的，而是持久化存储：
+
+- 密钥存储位置：`${dataRoot}/cookie-secret.txt`
+- 首次启动时若文件不存在，随机生成密钥并写入文件
+- 后续启动从文件读取，确保重启后 session 不失效
+- Session name 格式：`session-<sha256前8位>`（依赖密钥哈希，保证唯一性）
+
 ### 数据存储
 
 | 数据类型 | 存储方式 | 位置 |
@@ -213,6 +260,38 @@ server.ts ← app.ts ← modules/*/
 | 角色 | PNG 角色卡（嵌入 JSON） | `dataRoot/<user>/characters/` |
 | 聊天 | .jsonl 文件（每行一个 JSON） | `dataRoot/<user>/chats/<character>/` |
 | 设置 | JSON 文件 | `dataRoot/<user>/settings.json` |
+| 评价 | JSON 文件（按角色类型分文件） | `dataRoot/reviews/` |
+
+#### 评价系统存储
+
+评价数据按角色类型分三个独立文件存储：
+
+```
+dataRoot/reviews/
+  ├── seed-reviews.json       ← 种子角色评价（key: 角色 id）
+  ├── imported-reviews.json   ← 导入 PNG 角色评价（key: 文件名）
+  └── png-reviews.json        ← 用户 PNG 角色卡评价（key: handle/characters/filename.png）
+```
+
+#### JSONL 聊天文件数据结构
+
+```typescript
+// 每个 .jsonl 文件的结构（首行为 ChatHeader，后续为 ChatMessage）
+interface ChatHeader {
+  chat_metadata: { integrity?: string };
+  user_name: string;
+  character_name: string;
+}
+interface ChatMessage {
+  name: string;
+  is_user: boolean;
+  send_date: string;
+  mes: string;
+  extra?: unknown;
+  swipes?: string[];
+  swipe_id?: number;
+}
+```
 
 ### 模块清单
 
@@ -220,10 +299,33 @@ server.ts ← app.ts ← modules/*/
 |------|------|------|
 | **auth** | `auth.controller.ts`, `auth.service.ts`, `auth.routes.ts`, `google.service.ts` | 登录/登出/密码恢复/管理员用户管理/Google OAuth |
 | **users** | `users.repository.ts`, `users.service.ts`, `favorites.controller.ts`, `favorites.routes.ts` | 用户数据层、收藏、设置 |
-| **characters** | `characters.controller.ts`, `characters.service.ts`, `characters.repository.ts`, `characters.validator.ts`, `characters.parser.ts`, `characters.importer.ts`, `characters.user.service.ts`, `characters.public.routes.ts`, `characters.public.import.routes.ts`, `admin-characters.controller.ts`, `admin-characters.routes.ts`, `discover.controller.ts`, `discover.routes.ts`, `seed.service.ts` | 角色 CRUD、PNG 角色卡读写、导入/导出、用户发布、发现/种子角色（种子数据来自 `data/seed-characters.json`） |
-| **chats** | `chats.controller.ts`, `chats.service.ts`, `chats.repository.ts`, `chats.public.routes.ts` | 聊天读写、JSONL 文件操作、路径安全检查 |
+| **characters** | `characters.controller.ts`, `characters.service.ts`, `characters.repository.ts`, `characters.validator.ts`, `characters.parser.ts`, `characters.importer.ts`, `characters.ugirl-importer.ts`, `characters.user.service.ts`, `characters.public.routes.ts`, `characters.public.import.routes.ts`, `admin-characters.controller.ts`, `admin-characters.routes.ts`, `discover.controller.ts`, `discover.routes.ts`, `seed.service.ts`, `reviews.repository.ts` | 角色 CRUD、PNG 角色卡读写、导入/导出、用户发布、发现/种子角色（种子数据来自 `data/seed-characters.json`）、ugirl 批量导入、评价系统 |
+| **chats** | `chats.controller.ts`, `chats.service.ts`, `chats.repository.ts`, `chats.public.routes.ts`, `chats.types.ts` | 聊天读写、JSONL 文件操作、路径安全检查 |
 | **backends** | `chat-completions/`, `llm-config.ts`, `types.ts` | AI 聊天补全（OpenAI-compatible）、LLM 配置、多 provider 支持 |
 | **worlds** | `worlds.routes.ts`, `worlds.service.ts`, `admin-worlds.controller.ts`, `public-worlds.controller.ts` | 世界书管理（管理员CRUD/用户端列表） |
+| **infrastructure** | `infrastructure/storage/disk-cache.ts` | 基础设施（内存受限 Map 工具类 `MemoryLimitedMap<V>`） |
+| **data** | `data/seed-characters.json` | 种子角色数据（内置角色，随代码分发） |
+
+#### ugirl 角色批量导入子系统
+
+`characters.ugirl-importer.ts` 提供从 ugirl 爬虫 JSON 文件批量导入角色的功能：
+
+- 支持多种图片格式（`.png`/`.jpg`/`.jpeg`/`.webp`/`.jfif`），使用 `sharp` 自动转换为 PNG
+- 通过 **magic bytes** 检测真实图片格式（而非依赖扩展名）
+- 并发处理（`CONCURRENCY = 10`）：并行加载头像 + 串行创建角色文件
+- 将 ugirl 特有元数据写入角色 `extensions`：`ugirl_id`、`ugirl_popularity`、`ugirl_rating_avg`、`ugirl_radar_tier`
+- 导入数据源：容器内 `/ugirl_data`（由 `docker-compose.yml` 以只读方式挂载）
+
+#### 角色数据类型
+
+角色 JSON 包含以下核心结构（V2/V3 格式）：
+
+```typescript
+interface CharacterBookEntry {
+  name: string;
+  entries: CharacterBookEntryItem[];   // 角色内嵌世界书（Character Book）
+}
+```
 
 ### 共享中间件
 
@@ -236,7 +338,7 @@ server.ts ← app.ts ← modules/*/
 
 ### 后端性能优化
 
-- **compression** 中间件：启用 gzip 压缩
+- **compression** 中间件：启用 gzip 压缩（SSE 路径 `/api/chat/stream` 自动跳过压缩）
 - **Cache-Control 头**：为特定端点设置缓存策略
   - `/version` → `max-age=3600`（1 小时）
   - `/api/discover` → `max-age=300`（5 分钟）
@@ -256,9 +358,12 @@ server.ts ← app.ts ← modules/*/
 | `compression` | gzip 压缩 |
 | `node-persist` | 用户数据持久化（JSON key-value） |
 | `png-chunk-text` / `png-chunks-extract` | PNG 角色卡 JSON 读写 |
+| `crc` | PNG 数据块 CRC 校验 |
+| `sharp` | 图片格式转换（ugirl 导入时转 PNG） |
 | `sanitize-filename` | 文件名安全处理 |
 | `yaml` | config.yaml 解析 |
 | `chalk` | 日志着色 |
+| `@google/generative-ai` | Google Gemini API 集成 |
 
 ## 前端架构
 
@@ -270,6 +375,20 @@ server.ts ← app.ts ← modules/*/
 - **motion** v12（动画，AnimatePresence 页面切换）
 - **lucide-react**（图标）
 - **@tanstack/react-query**（服务端状态管理）
+- **@tanstack/react-virtual**（虚拟滚动，DiscoverScreen）
+- **idb**（IndexedDB wrapper，离线聊天缓存）
+- **web-vitals**（Web Vitals 指标采集）
+
+### PWA 配置
+
+项目实现了完整的 PWA（渐进式 Web 应用）支持：
+
+- **manifest.json**：`name: "Yuzu AI — Neon Frontier"`，`short_name: "Yuzu AI"`
+- `display: "standalone"` + `display_override: ["standalone", "minimal-ui"]`
+- `orientation: "portrait"`，`lang: "zh-CN"`
+- 8 种尺寸图标（72×72 到 512×512）
+- `categories: ["entertainment", "social", "lifestyle"]`
+- **Service Worker**：`frontend/public/sw.js`（见下方专节）
 
 ### 路由
 
@@ -277,7 +396,7 @@ server.ts ← app.ts ← modules/*/
 
 ```
 App.tsx ← 14 个 Screen 组件（React.lazy 懒加载）
-  ├── WelcomeScreen / EmailLoginScreen / RegisterScreen
+  ├── WelcomeScreen / LoginScreen（EmailLoginScreen） / RegisterScreen
   ├── DiscoverScreen / CharacterDetailScreen
   ├── ChatScreen（AI 对话）
   ├── CreateChoiceScreen / CreateCharacterScreen
@@ -285,6 +404,8 @@ App.tsx ← 14 个 Screen 组件（React.lazy 懒加载）
   ├── MyCharactersScreen / MyFavoritesScreen
   ├── SettingsScreen / HelpFeedbackScreen
 ```
+
+> **注意**：`ScreenId.EMAIL_LOGIN` 对应的组件文件名为 `LoginScreen.tsx`（不是 `EmailLoginScreen.tsx`）。
 
 ### 数据流
 
@@ -296,19 +417,32 @@ App.tsx ← 14 个 Screen 组件（React.lazy 懒加载）
 - `useMemo` 用于避免重复计算（如 `myCharactersCount`、`allTags`、`filteredCharacters`）
 - 功能性 `setState` 避免不必要的依赖项（如 `handleToggleFavorite`）
 
+#### 发送状态管理
+
+AI 消息发送使用专用状态类型：
+
+```typescript
+export type SendState = 'idle' | 'sending' | 'streaming' | 'error';
+export interface CharacterSendState { state: SendState; }
+```
+
 ### 前端性能优化
 
 - **代码分割**：14 个 Screen 组件使用 `React.lazy` + `Suspense` 懒加载
 - **图片懒加载**：`LazyImage` 组件（Intersection Observer），所有角色头像使用 `LazyImage`
+- **虚拟滚动**：DiscoverScreen 使用 `@tanstack/react-virtual` 处理长列表
+- **IndexedDB 离线缓存**：`chatCache.ts` 使用 `idb` 缓存聊天数据（DB: `simpletavern-cache`）
+- **数据埋点**：`analytics.ts` 批量队列上报（10s 定时发送），集成 Web Vitals
 - **Service Worker 缓存**（见下方专节）
 - **动画优化**：页面切换移除 x 平移，缩短动画时长
+- **品牌启动画面**：`SplashScreen` 组件（entering/active/exiting/done 四阶段状态机）
 
 ### 组件结构
 
 ```
 components/
   ├── Screen 组件（14个页面，React.lazy 懒加载）
-  │   ├── WelcomeScreen / EmailLoginScreen / RegisterScreen
+  │   ├── WelcomeScreen / LoginScreen / RegisterScreen
   │   ├── DiscoverScreen / CharacterDetailScreen
   │   ├── ChatScreen（AI 对话）
   │   ├── CreateChoiceScreen / CreateCharacterScreen
@@ -316,12 +450,14 @@ components/
   │   ├── MyCharactersScreen / MyFavoritesScreen
   │   └── SettingsScreen / HelpFeedbackScreen
   ├── 特殊组件
+  │   ├── SplashScreen.tsx（品牌启动画面，四阶段状态机）
   │   └── GoogleCallback.tsx（OAuth 回调弹窗）
   ├── UI 组件
   │   ├── BottomNav.tsx（底部导航）
   │   ├── Toast.tsx（消息提示）
   │   ├── LazyImage.tsx（懒加载图片）
   │   ├── Skeleton.tsx（加载骨架屏）
+  │   ├── SwipeableRow.tsx（左滑操作通用组件，含 chatSwipeActions 工厂函数）
   │   └── ErrorBoundary.tsx（错误边界）
   └── hooks/（自定义 Hooks）
       ├── useAuth.ts（认证逻辑）
@@ -349,11 +485,13 @@ src/
   │   ├── auth.ts        ← 认证表单验证
   │   ├── character.ts   ← 角色表单验证
   │   └── index.ts       ← 统一导出
+  ├── utils/             ← 工具函数
+  │   ├── chatCache.ts   ← IndexedDB 离线聊天缓存（DB: simpletavern-cache）
+  │   ├── analytics.ts   ← 数据埋点（批量队列 + Web Vitals + 10s 定时上报）
+  │   └── formatDate.ts  ← 聊天日期格式化（兼容 ISO 8601 和 SillyTavern 格式）
   ├── sw-register.ts     ← Service Worker 注册（生产环境）
-  ├── types.ts           ← TypeScript 类型定义
-  ├── data.ts            ← 静态数据（FAQ 等）
-  └── utils/             ← 工具函数
-      └── chatMessages.ts ← 聊天消息格式转换（fromStoredChatMessages / toStoredChatMessages）
+  ├── types.ts           ← TypeScript 类型定义（含 SendState）
+  └── data.ts            ← 静态数据（FAQ 等）
 ```
 
 ### 自定义 Hooks
@@ -410,24 +548,13 @@ admin/src/
 
 管理员登录后，通过 cookie-session 维持会话，请求时携带认证 cookie。API 请求通过 `api/client.ts` 统一封装，自动附加认证头。
 
-### 构建命令
-
-```bash
-cd /Users/linda/code/SimpleTavern/admin
-npm install
-npm run dev      # Vite 开发服务器
-npm run build    # tsc --noEmit && vite build
-npm run preview  # Vite 预览构建产物
-npm run lint     # tsc --noEmit 类型检查
-```
-
 ## Service Worker 缓存
 
 前端实现了 Service Worker 缓存方案，文件位于 `frontend/public/sw.js`，注册逻辑在 `src/sw-register.ts`。
 
 - **开发环境自动跳过**：`import.meta.env.DEV` 为 true 时不注册 SW
 - **直接注册**：不等待 `load` 事件，组件挂载时立即注册
-- **缓存版本**：`simpletavern-v1`，修改 `CACHE_NAME` 可让浏览器更新缓存
+- **缓存版本号**：`BUILD_VERSION = 'YYYY-MM-DD-N'` 格式，`deploy-prd.sh` 每次部署时自动递增（同一天递增序号，跨天重置为 1）。`CACHE_NAME` 引用 `BUILD_VERSION`，版本号变化触发浏览器更新缓存。
 
 ### 缓存策略
 
@@ -460,16 +587,18 @@ location /sw.js {
 | **用户** | `POST /api/users/logout\|change-*` `GET /api/users/me` | 登出/改密码/改名/改头像/获取当前用户 |
 | **管理员** | `POST /api/users/create\|delete\|disable\|enable\|promote\|demote` | 用户管理 |
 | **收藏** | `GET/POST /api/users/favorites` `DELETE /api/users/favorites/:id` | 收藏系统 |
-| **角色** | `POST /api/characters/all\|get\|create\|edit\|delete\|rename\|export\|import\|chats\|publish` | 角色 CRUD + 导入导出 |
+| **角色** | `POST /api/characters/all\|get\|create\|edit\|delete\|rename\|duplicate\|export\|import\|chats\|publish` | 角色 CRUD + 导入导出 + 复制 |
+| **角色头像** | `GET /api/characters/avatar/:filename` | 获取角色 PNG 头像（公开，302 重定向） |
 | **发现** | `GET /api/discover` `GET /api/discover/:id` `POST /api/discover/:id/reviews` | 种子角色 + 评价系统 |
 | **世界书** | `POST /api/worlds/list` | 用户端世界书列表（需登录） |
 | **管理-角色** | `POST /api/characters/admin-*` | 管理员角色管理（全量查询/编辑/删除） |
 | **管理-世界书** | `POST /api/worlds/admin-*` | 管理员世界书管理（CRUD/导入） |
 | **聊天** | `POST /api/chats/save\|get\|rename\|delete\|export\|import` `POST /api/chats/group/*` | 聊天 CRUD + 群组 |
-| **AI 聊天** | `POST /api/chat` `GET /api/chat/providers` | 角色扮演聊天（多 LLM） |
+| **AI 聊天** | `POST /api/chat` `POST /api/chat/stream` `GET /api/chat/providers` | 角色扮演聊天（多 LLM）+ SSE 流式输出 |
 | **线程** | `GET /api/chat/threads` `GET /api/chat/threads/:id` | 聊天历史 |
-| **用户角色** | `GET /api/users/characters` | 用户创建的角色列表 |
+| **用户角色** | `GET /api/users/characters` `GET /api/users/png-characters` `POST /api/users/characters/edit\|delete` | 用户创建的角色列表（含 PNG 头像版）+ 编辑/删除 |
 | **设置** | `GET/POST /api/users/settings` | 用户设置读写 |
+| **埋点** | `POST /api/analytics/events` | 前端行为数据上报（公开端点） |
 
 ## 重构进度
 
@@ -480,7 +609,8 @@ location /sw.js {
 | 2 | 角色与聊天模块（CRUD + PNG 角色卡） | ✓ 完成 |
 | 3 | AI 后端模块（OpenAI-compatible 多 LLM 支持） | ✓ 完成 |
 | 4 | 用户功能模块（收藏/发布角色/聊天线程/设置） | ✓ 完成 |
-| 4.5 | 前端性能优化（代码分割/SW缓存/图片懒加载） | ✓ 完成 |
+| 4.5 | 前端性能优化（代码分割/SW缓存/图片懒加载/虚拟滚动） | ✓ 完成 |
+| 4.6 | 前端 UX 优化（SplashScreen/SwipeableRow/离线缓存/埋点/PWA完善） | ✓ 完成 |
 | 5 | 图像与语音模块 | 待开始 |
 | 6 | 收尾与清理 | 待开始 |
 
@@ -490,7 +620,7 @@ location /sw.js {
 - **域名**: https://chat.hhxxttxs.icu
 - **服务器 IP**: 129.146.164.152 (Oracle Cloud)
 - **部署目录**: `/opt/simpletavern`
-- **部署脚本**: `deploy-prd.sh（仓库根目录，自动递增SW版本号）`
+- **部署脚本**: `deploy-prd.sh`（仓库根目录，自动递增 SW 版本号）
 
 ### 部署流程
 ```bash
@@ -508,10 +638,10 @@ cd /opt/simpletavern && sudo bash deploy-prd.sh
 
 ### 部署脚本功能
 - 备份数据目录及环境变量
-- 自动递增 SW 缓存版本号（BUILD_VERSION）
+- 自动递增 SW 缓存版本号（`BUILD_VERSION`，格式 `YYYY-MM-DD-N`）
 - 从 GitHub 拉取最新代码
 - 恢复环境变量配置和备份数据
-- 重建并启动 Docker 容器（支持 --skip-build 跳过构建）
+- 重建并启动 Docker 容器（支持 `--skip-build` 跳过构建）
 - 多端点健康检查 + 失败回滚指引
 
 ### Docker 服务
@@ -564,3 +694,5 @@ cd /opt/simpletavern && sudo git pull origin main
 - `refactor/architecture-reference.md` — 原项目架构问题分析 + 完整 API 接口清单
 - `refactor/migration-plan.md` — 完整重构计划（目标架构、6 阶段迁移、文件变更清单）
 - `refactor/api-reference.md` — 新后端 API 文档（含请求/响应格式、示例、数据模型）
+- `frontend-ux-optimization-spec.md` — 前端 UX 优化规格文档
+- `knowledge.md` — 项目补充知识（开发过程中积累的额外约定）

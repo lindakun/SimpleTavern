@@ -6,3 +6,11 @@ dist/
 Test/*
 .agents
 .catpaw
+.workbuddy
+
+# 测试/临时文件
+heart_burst_animation.png
+swipeable_row_after_swipe.png
+swipeable_row_test.png
+test_*.txt
+test_*.json
