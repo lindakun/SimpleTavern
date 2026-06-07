@@ -142,8 +142,10 @@ export default function ChatScreen({
           </div>
         </div>
 
-        {/* Render chat history */}
-        {messages.map((msg) => {
+        {/* Render chat history — 流式加载时跳过最后一条空 AI 占位消息，由下方加载动画替代 */}
+        {messages.map((msg, idx) => {
+          const isLastEmptyAi = idx === messages.length - 1 && msg.role === 'model' && !msg.text;
+          if (isLastEmptyAi) return null;
           const isUser = msg.role === 'user';
           return (
             <div
