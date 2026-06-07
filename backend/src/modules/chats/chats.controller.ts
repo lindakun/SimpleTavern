@@ -300,7 +300,7 @@ export function getChatThreads(req: Request, res: Response, next: NextFunction):
                 characterId: entry.name,
                 characterName: charName,
                 lastMessageText: lastMsg?.mes || '',
-                lastActive: normalizeSendDate(lastMsg?.send_date),
+                lastActive: normalizeSendDate(lastMsg?.send_date, filePath),
                 messageCount: Math.max(0, chatData.length - 1),
                 pinned: pinnedSet.has(entry.name),
             });
@@ -394,7 +394,7 @@ function tryParseJson(text: string): any {
 /**
  * 标准化 send_date 为 ISO 8601 字符串，兼容 SillyTavern 格式
  */
-function normalizeSendDate(sendDate: string | undefined): string {
+function normalizeSendDate(sendDate: string | undefined, filePath?: string): string {
     if (!sendDate) return '';
 
     // 已经是有效日期（ISO 8601 / Unix timestamp）
@@ -408,6 +408,20 @@ function normalizeSendDate(sendDate: string | undefined): string {
         const isoStr = `${date}T${hours.padStart(2, '0')}:${mins.padStart(2, '0')}:${secs.padStart(2, '0')}`;
         const stParsed = new Date(isoStr);
         if (!isNaN(stParsed.getTime())) return stParsed.toISOString();
+    }
+
+    // 纯时间格式 "HH:MM" — 用文件 mtime 的 UTC 日期 + 时间组合，避免时区漂移
+    const timeMatch = sendDate.match(/^(\d{1,2}):(\d{2})$/);
+    if (timeMatch && filePath) {
+        try {
+            const stats = fs.statSync(filePath);
+            const mtime = stats.mtime;
+            const [, hours, mins] = timeMatch;
+            const isoStr = `${mtime.getUTCFullYear()}-${String(mtime.getUTCMonth() + 1).padStart(2, '0')}-${String(mtime.getUTCDate()).padStart(2, '0')}T${hours.padStart(2, '0')}:${mins.padStart(2, '0')}:00.000Z`;
+            return isoStr;
+        } catch {
+            // stat 失败则忽略
+        }
     }
 
     return '';
