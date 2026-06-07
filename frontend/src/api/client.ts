@@ -11,6 +11,16 @@
 
 import { useToast } from '../components/Toast';
 
+// 401 全局回调：当任意 API 返回 401 时触发，用于强制跳转登录页
+let onUnauthorizedCallback: (() => void) | null = null;
+
+/**
+ * 注册 401 未授权回调（由 App.tsx 调用）
+ */
+export function registerUnauthorizedCallback(cb: () => void) {
+  onUnauthorizedCallback = cb;
+}
+
 // API 响应类型
 export interface ApiResponse<T = unknown> {
   data?: T;
@@ -113,8 +123,10 @@ export function useApiClient() {
 
       // 处理 API 错误
       if (error instanceof ApiError) {
-        if (showError && error.status !== 401) {
-          // 401 由认证模块单独处理
+        if (error.status === 401) {
+          // 401: session 过期/无效 → 全局回调跳转登录页
+          onUnauthorizedCallback?.();
+        } else if (showError) {
           showToast(error.message, 'error');
         }
         throw error;

@@ -8,6 +8,7 @@ import { registerServiceWorker } from './sw-register';
 import { useUserApi } from './api/users';
 import { useCharacterApi } from './api/characters';
 import { useChatApi } from './api/chat';
+import { registerUnauthorizedCallback } from './api/client';
 import { fromStoredChatMessages, toStoredChatMessages } from './utils/chatMessages';
 import { cacheMessages, cacheThreads, getCachedMessages, getCachedThreads } from './utils/chatCache';
 import { initAnalytics, trackPageView, track } from './utils/analytics';
@@ -63,6 +64,31 @@ export default function App() {
   const chatApi = useChatApi();
   const didInitHistory = useRef(false);
   const navSourceRef = useRef<ScreenId>(ScreenId.DISCOVER);
+
+  // 注册 401 全局回调：任意 API 返回 401 时，强制跳转登录页
+  useEffect(() => {
+    registerUnauthorizedCallback(() => {
+      queryClient.clear(); // 清除所有 React Query 缓存
+      setCurrentScreen(ScreenId.WELCOME);
+      window.history.pushState({ screen: ScreenId.WELCOME }, '', window.location.pathname);
+    });
+  }, [queryClient]);
+
+  // 认证守卫：当 currentUser 从有值变为 null 且当前不在公开页面时，自动跳转到登录页
+  const prevUserRef = useRef(user);
+  useEffect(() => {
+    const publicScreens: ScreenId[] = [
+      ScreenId.WELCOME, ScreenId.EMAIL_LOGIN, ScreenId.REGISTER,
+      ScreenId.FORGOT_PASSWORD, ScreenId.RESET_PASSWORD,
+    ];
+    const wasLoggedIn = prevUserRef.current !== null;
+    prevUserRef.current = user;
+
+    if (wasLoggedIn && !user && currentScreen && !publicScreens.includes(currentScreen)) {
+      setCurrentScreen(ScreenId.WELCOME);
+      window.history.pushState({ screen: ScreenId.WELCOME }, '', window.location.pathname);
+    }
+  }, [user, currentScreen]);
 
   // 发送队列管理：每个角色的发送状态
   const sendingStatesRef = useRef<Map<string, CharacterSendState>>(new Map());
@@ -196,9 +222,8 @@ export default function App() {
   const handleLogout = useCallback(() => {
     userApi.logout().catch(() => {});
     track('logout');
-    // 清除 React Query 缓存（用 removeQueries 避免自动 refetch，防止竞态）
-    queryClient.removeQueries({ queryKey: ['user', 'me'] });
-    queryClient.removeQueries({ queryKey: ['favorites', 'list'] });
+    // 彻底清除所有 React Query 缓存（防止残留数据 + 避免自动 refetch 竞态）
+    queryClient.clear();
     setChatThreads({});
     setLoadedChats(new Set());
     // 显式导航到欢迎页
