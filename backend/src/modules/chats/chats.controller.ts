@@ -410,20 +410,14 @@ function normalizeSendDate(sendDate: string | undefined, filePath?: string): str
         if (!isNaN(stParsed.getTime())) return stParsed.toISOString();
     }
 
-    // 纯时间格式 "HH:MM" — 用文件 mtime 的本地日期 + 本地时区偏移构造 ISO 字符串
+    // 纯时间格式 "HH:MM" — 直接返回文件 mtime，前端 formatChatDate 会自动转本地时区
+    // 注意：send_date 是用户浏览器的本地时间，服务器时区可能与用户不一致，
+    // 所以不尝试从 send_date 重构日期，直接用 mtime 这个准确的 UTC 时间戳
     const timeMatch = sendDate.match(/^(\d{1,2}):(\d{2})$/);
     if (timeMatch && filePath) {
         try {
             const stats = fs.statSync(filePath);
-            const mtime = stats.mtime;
-            const [, hours, mins] = timeMatch;
-            // 用服务器本地日期（非 UTC）构建带时区偏移的 ISO 字符串
-            const localIso = `${mtime.getFullYear()}-${String(mtime.getMonth() + 1).padStart(2, '0')}-${String(mtime.getDate()).padStart(2, '0')}T${hours.padStart(2, '0')}:${mins.padStart(2, '0')}:00.000`;
-            const offset = -mtime.getTimezoneOffset();
-            const offsetHours = Math.floor(Math.abs(offset) / 60);
-            const offsetMins = Math.abs(offset) % 60;
-            const offsetSign = offset >= 0 ? '+' : '-';
-            return `${localIso}${offsetSign}${String(offsetHours).padStart(2, '0')}:${String(offsetMins).padStart(2, '0')}`;
+            return stats.mtime.toISOString();
         } catch {
             // stat 失败则忽略
         }
