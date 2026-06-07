@@ -15,6 +15,7 @@ export enum ScreenId {
   HELP_FEEDBACK = 'help_feedback',             // 帮助与反馈 - 柚姬AI
   FORGOT_PASSWORD = 'forgot_password',           // 忘记密码 - 柚姬AI
   RESET_PASSWORD = 'reset_password',             // 重置密码 - 柚姬AI
+  WORLD_BOOK_MANAGE = 'world_book_manage',       // 管理世界书 - 柚姬AI
 }
 
 export interface RouteState {

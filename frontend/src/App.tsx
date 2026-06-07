@@ -33,6 +33,7 @@ const SettingsScreen = lazy(() => import('./components/SettingsScreen'));
 const HelpFeedbackScreen = lazy(() => import('./components/HelpFeedbackScreen'));
 const ForgotPasswordScreen = lazy(() => import('./components/ForgotPasswordScreen'));
 const ResetPasswordScreen = lazy(() => import('./components/ResetPasswordScreen'));
+const WorldBookManageScreen = lazy(() => import('./components/WorldBookManageScreen'));
 
 export default function App() {
   // 注册 Service Worker（生产环境）
@@ -731,6 +732,10 @@ export default function App() {
 
           {currentScreen === ScreenId.SETTINGS && (
             <SettingsScreen onNavigate={handleNavigate} />
+          )}
+
+          {currentScreen === ScreenId.WORLD_BOOK_MANAGE && (
+            <WorldBookManageScreen onNavigate={handleNavigate} />
           )}
 
           {currentScreen === ScreenId.HELP_FEEDBACK && (
