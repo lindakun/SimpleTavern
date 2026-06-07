@@ -189,7 +189,7 @@ export function createPublicCharacterRoutes(): Router {
                 worldBook: String((c.data as any)?.extensions?.world || ''),
                 voiceType: 'sweet' as const,
                 status: 'online' as const,
-                privacyType: 'private' as const,
+                privacyType: (handle === 'default-user' ? 'public' : 'private') as 'public' | 'private',
             };
         });
     }
