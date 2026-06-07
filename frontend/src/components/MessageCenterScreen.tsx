@@ -59,24 +59,54 @@ function AvatarSection({ item }: { item: ThreadItem }) {
   );
 }
 
-/** 安全解析日期字符串，兼容 ISO 8601 和 SillyTavern 格式（"2024-05-30 @13h 45m 12s 123ms"） */
-function parseDateSafe(dateStr: string): Date | null {
-  if (!dateStr) return null;
+/** 格式化聊天日期：今天显示时间，昨天显示"昨天"，今年显示月-日，其他显示完整日期 */
+function formatChatDate(dateStr: string): string {
+  if (!dateStr) return '';
+
+  // 尝试解析日期
+  let date: Date | null = null;
 
   // 直接解析（ISO 8601 / Unix timestamp）
   const direct = new Date(dateStr);
-  if (!isNaN(direct.getTime())) return direct;
-
-  // SillyTavern 格式: "YYYY-MM-DD @HHh MMm SSs MSms"
-  const stMatch = dateStr.match(/^(\d{4}-\d{2}-\d{2}) @(\d{1,2})h (\d{1,2})m (\d{1,2})s/);
-  if (stMatch) {
-    const [, date, hours, mins, secs] = stMatch;
-    const iso = `${date}T${hours.padStart(2, '0')}:${mins.padStart(2, '0')}:${secs.padStart(2, '0')}`;
-    const stParsed = new Date(iso);
-    if (!isNaN(stParsed.getTime())) return stParsed;
+  if (!isNaN(direct.getTime())) {
+    date = direct;
+  } else {
+    // SillyTavern 格式: "YYYY-MM-DD @HHh MMm SSs MSms"
+    const stMatch = dateStr.match(/^(\d{4}-\d{2}-\d{2}) @(\d{1,2})h (\d{1,2})m (\d{1,2})s/);
+    if (stMatch) {
+      const [, d, hours, mins, secs] = stMatch;
+      const iso = `${d}T${hours.padStart(2, '0')}:${mins.padStart(2, '0')}:${secs.padStart(2, '0')}`;
+      const stParsed = new Date(iso);
+      if (!isNaN(stParsed.getTime())) {
+        date = stParsed;
+      }
+    }
   }
 
-  return null;
+  if (!date) return '';
+
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+  const dateDay = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const diffDays = (today.getTime() - dateDay.getTime()) / 86400000;
+
+  if (diffDays === 0) {
+    // 今天：显示时间
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  } else if (diffDays === 1) {
+    return '昨天';
+  } else if (diffDays < 7) {
+    // 一周内：显示星期几
+    const weekDays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+    return weekDays[date.getDay()];
+  } else if (date.getFullYear() === now.getFullYear()) {
+    // 今年内：显示月-日
+    return `${date.getMonth() + 1}-${date.getDate()}`;
+  } else {
+    // 其他年份：显示完整日期
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  }
 }
 
 function MessageBody({
@@ -86,7 +116,7 @@ function MessageBody({
   item: ThreadItem;
   isSelectionMode?: boolean;
 }) {
-  const lastActiveDate = parseDateSafe(item.lastActive);
+  const lastActiveDateStr = formatChatDate(item.lastActive);
 
   return (
     <div className="flex-grow space-y-1 min-w-0">
@@ -100,9 +130,7 @@ function MessageBody({
           )}
         </div>
         <span className="text-[10px] text-on-surface-variant/40 font-mono flex-shrink-0">
-          {lastActiveDate
-            ? lastActiveDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-            : ''}
+          {lastActiveDateStr}
         </span>
       </div>
       <p className="text-xs text-on-surface-variant line-clamp-1">
