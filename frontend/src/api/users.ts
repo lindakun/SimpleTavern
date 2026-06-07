@@ -106,13 +106,13 @@ export function useUserApi() {
     saveSettings: (settings: Record<string, unknown>) =>
       post('/api/users/settings', { settings }),
 
-    // 密码恢复
-    recoverPassword: (email: string) =>
-      post('/api/users/recover-step1', { email }),
+    // 密码恢复（Step1: 发送恢复码到控制台）
+    recoverPassword: (handle: string) =>
+      post('/api/users/recover-step1', { handle }),
 
-    // 重置密码
-    resetPassword: (token: string, newPassword: string) =>
-      post('/api/users/recover-step2', { code: token, newPassword }),
+    // 重置密码（Step2: 使用恢复码重置密码）
+    resetPassword: (handle: string, code: string, newPassword: string) =>
+      post('/api/users/recover-step2', { handle, code, newPassword }),
 
     // 管理员接口 - 创建用户
     createUser: (params: RegisterParams) =>

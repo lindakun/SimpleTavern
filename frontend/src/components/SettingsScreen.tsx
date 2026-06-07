@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { ScreenId } from '../types';
-import { ChevronLeft } from 'lucide-react';
+import { ChevronLeft, BookOpen, ChevronRight } from 'lucide-react';
 
 interface SettingsScreenProps {
   onNavigate: (screen: ScreenId) => void;
@@ -145,6 +145,30 @@ export default function SettingsScreen({ onNavigate }: SettingsScreenProps) {
               ))}
             </div>
           </div>
+        </div>
+
+        {/* 世界书管理 */}
+        <div className="space-y-4">
+          <h3 className="text-xs font-bold text-on-surface-variant uppercase tracking-widest font-mono">
+            世界书管理 (WORLDBOOK)
+          </h3>
+          <button
+            onClick={() => onNavigate(ScreenId.WORLD_BOOK_MANAGE)}
+            className="w-full bg-surface-container/60 border border-outline-variant/20 p-4 rounded-xl flex items-center justify-between hover:border-accent-purple/30 transition-all group"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-accent-purple/20 flex items-center justify-center">
+                <BookOpen className="w-5 h-5 text-accent-purple" />
+              </div>
+              <div className="text-left space-y-0.5">
+                <h4 className="text-xs font-semibold text-white">管理世界书</h4>
+                <p className="text-[10px] text-on-surface-variant leading-relaxed">
+                  创建、编辑和导入世界书条目，控制 AI 对话上下文注入
+                </p>
+              </div>
+            </div>
+            <ChevronRight className="w-4 h-4 text-on-surface-variant group-hover:text-accent-purple transition-colors" />
+          </button>
         </div>
 
         {/* Clean details banner */}

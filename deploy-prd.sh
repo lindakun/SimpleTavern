@@ -75,8 +75,17 @@ if [ ! -d "$DEPLOY_DIR/.git" ]; then
 else
     cd "$DEPLOY_DIR"
     sudo git fetch origin
+    # 使用当前所在分支，而非硬编码 origin/main
+    CURRENT_BRANCH=$(sudo git rev-parse --abbrev-ref HEAD)
+    if [ "$CURRENT_BRANCH" = "HEAD" ]; then
+      # detached HEAD 状态，使用远程默认分支
+      RESET_TARGET="origin/main"
+    else
+      # 追踪远程同名分支
+      RESET_TARGET="origin/${CURRENT_BRANCH}"
+    fi
     PREV_HASH=$(sudo git rev-parse HEAD)
-    sudo git reset --hard origin/main
+    sudo git reset --hard "$RESET_TARGET"
     NEW_HASH=$(sudo git rev-parse HEAD)
     echo "  $PREV_HASH → $NEW_HASH"
     if [ "$PREV_HASH" = "$NEW_HASH" ] && [ "$SKIP_BUILD" = false ]; then

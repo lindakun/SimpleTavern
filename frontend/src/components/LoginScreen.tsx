@@ -131,7 +131,7 @@ export default function LoginScreen({ onNavigate, onLogin, onGoogleLogin }: Logi
               </label>
               <button
                 type="button"
-                onClick={() => onNavigate(ScreenId.WELCOME)}
+                onClick={() => onNavigate(ScreenId.FORGOT_PASSWORD)}
                 className="text-[10px] text-accent-pink hover:text-white transition-colors cursor-pointer"
               >
                 忘记密码？

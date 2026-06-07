@@ -8,6 +8,7 @@ import { registerServiceWorker } from './sw-register';
 import { useUserApi } from './api/users';
 import { useCharacterApi } from './api/characters';
 import { useChatApi } from './api/chat';
+import { registerUnauthorizedCallback } from './api/client';
 import { fromStoredChatMessages, toStoredChatMessages } from './utils/chatMessages';
 import { cacheMessages, cacheThreads, getCachedMessages, getCachedThreads } from './utils/chatCache';
 import { initAnalytics, trackPageView, track } from './utils/analytics';
@@ -15,7 +16,6 @@ import { useFavorites, useToggleFavorite } from './hooks/useFavorites';
 import { useCurrentUser } from './hooks/useAuth';
 
 // Import our modular screens — lazy loaded for code splitting
-import GoogleCallback from './components/GoogleCallback';
 import SplashScreen from './components/SplashScreen';
 const WelcomeScreen = lazy(() => import('./components/WelcomeScreen'));
 const LoginScreen = lazy(() => import('./components/LoginScreen'));
@@ -31,17 +31,15 @@ const MyCharactersScreen = lazy(() => import('./components/MyCharactersScreen'))
 const MyFavoritesScreen = lazy(() => import('./components/MyFavoritesScreen'));
 const SettingsScreen = lazy(() => import('./components/SettingsScreen'));
 const HelpFeedbackScreen = lazy(() => import('./components/HelpFeedbackScreen'));
+const ForgotPasswordScreen = lazy(() => import('./components/ForgotPasswordScreen'));
+const ResetPasswordScreen = lazy(() => import('./components/ResetPasswordScreen'));
+const WorldBookManageScreen = lazy(() => import('./components/WorldBookManageScreen'));
 
 export default function App() {
   // 注册 Service Worker（生产环境）
   useEffect(() => { registerServiceWorker(); }, []);
   // 初始化埋点
   useEffect(() => { initAnalytics(); }, []);
-
-  // Google OAuth 回调路由 — 弹窗中独立渲染
-  if (window.location.pathname === '/auth/google/callback') {
-    return <GoogleCallback />;
-  }
 
   const queryClient = useQueryClient();
   const [currentScreen, setCurrentScreen] = useState<ScreenId | null>(null);
@@ -66,6 +64,31 @@ export default function App() {
   const chatApi = useChatApi();
   const didInitHistory = useRef(false);
   const navSourceRef = useRef<ScreenId>(ScreenId.DISCOVER);
+
+  // 注册 401 全局回调：任意 API 返回 401 时，强制跳转登录页
+  useEffect(() => {
+    registerUnauthorizedCallback(() => {
+      queryClient.clear(); // 清除所有 React Query 缓存
+      setCurrentScreen(ScreenId.WELCOME);
+      window.history.pushState({ screen: ScreenId.WELCOME }, '', window.location.pathname);
+    });
+  }, [queryClient]);
+
+  // 认证守卫：当 currentUser 从有值变为 null 且当前不在公开页面时，自动跳转到登录页
+  const prevUserRef = useRef(user);
+  useEffect(() => {
+    const publicScreens: ScreenId[] = [
+      ScreenId.WELCOME, ScreenId.EMAIL_LOGIN, ScreenId.REGISTER,
+      ScreenId.FORGOT_PASSWORD, ScreenId.RESET_PASSWORD,
+    ];
+    const wasLoggedIn = prevUserRef.current !== null;
+    prevUserRef.current = user;
+
+    if (wasLoggedIn && !user && currentScreen && !publicScreens.includes(currentScreen)) {
+      setCurrentScreen(ScreenId.WELCOME);
+      window.history.pushState({ screen: ScreenId.WELCOME }, '', window.location.pathname);
+    }
+  }, [user, currentScreen]);
 
   // 发送队列管理：每个角色的发送状态
   const sendingStatesRef = useRef<Map<string, CharacterSendState>>(new Map());
@@ -196,15 +219,25 @@ export default function App() {
     track('register', { username });
   }, [showToast, userApi, queryClient]);
 
-  const handleLogout = useCallback(() => {
-    userApi.logout().catch(() => {});
+  const handleLogout = useCallback(async () => {
     track('logout');
-    // 重置 React Query 缓存
-    queryClient.resetQueries({ queryKey: ['user', 'me'] });
-    queryClient.resetQueries({ queryKey: ['favorites', 'list'] });
+    // 1. 先调后端退出（清除服务端 session）
+    await userApi.logout().catch(() => {});
+    // 2. 清除 Service Worker 缓存（防止 SW 返回旧的 /api/users/me 等缓存数据）
+    if ('caches' in window) {
+      try {
+        const keys = await caches.keys();
+        await Promise.all(keys.filter(k => k.startsWith('simpletavern-')).map(k => caches.delete(k)));
+      } catch { /* ignore */ }
+    }
+    // 3. 清除所有 React Query 缓存
+    queryClient.clear();
     setChatThreads({});
     setLoadedChats(new Set());
-    // 重置角色列表为种子角色（清除用户创建的角色）
+    // 4. 显式导航到欢迎页
+    setCurrentScreen(ScreenId.WELCOME);
+    window.history.pushState({ screen: ScreenId.WELCOME }, '', window.location.pathname);
+    // 5. 重置角色列表为种子角色（清除用户创建的角色）
     characterApi.getDiscoverCharacters()
       .then(data => {
         if (Array.isArray(data)) setCharacters(data);
@@ -606,6 +639,14 @@ export default function App() {
             <RegisterScreen onNavigate={handleNavigate} onRegister={handleRegister} onGoogleLogin={handleGoogleLogin} />
           )}
 
+          {currentScreen === ScreenId.FORGOT_PASSWORD && (
+            <ForgotPasswordScreen onNavigate={handleNavigate} />
+          )}
+
+          {currentScreen === ScreenId.RESET_PASSWORD && (
+            <ResetPasswordScreen onNavigate={handleNavigate} />
+          )}
+
           {currentScreen === ScreenId.DISCOVER && (
             <DiscoverScreen
               characters={characters}
@@ -627,6 +668,7 @@ export default function App() {
           {currentScreen === ScreenId.CHARACTER_DETAIL && (
             <CharacterDetailScreen
               character={currentCharacter as Character}
+              userHandle={user?.username}
               favoriteIds={favoriteIds as string[]}
               toggleFavorite={handleToggleFavorite}
               onNavigate={handleNavigate}
@@ -720,6 +762,10 @@ export default function App() {
 
           {currentScreen === ScreenId.SETTINGS && (
             <SettingsScreen onNavigate={handleNavigate} />
+          )}
+
+          {currentScreen === ScreenId.WORLD_BOOK_MANAGE && (
+            <WorldBookManageScreen onNavigate={handleNavigate} />
           )}
 
           {currentScreen === ScreenId.HELP_FEEDBACK && (

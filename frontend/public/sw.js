@@ -137,8 +137,12 @@ function isStaticAsset(pathname) {
 }
 
 async function handleApiRequest(request, pathname) {
-  if (matchRoute(pathname, ['/api/discover', '/api/users/me', '/api/users/settings'])) {
+  if (matchRoute(pathname, ['/api/discover', '/api/users/settings'])) {
     return staleWhileRevalidate(request);
+  }
+  // /api/users/me 必须用 networkFirst，避免退出登录后返回缓存的旧会话数据
+  if (matchRoute(pathname, ['/api/users/me'])) {
+    return networkFirst(request);
   }
   if (matchRoute(pathname, ['/api/chat/providers', '/api/version'])) {
     return cacheFirst(request);

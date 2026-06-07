@@ -148,8 +148,7 @@ export default function ProfileScreen({
   const createdDate = profile?.created ? new Date(profile.created).toLocaleDateString('zh-CN') : null;
 
   const handleLogoutClick = () => {
-    onLogout();
-    onNavigate(ScreenId.WELCOME);
+    onLogout(); // handleLogout 内部已经负责导航到 WELCOME
   };
 
   return (
