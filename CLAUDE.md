@@ -243,6 +243,14 @@ server.ts ← app.ts ← modules/*/
 - 路由分为**公开**（注册在 `requireLogin` 之前）和**私有**（注册在之后）
 - 公开路由示例：登录、注册、角色发现、AI 聊天、收藏、用户角色列表、聊天线程、角色导入
 
+#### 前端认证防护（三层防线）
+
+1. **全局 401 拦截器**（`api/client.ts`）：任意 API 返回 401 时，自动清除 React Query 缓存 + 跳转到登录页。应对 session 过期/被踢等场景。
+2. **认证状态守卫**（`App.tsx`）：`useEffect` 监听 `currentUser`，当从已登录变为 null 且当前在受保护页面时，自动跳转到 WELCOME。
+3. **退出登录处理**（`App.tsx` `handleLogout`）：按序执行 — ① `await logout()` 清除服务端 session → ② 清除 SW Cache API 缓存 → ③ `queryClient.clear()` 清除 React Query 缓存 → ④ 导航到 WELCOME。
+
+> ⚠️ **关键**：退出登录时必须清除 SW Cache API 缓存，否则后续 `/api/users/me` 请求会被 SW 拦截并返回旧的已登录响应数据。
+
 #### Cookie Secret 持久化机制
 
 Session 密钥不是硬编码或随机生成的，而是持久化存储：
@@ -560,9 +568,11 @@ admin/src/
 
 | 策略 | 路由 | 效果 |
 |------|------|------|
-| **Stale-While-Revalidate** | `/api/discover`, `/api/users/me`, `/api/users/settings` | 先返回缓存（瞬间），后台静默更新 |
+| **Stale-While-Revalidate** | `/api/discover`, `/api/users/settings` | 先返回缓存（瞬间），后台静默更新 |
 | **Cache-First** | `/api/chat/providers`, `/api/version` + 所有静态资源（JS/CSS/图片/字体） | 缓存命中直接返回，未命中才请求网络 |
-| **Network-First** | `/api/users/favorites`, `/api/users/characters`, `/api/chat/threads` | 优先拿最新数据，网络失败时降级到缓存 |
+| **Network-First** | `/api/users/me`, `/api/users/favorites`, `/api/users/characters`, `/api/chat/threads` | 优先拿最新数据，网络失败时降级到缓存 |
+
+> ⚠️ **关键**：`/api/users/me` **必须**使用 Network-First，不能用 Stale-While-Revalidate。否则退出登录后 SW 会返回缓存的旧会话数据，导致前端误判为已登录状态，产生登录→发现页的重定向循环。
 
 ### 生产环境 Nginx 配置
 
@@ -622,19 +632,23 @@ location /sw.js {
 - **部署目录**: `/opt/simpletavern`
 - **部署脚本**: `deploy-prd.sh`（仓库根目录，自动递增 SW 版本号）
 
+### 部署分支
+
+> ⚠️ **重要**：当前生产环境部署的是 `feature/iteration-p0` 分支，**不是** `main`。`deploy-prd.sh` 已修复为自动检测当前分支并 reset 到对应的远程分支（而非硬编码 `origin/main`）。修改部署脚本前务必确认此逻辑。
+
 ### 部署流程
 ```bash
 # 1. 本地提交代码到 GitHub
 git add -A
 git commit -m "feat: xxx"
-git push origin main
+git push origin feature/iteration-p0
 
-# 2. 服务器上运行一键部署脚本
-ssh ubuntu@129.146.164.152
-cd /opt/simpletavern && sudo bash deploy-prd.sh
+# 2. 一键部署（先 reset 再 deploy）
+ssh ubuntu@129.146.164.152 \
+  "cd /opt/simpletavern && sudo git fetch origin feature/iteration-p0 && sudo git reset --hard origin/feature/iteration-p0 && sudo bash deploy-prd.sh"
 ```
 
-> ⚠️ **注意**：部署脚本会自动拉取代码、备份数据、递增 SW 版本号、重建容器、检查健康状态。
+> ⚠️ **注意**：必须先在服务器 `git reset --hard` 确保本地代码与远程一致，再执行 `deploy-prd.sh`。部署脚本会自动备份数据、递增 SW 版本号、重建容器、检查健康状态。
 
 ### 部署脚本功能
 - 备份数据目录及环境变量
@@ -686,8 +700,32 @@ docker logs -f simple-tavern-backend
 cd /opt/simpletavern && docker compose restart
 
 # 手动拉取最新代码
-cd /opt/simpletavern && sudo git pull origin main
+cd /opt/simpletavern && sudo git fetch origin feature/iteration-p0 && sudo git reset --hard origin/feature/iteration-p0
 ```
+
+## 已知陷阱与踩坑记录
+
+### 1. deploy-prd.sh 分支硬编码问题（已修复）
+
+`deploy-prd.sh` 曾硬编码 `git reset --hard origin/main`，导致服务器在 `feature/iteration-p0` 分支上运行部署时，每次都被回退到 `main`，新代码从未实际部署。**症状**：部署日志显示成功，但前端行为未变（Docker 镜像 CACHED、chunk 文件名不变）。
+
+**修复**：改为自动检测当前分支 `$(git rev-parse --abbrev-ref HEAD)` 并 reset 到对应的远程分支。
+
+### 2. SW 缓存导致退出登录重定向循环（已修复）
+
+退出登录后，页面短暂显示 WELCOME 后立即跳转回 DISCOVER。
+
+**根因**：SW 对 `/api/users/me` 使用 `staleWhileRevalidate` 策略。退出后 React Query 清空缓存 → `useCurrentUser` 重新请求 `/api/users/me` → SW 立即返回缓存的旧响应（用户仍在线）→ 前端判定已登录 → 跳转 DISCOVER。
+
+**修复**：
+- `/api/users/me` 从 `staleWhileRevalidate` 改为 `networkFirst`
+- `handleLogout` 中增加 `caches.delete()` 清除 SW Cache API 缓存
+
+**教训**：任何与认证状态相关的 API 端点，SW 缓存策略必须是 `networkFirst`，绝不能用 `staleWhileRevalidate` 或 `cacheFirst`。
+
+### 3. Docker 构建缓存误判
+
+当服务器本地代码未更新（`git reset --hard` 未执行）时，Docker 构建所有层都命中 CACHED，实际部署的是旧代码。**验证方法**：检查构建日志中前端 chunk 文件名是否变化（Vite build 产出带 hash 的文件名，代码变了文件名一定变）。
 
 ## 参考文档
 
