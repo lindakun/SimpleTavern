@@ -118,6 +118,19 @@ export function createApp(config: ServerConfig): express.Express {
     // ---- 角色导入 API（公开，multer 文件上传） ----
     app.use('/api', createPublicImportRoutes());
 
+    // ---- 数据埋点 API（公开，静默接收前端事件） ----
+    app.post('/api/analytics/events', (req, res) => {
+        const { events } = req.body;
+        if (Array.isArray(events) && events.length > 0) {
+            // 生产环境可接入正式分析服务；目前仅 DEBUG 日志
+            if (process.env.LOG_LEVEL === 'debug') {
+                const logger = console;
+                logger.debug(`[analytics] received ${events.length} events`);
+            }
+        }
+        res.json({ ok: true });
+    });
+
     // ---- 认证守卫 ----
     app.use(requireLogin);
 
