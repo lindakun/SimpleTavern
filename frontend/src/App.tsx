@@ -287,6 +287,30 @@ export default function App() {
     }
   }, [characterApi, showToast]);
 
+  // 快捷切换角色隐私类型
+  const handleUpdatePrivacy = useCallback(async (characterId: string, privacyType: 'public' | 'private') => {
+    try {
+      const updated = await characterApi.updateCharacterPrivacy(characterId, privacyType);
+      setCharacters(prev => prev.map(c => c.id === characterId ? updated : c));
+      showToast(privacyType === 'public' ? '角色已设为公开' : '角色已设为私有', 'success');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : '隐私设置修改失败';
+      showToast(message, 'error');
+    }
+  }, [characterApi, showToast]);
+
+  // 复制公共角色
+  const handleCopyCharacter = useCallback(async (characterId: string, sourceHandle: string) => {
+    try {
+      const copy = await characterApi.copyCharacter(characterId, sourceHandle);
+      setCharacters(prev => [copy, ...prev.filter(c => c.id !== copy.id)]);
+      showToast(`已复制角色「${copy.name}」到我的角色（私有）`, 'success');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : '复制角色失败';
+      showToast(message, 'error');
+    }
+  }, [characterApi, showToast]);
+
   // 更新单个角色发送状态
   const setCharacterSendState = useCallback((characterId: string, state: SendState) => {
     sendingStatesRef.current.set(characterId, { state });
@@ -675,6 +699,7 @@ export default function App() {
               onGoBack={() => handleGoBack(ScreenId.DISCOVER)}
               onSelectCharacter={setActiveCharacterId}
               onAddReview={handleAddReview}
+              onCopyCharacter={handleCopyCharacter}
             />
           )}
 
@@ -746,6 +771,7 @@ export default function App() {
               onSelectCharacter={setActiveCharacterId}
               onEditCharacter={(char) => setEditingCharacter(char)}
               onDeleteCharacter={handleDeleteCharacter}
+              onUpdatePrivacy={handleUpdatePrivacy}
               currentUser={user?.username || ''}
             />
           )}

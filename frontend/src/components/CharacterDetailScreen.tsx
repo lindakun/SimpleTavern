@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { ScreenId, Character, Review } from '../types';
-import { ChevronLeft, BookOpen, MessageSquare, ChevronDown, ChevronUp } from 'lucide-react';
+import { ChevronLeft, BookOpen, MessageSquare, ChevronDown, ChevronUp, Copy } from 'lucide-react';
 import BottomNav from './BottomNav';
 import LazyImage from './LazyImage';
 import { useWorldApi, WorldListItem } from '../api/worlds';
@@ -13,6 +13,7 @@ interface CharacterDetailScreenProps {
   onGoBack?: () => void;
   onAddReview: (characterId: string, review: Review) => void;
   onSelectCharacter: (id: string) => void;
+  onCopyCharacter?: (characterId: string, sourceHandle: string) => void;
   favoriteIds: string[];
   toggleFavorite: (id: string) => void;
 }
@@ -36,6 +37,7 @@ export default function CharacterDetailScreen({
   onNavigate,
   onAddReview,
   onSelectCharacter,
+  onCopyCharacter,
   favoriteIds,
   toggleFavorite,
   onGoBack,
@@ -406,6 +408,21 @@ export default function CharacterDetailScreen({
         >
           探索其它角色列表
         </button>
+
+        {/* 复制公共角色 */}
+        {character.privacyType === 'public' && onCopyCharacter && (
+          <button
+            onClick={() => {
+              onCopyCharacter(character.id, character.creator);
+              track('copy_character', { character_id: character.id, source: 'detail_page' });
+            }}
+            className="h-12 px-4 bg-accent-green/10 hover:bg-accent-green/20 border border-accent-green/30 text-accent-green rounded-xl font-bold text-xs active:scale-95 transition-all cursor-pointer flex items-center gap-2"
+            title="复制到我的角色"
+          >
+            <Copy className="w-3.5 h-3.5" />
+            <span>复制</span>
+          </button>
+        )}
 
         <button
           onClick={() => {

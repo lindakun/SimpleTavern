@@ -19,6 +19,31 @@ export function createPublicCharacterRoutes(): Router {
 
     router.post('/characters/publish', characterController.publishCharacter);
 
+    // 复制公共角色到当前用户
+    router.post('/characters/copy', async (req, res, next) => {
+        try {
+            const handle = getHandle(req);
+            if (!handle) { res.status(403).json({ error: 'Unauthorized' }); return; }
+
+            const characterId = String(req.body.characterId || '');
+            const sourceHandle = String(req.body.sourceHandle || '');
+            if (!characterId || !sourceHandle) {
+                res.status(400).json({ error: 'characterId and sourceHandle are required' });
+                return;
+            }
+
+            const copy = await userCharacterService.copyPublicCharacter(sourceHandle, characterId, handle);
+            if (!copy) {
+                res.status(404).json({ error: 'Character not found or not public' });
+                return;
+            }
+
+            res.json(copy);
+        } catch (err) {
+            next(err);
+        }
+    });
+
     router.get('/users/characters', async (req, res, next) => {
         try {
             const handle = getHandle(req);
@@ -46,6 +71,7 @@ export function createPublicCharacterRoutes(): Router {
                 rating: req.body.rating,
                 reviewCount: req.body.reviewCount,
                 status: req.body.status,
+                privacyType: req.body.privacyType,
                 // V3 字段
                 personality: req.body.personality,
                 scenario: req.body.scenario,
@@ -94,6 +120,35 @@ export function createPublicCharacterRoutes(): Router {
         }
     });
 
+    // 快捷切换角色隐私类型
+    router.post('/users/characters/privacy', async (req, res, next) => {
+        try {
+            const handle = getHandle(req);
+            if (!handle) { res.status(403).json({ error: 'Unauthorized' }); return; }
+
+            const characterId = String(req.body.characterId || '');
+            const privacyType = req.body.privacyType;
+            if (!characterId || !privacyType) {
+                res.status(400).json({ error: 'characterId and privacyType are required' });
+                return;
+            }
+            if (privacyType !== 'public' && privacyType !== 'private') {
+                res.status(400).json({ error: 'privacyType must be "public" or "private"' });
+                return;
+            }
+
+            const updated = await userCharacterService.updateCharacterPrivacy(handle, characterId, privacyType);
+            if (!updated) {
+                res.status(404).json({ error: 'Character not found' });
+                return;
+            }
+
+            res.json(updated);
+        } catch (err) {
+            next(err);
+        }
+    });
+
     // 辅助函数：将原始角色数据映射为前端 Character 格式
     function mapPngCharacters(pngChars: Record<string, unknown>[], handle: string, pngReviews: Record<string, any[]>): any[] {
         return pngChars.map(c => {
@@ -134,6 +189,7 @@ export function createPublicCharacterRoutes(): Router {
                 worldBook: String((c.data as any)?.extensions?.world || ''),
                 voiceType: 'sweet' as const,
                 status: 'online' as const,
+                privacyType: 'private' as const,
             };
         });
     }

@@ -132,3 +132,33 @@ export function useImportCharacter() {
     },
   });
 }
+
+// 快捷切换角色隐私类型
+export function useUpdateCharacterPrivacy() {
+  const api = useCharacterApi();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ characterId, privacyType }: { characterId: string; privacyType: 'public' | 'private' }) =>
+      api.updateCharacterPrivacy(characterId, privacyType),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: characterKeys.myCharacters() });
+      queryClient.invalidateQueries({ queryKey: characterKeys.discover() });
+    },
+  });
+}
+
+// 复制公共角色
+export function useCopyCharacter() {
+  const api = useCharacterApi();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ characterId, sourceHandle }: { characterId: string; sourceHandle: string }) =>
+      api.copyCharacter(characterId, sourceHandle),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: characterKeys.myCharacters() });
+      queryClient.invalidateQueries({ queryKey: characterKeys.discover() });
+    },
+  });
+}

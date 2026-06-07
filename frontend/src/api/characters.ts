@@ -60,5 +60,13 @@ export function useCharacterApi() {
     // 获取用户的 PNG 角色卡列表
     getUserPngCharacters: () =>
       get<Character[]>('/api/users/png-characters'),
+
+    // 快捷切换角色隐私类型
+    updateCharacterPrivacy: (characterId: string, privacyType: 'public' | 'private') =>
+      post<Character>('/api/users/characters/privacy', { characterId, privacyType }),
+
+    // 复制公共角色
+    copyCharacter: (characterId: string, sourceHandle: string) =>
+      post<Character>('/api/characters/copy', { characterId, sourceHandle }),
   };
 }

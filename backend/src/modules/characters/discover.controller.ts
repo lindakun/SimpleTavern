@@ -65,6 +65,7 @@ function getImportedCharacters(): any[] {
                 worldBook: charData?.extensions?.world || '',
                 voiceType: 'sweet',
                 status: 'online',
+                privacyType: 'public',
                 lastActiveLabel: '刚刚导入',
                 reviews,
                 _imported: true,
@@ -80,18 +81,19 @@ function getImportedCharacters(): any[] {
 
 /**
  * GET /api/discover
- * 返回种子角色 + 导入的角色
+ * 返回种子角色 + 导入的角色 + 用户公开角色
  */
-export function getDiscoverCharacters(_req: Request, res: Response): void {
+export async function getDiscoverCharacters(_req: Request, res: Response): Promise<void> {
     const seedChars = seedService.getSeedCharacters();
     const importedChars = getImportedCharacters();
-    const combined = [...seedChars, ...importedChars];
+    const publicChars = await userCharacterService.getAllPublicCharacters();
+    const combined = [...seedChars, ...importedChars, ...publicChars];
     res.json(combined);
 }
 
 /**
  * GET /api/discover/:id
- * 返回单个角色详情（种子 + 导入）
+ * 返回单个角色详情（种子 + 导入 + 用户公开角色）
  */
 export function getDiscoverCharacter(req: Request, res: Response): void {
     const { id } = req.params;
@@ -103,6 +105,21 @@ export function getDiscoverCharacter(req: Request, res: Response): void {
     // 再查导入角色
     const imported = getImportedCharacters().find(c => c.id === id);
     if (imported) { res.json(imported); return; }
+
+    // 最后查用户公开角色（custom_ 前缀）
+    if (id.startsWith('custom_')) {
+        userCharacterService.getAllPublicCharacters()
+            .then(publicChars => {
+                const found = publicChars.find(c => c.id === id);
+                if (found) {
+                    res.json(found);
+                } else {
+                    res.status(404).json({ error: 'Character not found' });
+                }
+            })
+            .catch(() => res.status(404).json({ error: 'Character not found' }));
+        return;
+    }
 
     res.status(404).json({ error: 'Character not found' });
 }

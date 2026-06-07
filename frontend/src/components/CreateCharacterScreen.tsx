@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { ScreenId, Character } from '../types';
-import { ChevronLeft, Plus, X, ChevronDown, ChevronUp, Globe } from 'lucide-react';
+import { ChevronLeft, Plus, X, ChevronDown, ChevronUp, Globe, Lock, Unlock } from 'lucide-react';
 import BottomNav from './BottomNav';
 import { useToast } from './Toast';
 import { useWorldApi } from '../api/worlds';
@@ -28,6 +28,7 @@ interface CharacterForm {
   character_version: string;
   worldBook: string;
   voiceType: 'sweet' | 'mature';
+  privacyType: 'public' | 'private';
 }
 
 const defaultForm: CharacterForm = {
@@ -46,6 +47,7 @@ const defaultForm: CharacterForm = {
   character_version: '1.0',
   worldBook: '',
   voiceType: 'sweet',
+  privacyType: 'private',
 };
 
 function formFromCharacter(c: Character | null | undefined): CharacterForm {
@@ -66,6 +68,7 @@ function formFromCharacter(c: Character | null | undefined): CharacterForm {
     character_version: c.character_version || '1.0',
     worldBook: c.worldBook || '',
     voiceType: c.voiceType || 'sweet',
+    privacyType: c.privacyType || 'private',
   };
 }
 
@@ -223,6 +226,7 @@ export default function CreateCharacterScreen({ onNavigate, onPublish, editChara
       worldBook: worldBookValue,
       voiceType: form.voiceType || undefined,
       status: editCharacter?.status || 'online',
+      privacyType: form.privacyType,
       reviews: editCharacter?.reviews || [],
     };
 
@@ -381,6 +385,41 @@ export default function CreateCharacterScreen({ onNavigate, onPublish, editChara
               )}
             </div>
           </div>
+        </Section>
+
+        {/* 隐私设置 */}
+        <Section title="隐私设置" subtitle={form.privacyType === 'public' ? '所有人可见' : '仅自己可见'} defaultOpen>
+          <div className="flex gap-3">
+            <button
+              type="button"
+              onClick={() => updateForm('privacyType', 'public')}
+              className={`flex-1 p-3 rounded-xl border text-center transition-all cursor-pointer ${
+                form.privacyType === 'public'
+                  ? 'border-accent-green/60 bg-accent-green/15 text-accent-green'
+                  : 'border-outline-variant/20 bg-surface-elevated/40 text-on-surface-variant hover:border-accent-green/30'
+              }`}
+            >
+              <Unlock className="w-5 h-5 mx-auto mb-1" />
+              <span className="text-xs font-bold block">公开</span>
+              <span className="text-[10px] text-on-surface-variant/60">所有人可见</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => updateForm('privacyType', 'private')}
+              className={`flex-1 p-3 rounded-xl border text-center transition-all cursor-pointer ${
+                form.privacyType === 'private'
+                  ? 'border-accent-pink/60 bg-accent-pink/15 text-[#ffade2]'
+                  : 'border-outline-variant/20 bg-surface-elevated/40 text-on-surface-variant hover:border-accent-pink/30'
+              }`}
+            >
+              <Lock className="w-5 h-5 mx-auto mb-1" />
+              <span className="text-xs font-bold block">私有</span>
+              <span className="text-[10px] text-on-surface-variant/60">仅自己可见</span>
+            </button>
+          </div>
+          <p className="text-[10px] text-on-surface-variant/50 leading-relaxed">
+            公开角色将出现在"发现角色"页面，其他用户可以浏览和对话；私有角色仅自己可见和管理。
+          </p>
         </Section>
 
         {/* 场景与开场 */}

@@ -71,7 +71,11 @@ export function getSeedCharacters(): SeedCharacter[] {
     if (!characters) {
         characters = loadSeedCharacters();
     }
-    return characters;
+    // 为所有种子角色补充 privacyType: 'public'
+    return characters.map(c => ({
+        ...c,
+        privacyType: 'public' as const,
+    }));
 }
 
 export function getSeedCharacterById(id: string): SeedCharacter | undefined {

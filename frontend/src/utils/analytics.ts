@@ -26,6 +26,7 @@ export type AnalyticsEventType =
   | 'start_chat'
   | 'view_character_detail'
   | 'submit_review'
+  | 'copy_character'
   | 'web_vital';
 
 export interface AnalyticsEvent {

@@ -19,6 +19,7 @@ interface UserCharacter {
     rating: number;
     reviewCount: number;
     status: 'online' | 'private' | 'draft';
+    privacyType: 'public' | 'private';
     tags: string[];
     reviews: Review[];
 
@@ -85,6 +86,7 @@ export async function publishCharacter(
         tagline?: string;
         worldBook?: string;
         voiceType?: 'sweet' | 'mature';
+        privacyType?: 'public' | 'private';
     },
 ): Promise<UserCharacter> {
     const id = `custom_${uuidv4().slice(0, 8)}`;
@@ -97,6 +99,7 @@ export async function publishCharacter(
         rating: 0,
         reviewCount: 0,
         status: 'online',
+        privacyType: data.privacyType || 'private',
         tags: data.tags || [],
         reviews: [],
 
@@ -157,6 +160,7 @@ export async function updateUserCharacter(
             rating: data.rating ?? existing.rating,
             reviewCount: data.reviewCount ?? existing.reviewCount,
             status: data.status ?? existing.status,
+            privacyType: data.privacyType ?? existing.privacyType,
 
             // V3 字段
             description: data.description ?? existing.description,
@@ -221,5 +225,86 @@ export async function deleteUserCharacter(handle: string, characterId: string): 
         return true;
     } catch {
         return false;
+    }
+}
+
+/**
+ * 快捷切换隐私类型
+ */
+export async function updateCharacterPrivacy(
+    handle: string,
+    characterId: string,
+    privacyType: 'public' | 'private',
+): Promise<UserCharacter | null> {
+    try {
+        const key = `userchar:${handle}:${characterId}`;
+        const existing = await storage.getItem(key) as UserCharacter | undefined;
+        if (!existing) return null;
+
+        existing.privacyType = privacyType;
+        await storage.setItem(key, existing);
+        logger.info(`用户 ${handle} 切换角色 ${existing.name} 隐私类型: ${privacyType}`);
+        return existing;
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * 获取所有用户的公共角色（用于发现页）
+ */
+export async function getAllPublicCharacters(): Promise<UserCharacter[]> {
+    try {
+        const keys = await storage.keys();
+        const prefix = 'userchar:';
+        const chars: UserCharacter[] = [];
+        for (const key of keys) {
+            if (key.startsWith(prefix)) {
+                const char = await storage.getItem(key) as UserCharacter | undefined;
+                if (char && char.privacyType === 'public' && char.status !== 'draft') {
+                    chars.push(char);
+                }
+            }
+        }
+        return chars;
+    } catch {
+        return [];
+    }
+}
+
+/**
+ * 复制公共角色到当前用户
+ * 复制后的角色 privacyType='private'，creator=当前用户，清空评价
+ */
+export async function copyPublicCharacter(
+    sourceHandle: string,
+    characterId: string,
+    targetHandle: string,
+): Promise<UserCharacter | null> {
+    try {
+        const sourceKey = `userchar:${sourceHandle}:${characterId}`;
+        const source = await storage.getItem(sourceKey) as UserCharacter | undefined;
+        if (!source) return null;
+
+        // 验证源角色确实是公开的
+        if (source.privacyType !== 'public') return null;
+
+        const newId = `custom_${uuidv4().slice(0, 8)}`;
+        const copy: UserCharacter = {
+            ...source,
+            id: newId,
+            creator: targetHandle,
+            createdAt: new Date().toISOString(),
+            privacyType: 'private',
+            rating: 0,
+            reviewCount: 0,
+            reviews: [],
+        };
+
+        await storage.setItem(`userchar:${targetHandle}:${newId}`, copy);
+        logger.info(`用户 ${targetHandle} 复制了角色: ${source.name} (${newId})`);
+        return copy;
+    } catch {
+        return null;
     }
 }

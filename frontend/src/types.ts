@@ -34,6 +34,7 @@ export interface Character {
   reviewCount: number;
   tags: string[];
   status?: 'online' | 'offline' | 'draft' | 'private';
+  privacyType?: 'public' | 'private';
   lastActiveLabel?: string;
   reviews?: Review[];
 

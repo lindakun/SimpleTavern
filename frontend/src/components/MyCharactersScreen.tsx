@@ -1,5 +1,5 @@
 import { ScreenId, Character } from '../types';
-import { Plus, ChevronLeft } from 'lucide-react';
+import { Plus, ChevronLeft, Lock, Unlock } from 'lucide-react';
 import LazyImage from './LazyImage';
 
 interface MyCharactersScreenProps {
@@ -8,6 +8,7 @@ interface MyCharactersScreenProps {
   onSelectCharacter: (id: string) => void;
   onEditCharacter?: (character: Character) => void;
   onDeleteCharacter?: (id: string) => void;
+  onUpdatePrivacy?: (characterId: string, privacyType: 'public' | 'private') => void;
   currentUser?: string;
 }
 
@@ -17,6 +18,7 @@ export default function MyCharactersScreen({
   onSelectCharacter,
   onEditCharacter,
   onDeleteCharacter,
+  onUpdatePrivacy,
   currentUser,
 }: MyCharactersScreenProps) {
   // 显示用户自己的角色：custom_ 前缀（用户发布）+ .png 结尾（用户目录下的 PNG 角色卡）
@@ -134,6 +136,16 @@ export default function MyCharactersScreen({
                               DRAFT
                             </span>
                           )}
+                          {/* 隐私类型标签 */}
+                          {c.privacyType === 'public' ? (
+                            <span className="px-2 py-0.5 text-[8px] bg-accent-green/10 text-accent-green border border-accent-green/30 rounded font-mono uppercase font-bold">
+                              🔓 公开
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 text-[8px] bg-accent-purple/10 text-accent-purple border border-accent-purple/30 rounded font-mono uppercase font-bold">
+                              🔒 私有
+                            </span>
+                          )}
                         </div>
                       </div>
                       <p className="text-[11px] text-on-surface-variant line-clamp-1">{c.tagline || c.description?.slice(0, 40)}</p>
@@ -153,7 +165,7 @@ export default function MyCharactersScreen({
                       >
                         继续编辑
                       </button>
-                    ) : (
+                      ) : (
                       <>
                         <button
                           onClick={() => editCharacterAction(c)}
@@ -167,6 +179,23 @@ export default function MyCharactersScreen({
                         >
                           删除
                         </button>
+                        {/* 隐私类型快捷切换（仅 custom_ 前缀角色支持） */}
+                        {c.id.startsWith('custom_') && (
+                          <button
+                            onClick={() => onUpdatePrivacy?.(c.id, c.privacyType === 'public' ? 'private' : 'public')}
+                            className={`px-4 py-1.5 border text-xs rounded-xl cursor-pointer transition-all ${
+                              c.privacyType === 'public'
+                                ? 'bg-accent-green/10 border-accent-green/30 text-accent-green hover:bg-accent-green/20'
+                                : 'bg-accent-purple/10 border-accent-purple/30 text-accent-purple hover:bg-accent-purple/20'
+                            }`}
+                            title={c.privacyType === 'public' ? '设为私有' : '设为公开'}
+                          >
+                            {c.privacyType === 'public'
+                              ? <><Unlock className="w-3 h-3 inline mr-1" />公开</>
+                              : <><Lock className="w-3 h-3 inline mr-1" />私有</>
+                            }
+                          </button>
+                        )}
                         <button
                           onClick={() => startChatAction(c.id)}
                           className="px-5 py-1.5 bg-gradient-to-r from-accent-pink to-accent-purple text-white text-xs font-bold rounded-xl cursor-pointer active:scale-95 transition-all"
