@@ -107,7 +107,7 @@ export interface WorldDetail {
 // ── API hooks ──
 
 export function useWorldApi() {
-  const { post } = useApiClient();
+  const { post, request } = useApiClient();
 
   return {
     /** 用户端 - 列出所有世界书 */
@@ -132,18 +132,15 @@ export function useWorldApi() {
     adminDeleteWorld: (name: string) =>
       post<{ ok: boolean }>('/api/worlds/admin-delete', { name }),
 
-    /** 管理员 - 导入世界书（上传 .json 文件） */
+    /** 管理员 - 导入世界书（上传 .json 文件，使用 API 客户端） */
     adminImportWorld: (file: File) => {
       const formData = new FormData();
       formData.append('file', file);
-      return fetch('/api/worlds/admin-import', {
+      // 使用 API 客户端的 request 方法以保持一致的错误处理和认证
+      return request<{ ok: boolean; name: string }>('/api/worlds/admin-import', {
         method: 'POST',
         body: formData,
-        credentials: 'include',
-      }).then(async (res) => {
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.message || '导入失败');
-        return data as { ok: boolean; name: string };
+        // 不设置 Content-Type，让浏览器自动设置 multipart/form-data boundary
       });
     },
   };

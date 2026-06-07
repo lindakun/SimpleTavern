@@ -133,7 +133,7 @@ export default function CharacterDetailScreen({
 
     setCommentText('');
     setUserRating(5);
-  }, [commentText, userRating, character.id, onAddReview]);
+  }, [commentText, userRating, character.id, onAddReview, userHandle, newReviews]);
 
   // 可见的评价列表
   const displayedReviews = useMemo(() => {

@@ -60,7 +60,8 @@ export function useApiClient() {
 
     // 设置默认 headers
     const headers = new Headers(fetchConfig.headers);
-    if (!headers.has('Content-Type') && fetchConfig.body) {
+    // FormData 上传时不设置 Content-Type，让浏览器自动设置 multipart boundary
+    if (!headers.has('Content-Type') && fetchConfig.body && !(fetchConfig.body instanceof FormData)) {
       headers.set('Content-Type', 'application/json');
     }
 

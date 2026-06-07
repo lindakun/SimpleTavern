@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { ScreenId } from '../types';
-import { ChevronLeft, Mail } from 'lucide-react';
+import { ChevronLeft, Mail, KeyRound } from 'lucide-react';
 import { useUserApi } from '../api/users';
 
 interface ForgotPasswordScreenProps {
@@ -11,6 +11,7 @@ export default function ForgotPasswordScreen({ onNavigate }: ForgotPasswordScree
   const [handle, setHandle] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [sent, setSent] = useState(false);
 
   const userApi = useUserApi();
 
@@ -22,10 +23,11 @@ export default function ForgotPasswordScreen({ onNavigate }: ForgotPasswordScree
     try {
       await userApi.recoverPassword(handle.trim());
       sessionStorage.setItem('reset_password_handle', handle.trim());
-      onNavigate(ScreenId.RESET_PASSWORD);
+      setSent(true);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : '请求失败，请重试';
       setError(message);
+    } finally {
       setLoading(false);
     }
   };
@@ -72,9 +74,32 @@ export default function ForgotPasswordScreen({ onNavigate }: ForgotPasswordScree
 
         <div className="text-center mb-6">
           <h2 className="text-2xl font-bold text-white mb-2 font-headline-lg-mobile">找回你的账号</h2>
-          <p className="text-xs text-on-surface-variant">输入用户名，系统将生成恢复码并显示在服务器控制台中</p>
+          <p className="text-xs text-on-surface-variant">输入用户名，系统将生成恢复码供你重置密码</p>
         </div>
 
+        {sent ? (
+          /* 发送成功状态 */
+          <div className="w-full space-y-5">
+            <div className="bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-xs px-4 py-3 rounded-xl">
+              ✅ 恢复码已生成！请联系管理员获取你的恢复码。
+            </div>
+            <div className="bg-surface-elevated/20 border border-outline-variant/20 p-4 rounded-xl space-y-2">
+              <p className="text-[10px] text-on-surface-variant/60 leading-relaxed">
+                恢复码已生成并记录在服务器端。请联系站点管理员获取恢复码，然后在下一步输入恢复码和新密码完成重置。
+              </p>
+              <p className="text-[10px] text-on-surface-variant/60 leading-relaxed">
+                恢复码有效期为 5 分钟，请尽快使用。
+              </p>
+            </div>
+            <button
+              onClick={() => onNavigate(ScreenId.RESET_PASSWORD)}
+              className="w-full bg-gradient-to-r from-accent-pink to-accent-purple text-white py-3.5 rounded-xl font-bold shadow-[0_4px_25px_rgba(232,121,199,0.3)] hover:brightness-110 active:scale-95 transition-all duration-200 flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <span>前往重置密码</span>
+              <KeyRound className="w-4 h-4 text-white" />
+            </button>
+          </div>
+        ) : (
         <form onSubmit={handleSubmit} className="w-full space-y-5">
           {error && (
             <div className="bg-red-600/20 border border-red-500/40 text-red-300 text-xs px-4 py-2.5 rounded-xl">
@@ -115,12 +140,12 @@ export default function ForgotPasswordScreen({ onNavigate }: ForgotPasswordScree
             )}
           </button>
         </form>
+        )}
 
         {/* Help Text */}
         <div className="mt-6 p-4 rounded-xl bg-surface-elevated/20 border border-outline-variant/20">
           <p className="text-[10px] text-on-surface-variant/60 leading-relaxed text-center">
-            恢复码将在服务器控制台中显示。开发环境下请查看 Docker 日志或终端输出获取恢复码。
-            生产环境下恢复码将通过注册邮箱发送。
+            恢复码由服务器生成，请联系站点管理员获取。恢复码有效期为 5 分钟。
           </p>
         </div>
 

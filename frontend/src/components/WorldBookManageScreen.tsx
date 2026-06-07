@@ -231,6 +231,9 @@ export default function WorldBookManageScreen({ onNavigate }: WorldBookManageScr
   const { showToast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // 管理员权限检测
+  const [isAdmin, setIsAdmin] = useState(true); // 先假设是管理员，API 失败时降级
+
   // 世界书列表
   const [worldList, setWorldList] = useState<WorldListItem[]>([]);
   const [selectedWorldFileId, setSelectedWorldFileId] = useState<string>('');
@@ -267,8 +270,10 @@ export default function WorldBookManageScreen({ onNavigate }: WorldBookManageScr
     try {
       const list = await worldApi.adminListWorlds();
       setWorldList(list);
+      setIsAdmin(true);
     } catch {
       // 非管理员回退到公开列表
+      setIsAdmin(false);
       try {
         const list = await worldApi.listWorlds();
         setWorldList(list);
@@ -281,22 +286,31 @@ export default function WorldBookManageScreen({ onNavigate }: WorldBookManageScr
   const currentWorldBook = worldDataCache[selectedWorldFileId] ?? null;
   const selectedWorldMeta = worldList.find(w => w.file_id === selectedWorldFileId);
 
-  // 加载选中世界书的内容
-  useEffect(() => {
-    if (!selectedWorldFileId) return;
-    if (worldDataCache[selectedWorldFileId]) return;
-    loadWorldBook(selectedWorldFileId);
-  }, [selectedWorldFileId]);
-
   const loadWorldBook = useCallback(async (fileId: string) => {
     try {
       const data = await worldApi.adminGetWorld(fileId);
       setWorldDataCache(prev => ({ ...prev, [fileId]: data }));
       setIsDirty(false);
     } catch {
-      showToast('加载世界书失败', 'error');
+      // 非管理员用公开接口加载
+      try {
+        const detail = await worldApi.getWorld(fileId);
+        // 公开接口只返回 promptText，不能编辑条目，转为 WorldBookData 格式
+        const data: WorldBookData = { name: detail.name, entries: {} };
+        setWorldDataCache(prev => ({ ...prev, [fileId]: data }));
+        setIsDirty(false);
+      } catch {
+        showToast('加载世界书失败', 'error');
+      }
     }
   }, [worldApi, showToast]);
+
+  // 加载选中世界书的内容
+  useEffect(() => {
+    if (!selectedWorldFileId) return;
+    if (worldDataCache[selectedWorldFileId]) return;
+    loadWorldBook(selectedWorldFileId);
+  }, [selectedWorldFileId, loadWorldBook, worldDataCache]);
 
   // 当前条目的排序列表
   const filteredEntries = (() => {
@@ -472,48 +486,63 @@ export default function WorldBookManageScreen({ onNavigate }: WorldBookManageScr
 
       {/* 工具栏 */}
       <div className="shrink-0 px-4 py-2 flex gap-2 border-b border-white/5 overflow-x-auto">
+        {!isAdmin && (
+          <span className="shrink-0 px-3 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-400 text-[10px] font-medium">
+            ⚠️ 仅管理员可编辑
+          </span>
+        )}
         <button
-          onClick={() => setShowCreateDialog(true)}
-          className="shrink-0 px-3 py-1.5 rounded-lg bg-accent-pink/20 border border-accent-pink/30 text-accent-pink text-xs font-medium hover:bg-accent-pink/30 transition-colors flex items-center gap-1"
+          onClick={() => isAdmin ? setShowCreateDialog(true) : showToast('需要管理员权限', 'error')}
+          className={`shrink-0 px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors flex items-center gap-1 ${
+            isAdmin ? 'bg-accent-pink/20 border-accent-pink/30 text-accent-pink hover:bg-accent-pink/30' : 'bg-white/5 border-white/10 text-on-surface-variant/40 cursor-not-allowed'
+          }`}
         >
           <Plus className="w-3.5 h-3.5" />
           新建
         </button>
-        <label className="shrink-0 px-3 py-1.5 rounded-lg bg-accent-purple/20 border border-accent-purple/30 text-accent-purple text-xs font-medium hover:bg-accent-purple/30 transition-colors flex items-center gap-1 cursor-pointer">
+        <label className={`shrink-0 px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors flex items-center gap-1 ${
+          isAdmin ? 'bg-accent-purple/20 border-accent-purple/30 text-accent-purple hover:bg-accent-purple/30 cursor-pointer' : 'bg-white/5 border-white/10 text-on-surface-variant/40 cursor-not-allowed'
+        }`}>
           <Upload className="w-3.5 h-3.5" />
           导入
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".json"
-            className="hidden"
-            onChange={e => {
-              const file = e.target.files?.[0];
-              if (file) handleImportWorld(file);
-              e.target.value = '';
-            }}
-          />
+          {isAdmin && (
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".json"
+              className="hidden"
+              onChange={e => {
+                const file = e.target.files?.[0];
+                if (file) handleImportWorld(file);
+                e.target.value = '';
+              }}
+            />
+          )}
         </label>
         {selectedWorldFileId && (
           <>
             <button
               onClick={handleSaveWorld}
-              disabled={!isDirty}
+              disabled={!isDirty || !isAdmin}
               className="shrink-0 px-3 py-1.5 rounded-lg bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 text-xs font-medium hover:bg-emerald-500/30 transition-colors flex items-center gap-1 disabled:opacity-30"
             >
               <Save className="w-3.5 h-3.5" />
               保存
             </button>
             <button
-              onClick={handleNewEntry}
-              className="shrink-0 px-3 py-1.5 rounded-lg bg-cyan-500/20 border border-cyan-500/30 text-cyan-400 text-xs font-medium hover:bg-cyan-500/30 transition-colors flex items-center gap-1"
+              onClick={isAdmin ? handleNewEntry : () => showToast('需要管理员权限', 'error')}
+              className={`shrink-0 px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors flex items-center gap-1 ${
+                isAdmin ? 'bg-cyan-500/20 border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/30' : 'bg-white/5 border-white/10 text-on-surface-variant/40 cursor-not-allowed'
+              }`}
             >
               <Plus className="w-3.5 h-3.5" />
               条目
             </button>
             <button
-              onClick={() => setConfirmDeleteWorld(true)}
-              className="shrink-0 px-3 py-1.5 rounded-lg bg-red-500/20 border border-red-500/30 text-red-400 text-xs font-medium hover:bg-red-500/30 transition-colors flex items-center gap-1"
+              onClick={() => isAdmin ? setConfirmDeleteWorld(true) : showToast('需要管理员权限', 'error')}
+              className={`shrink-0 px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors flex items-center gap-1 ${
+                isAdmin ? 'bg-red-500/20 border-red-500/30 text-red-400 hover:bg-red-500/30' : 'bg-white/5 border-white/10 text-on-surface-variant/40 cursor-not-allowed'
+              }`}
             >
               <Trash2 className="w-3.5 h-3.5" />
               删除
@@ -585,6 +614,7 @@ export default function WorldBookManageScreen({ onNavigate }: WorldBookManageScr
                   key={entry.uid}
                   entry={entry}
                   expanded={expandedEntries.has(entry.uid)}
+                  isAdmin={isAdmin}
                   onToggleExpand={() => toggleEntryExpand(entry.uid)}
                   onEdit={() => handleEditEntry(entry.uid)}
                   onDelete={() => setConfirmDeleteEntry(entry.uid)}
@@ -654,6 +684,7 @@ export default function WorldBookManageScreen({ onNavigate }: WorldBookManageScr
 function EntryCard({
   entry,
   expanded,
+  isAdmin,
   onToggleExpand,
   onEdit,
   onDelete,
@@ -662,6 +693,7 @@ function EntryCard({
 }: {
   entry: WorldEntry;
   expanded: boolean;
+  isAdmin: boolean;
   onToggleExpand: () => void;
   onEdit: () => void;
   onDelete: () => void;
@@ -755,36 +787,38 @@ function EntryCard({
           </div>
 
           {/* 操作按钮 */}
-          <div className="flex gap-1.5 pt-1">
-            <button
-              onClick={(e) => { e.stopPropagation(); onEdit(); }}
-              className="flex-1 py-1.5 rounded-lg bg-accent-purple/20 border border-accent-purple/30 text-accent-purple text-[10px] font-medium hover:bg-accent-purple/30 transition-colors flex items-center justify-center gap-1"
-            >
-              <Edit3 className="w-3 h-3" /> 编辑
-            </button>
-            <button
-              onClick={(e) => { e.stopPropagation(); onDuplicate(); }}
-              className="py-1.5 px-2.5 rounded-lg bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 text-[10px] font-medium hover:bg-cyan-500/20 transition-colors"
-            >
-              <Copy className="w-3 h-3" />
-            </button>
-            <button
-              onClick={(e) => { e.stopPropagation(); onToggleDisable(); }}
-              className={`py-1.5 px-2.5 rounded-lg border text-[10px] font-medium transition-colors ${
-                entry.disable
-                  ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20'
-                  : 'bg-amber-500/10 border-amber-500/20 text-amber-400 hover:bg-amber-500/20'
-              }`}
-            >
-              {entry.disable ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
-            </button>
-            <button
-              onClick={(e) => { e.stopPropagation(); onDelete(); }}
-              className="py-1.5 px-2.5 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-[10px] font-medium hover:bg-red-500/20 transition-colors"
-            >
-              <Trash2 className="w-3 h-3" />
-            </button>
-          </div>
+          {isAdmin && (
+            <div className="flex gap-1.5 pt-1">
+              <button
+                onClick={(e) => { e.stopPropagation(); onEdit(); }}
+                className="flex-1 py-1.5 rounded-lg bg-accent-purple/20 border border-accent-purple/30 text-accent-purple text-[10px] font-medium hover:bg-accent-purple/30 transition-colors flex items-center justify-center gap-1"
+              >
+                <Edit3 className="w-3 h-3" /> 编辑
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); onDuplicate(); }}
+                className="py-1.5 px-2.5 rounded-lg bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 text-[10px] font-medium hover:bg-cyan-500/20 transition-colors"
+              >
+                <Copy className="w-3 h-3" />
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); onToggleDisable(); }}
+                className={`py-1.5 px-2.5 rounded-lg border text-[10px] font-medium transition-colors ${
+                  entry.disable
+                    ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20'
+                    : 'bg-amber-500/10 border-amber-500/20 text-amber-400 hover:bg-amber-500/20'
+                }`}
+              >
+                {entry.disable ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); onDelete(); }}
+                className="py-1.5 px-2.5 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-[10px] font-medium hover:bg-red-500/20 transition-colors"
+              >
+                <Trash2 className="w-3 h-3" />
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>
