@@ -277,7 +277,7 @@ export default function App() {
       id: 'msg_user_' + Date.now(),
       role: 'user',
       text,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      timestamp: new Date().toISOString(),
     };
 
     const currentThread = chatThreads[characterId] || {
@@ -294,7 +294,7 @@ export default function App() {
       id: aiPlaceholderId,
       role: 'model',
       text: '',
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      timestamp: new Date().toISOString(),
     };
 
     setChatThreads((prev) => ({
@@ -374,7 +374,7 @@ export default function App() {
               id: 'msg_err_' + Date.now(),
               role: 'model',
               text: `（发送失败：${message}）`,
-              timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              timestamp: new Date().toISOString(),
             };
             setChatThreads((prev) => ({
               ...prev,
