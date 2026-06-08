@@ -207,7 +207,6 @@ export function createPublicCharacterRoutes(): Router {
     }
 
     // 获取当前用户的 PNG 角色卡列表（映射为前端 Character 格式，含持久化评价）
-    // 非 default-user 用户也能看到 default-user 的角色
     router.get('/users/png-characters', (req, res, next) => {
         try {
             const handle = getHandle(req);
@@ -221,23 +220,6 @@ export function createPublicCharacterRoutes(): Router {
             const pngReviews = getAllPngReviews();
 
             const characters = mapPngCharacters(pngChars, handle, pngReviews);
-
-            // 非 default-user 用户也显示 default-user 创建的角色
-            if (handle !== 'default-user') {
-                const defaultDirs = getUserDirectories(config.dataRoot, 'default-user');
-                if (fs.existsSync(defaultDirs.characters)) {
-                    const defaultPngChars = characterService.getAllCharacters(
-                        defaultDirs.characters, defaultDirs.chats, false,
-                    );
-                    const existingIds = new Set(characters.map(c => String(c.id)));
-                    const defaultMapped = mapPngCharacters(defaultPngChars, 'default-user', pngReviews);
-                    for (const dc of defaultMapped) {
-                        if (!existingIds.has(String(dc.id))) {
-                            characters.push(dc);
-                        }
-                    }
-                }
-            }
 
             res.json(characters);
         } catch (err) {
