@@ -4,7 +4,7 @@ export const INITIAL_CHARACTERS: Character[] = [
   {
     id: 'yuki',
     name: 'Yuki Murasaki',
-    avatar: 'https://lh3.googleusercontent.com/aida-public/AB6AXuBfjryuD8BX6GcV9fuijJ1-OdSEI2mNo_ow_WJczWyOqCvA5vmYEWFa76u64k1aBNu2ZH4ZpSu7M3KgCHwhiDVkXskWCKHDi0xwEqbqrsH76DLUpJuRd0dLc3JVcwocl5A3-dwvHpx0wVOh43HrF5Dw1x1QopgavBkOFyHp0SKXLi81J3-KVo5GDqAhTQ-cuoM3SWoo4hyA5wQr_ziEoCVK1ifkWTrAAc5dtTxLot5k1b_TS3sdlMeF_19PkDceAsMfrTXsgR0a_w',
+    avatar: '/welcome_girl.png',
     tagline: '霓虹深处的叛逆黑客少女 (Prankster Hacker Girl in Neon depths)',
     creator: 'YuzuCore_Admin',
     rating: 4.9,
@@ -25,7 +25,7 @@ export const INITIAL_CHARACTERS: Character[] = [
   {
     id: 'yuzu_chan',
     name: 'Yuzu-chan',
-    avatar: 'https://lh3.googleusercontent.com/aida-public/AB6AXuBNJkIhL5VgrhIzVuQ-pQ9KjmstVrmxacrtGuB0W8LG1Wuj4MsAGn2nzXGu37GIac8AMsRYcOSrQ_BDfkoOxhF0_SX5zJ9vH8F2UKfZuX97jvw5ZC877pAQelU8AKYQSJKeSw49A3iQEM_3kaz6lGI4QuKTsB2J7p5GIVykxFsz_YHCd4FJ8Vos12aPC8BXhAOK86roItVXfexuUZM7tBC73wfLoRPLcCRbsfxlOWSwDiq5jkoo4VyvLzbLti0o-zgXjsJkOZV8JQ',
+    avatar: '/welcome_girl.png',
     tagline: '活泼元气的猫耳数码歌姬 (An energetic cat-eared digital songstress)',
     creator: 'Neotaku_Labs',
     rating: 4.8,
@@ -45,7 +45,7 @@ export const INITIAL_CHARACTERS: Character[] = [
   {
     id: 'neon_samurai',
     name: 'Neon Samurai',
-    avatar: 'https://picsum.photos/seed/cyber_samurai/300/300',
+    avatar: '/welcome_girl.png',
     tagline: '旧街区的落魄赛博浪人剑客',
     creator: 'Retro_Future',
     rating: 4.7,
@@ -62,7 +62,7 @@ export const INITIAL_CHARACTERS: Character[] = [
   {
     id: 'ai_broadcast',
     name: '系统广播',
-    avatar: 'https://picsum.photos/seed/broadcast/300/300',
+    avatar: '/welcome_girl.png',
     tagline: 'Yuzu AI 官方动态广播终端',
     creator: 'Yuzu AI Team',
     rating: 5.0,
@@ -76,7 +76,7 @@ export const INITIAL_CHARACTERS: Character[] = [
   {
     id: 'luna',
     name: '月奈',
-    avatar: 'https://picsum.photos/seed/cyber_luna/300/300',
+    avatar: '/welcome_girl.png',
     tagline: '拥有全息投影魔术的全息幻象艺人',
     creator: 'Luminescence_Art',
     rating: 4.9,
@@ -92,7 +92,7 @@ export const INITIAL_CHARACTERS: Character[] = [
   {
     id: 'sophia',
     name: '索菲亚',
-    avatar: 'https://picsum.photos/seed/cyber_sophia/300/300',
+    avatar: '/welcome_girl.png',
     tagline: '战术控制室首席总指挥官',
     creator: 'Command-HQ',
     rating: 4.8,
@@ -106,7 +106,7 @@ export const INITIAL_CHARACTERS: Character[] = [
   {
     id: 'helena',
     name: '海伦娜',
-    avatar: 'https://picsum.photos/seed/cyber_helena/300/300',
+    avatar: '/welcome_girl.png',
     tagline: '高塔区科研所首席生物化学家',
     creator: 'CyberBio_Lab',
     rating: 4.6,
@@ -120,7 +120,7 @@ export const INITIAL_CHARACTERS: Character[] = [
   {
     id: 'cyber_healer',
     name: 'Cyber Heiler',
-    avatar: 'https://picsum.photos/seed/healer/300/300',
+    avatar: '/welcome_girl.png',
     tagline: '秘密义体诊所的天使修复师',
     creator: 'Alley_Med',
     rating: 4.5,

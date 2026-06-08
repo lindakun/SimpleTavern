@@ -522,9 +522,21 @@ export default function ChatScreen({
           <button
             type="button"
             onClick={() => {
-              const audioObj = new Audio('https://actions.google.com/sounds/v1/alarms/digital_watch_alarm_long.ogg');
-              audioObj.volume = 0.2;
-              audioObj.play().catch(() => {});
+              try {
+                const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(880, ctx.currentTime);
+                osc.frequency.setValueAtTime(660, ctx.currentTime + 0.1);
+                gain.gain.setValueAtTime(0.15, ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
+                osc.onended = () => ctx.close();
+                osc.start(ctx.currentTime);
+                osc.stop(ctx.currentTime + 0.3);
+              } catch {}
               alert(`（🔊 正在为您播放 ${character.name} 特属声音音频序列……）`);
             }}
             className="p-1.5 text-accent-pink hover:bg-accent-pink/10 rounded-lg cursor-pointer flex-shrink-0 flex items-center justify-center"
