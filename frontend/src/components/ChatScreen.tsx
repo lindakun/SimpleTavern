@@ -358,7 +358,9 @@ export default function ChatScreen({
       </AnimatePresence>
 
       {/* Messages Scroll Area */}
-      <main ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto px-4 py-6 flex flex-col justify-end gap-4 select-text scrollbar-thin scrollable-touch">
+      <main ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto px-4 py-6 flex flex-col gap-4 select-text scrollbar-thin scrollable-touch">
+        {/* Spacer: pushes content to bottom when it doesn't fill the container, unlike justify-end which breaks overflow scrolling */}
+        <div className="flex-grow min-h-0" />
         {/* Default Greeting */}
         <div className="flex items-start gap-2.5 animate-subtle-fadeIn">
           <LazyImage

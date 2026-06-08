@@ -13,4 +13,5 @@ heart_burst_animation.png
 swipeable_row_after_swipe.png
 swipeable_row_test.png
 test_*.txt
-test_*.json
+test_*.json.env.bak
+.env.bak
