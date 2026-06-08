@@ -32,9 +32,9 @@
         - generic [ref=e77]: 连接登录
         - img [ref=e78]
     - generic [ref=e82]: 或
-    - button "使用 Google 继续" [ref=e84] [cursor=pointer]:
+    - button "使用 Google 登录" [ref=e84] [cursor=pointer]:
       - img [ref=e85]
-      - generic [ref=e90]: 使用 Google 继续
+      - generic [ref=e90]: 使用 Google 登录
     - paragraph [ref=e91]:
       - text: 还没有账号？
       - button "立即注册" [ref=e92] [cursor=pointer]

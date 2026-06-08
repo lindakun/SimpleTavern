@@ -119,7 +119,7 @@ export default function RegisterScreen({ onNavigate, onRegister }: RegisterScree
         </div>
 
         <div className="text-center mb-8">
-          <h2 className="text-2xl font-bold text-white mb-2 font-headline-lg-mobile">加入霓虹边境</h2>
+          <h2 className="text-2xl font-bold text-white mb-2 font-headline-lg-mobile">加入霓虹秘境</h2>
           <p className="text-xs text-on-surface-variant">立即开启您的柚姬AI之旅</p>
         </div>
 

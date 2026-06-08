@@ -59,17 +59,12 @@ export default function WelcomeScreen({ onNavigate, onGoogleLogin }: WelcomeScre
           />
           <div className="absolute inset-0 bg-gradient-to-t from-background-deep via-transparent to-transparent opacity-50" />
           
-          {/* Subtle Cyber Status Tag over avatar */}
-          <div className="absolute top-3 right-3 px-2.5 py-0.5 bg-surface-elevated/80 border border-accent-pink/30 rounded-full flex items-center gap-1.5 backdrop-blur-md">
-            <span className="w-1.5 h-1.5 rounded-full bg-accent-pink animate-pulse" />
-            <span className="text-[9px] uppercase font-bold text-accent-pink tracking-widest font-mono">霓虹V2.0</span>
-          </div>
         </div>
 
         {/* Brand slogan */}
         <div className="text-center">
           <h1 className="text-2xl font-bold mb-2 tracking-tight text-white leading-tight font-headline-lg">
-            探索<span className="text-accent-pink animate-pulse">霓虹</span>边境
+            探索<span className="text-accent-pink animate-pulse">霓虹</span>秘境
           </h1>
           <p className="text-sm text-on-surface-variant max-w-xs mx-auto">
             在赛博朋克世界中与高拟真AI角色互动
@@ -91,7 +86,7 @@ export default function WelcomeScreen({ onNavigate, onGoogleLogin }: WelcomeScre
               <path fill="#fff" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
               <path fill="#fff" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
             </svg>
-            <span className="text-sm font-semibold tracking-wide">{googleLoading ? '连接中...' : '使用 Google 继续'}</span>
+            <span className="text-sm font-semibold tracking-wide">{googleLoading ? '连接中...' : '使用 Google 登录'}</span>
           </button>
 
           {/* Email Access - Triggers Email Connection view */}
