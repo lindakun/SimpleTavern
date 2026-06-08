@@ -55,14 +55,14 @@ export default function AuthLayout({
 
 
   return (
-    <div className="min-h-dvh flex flex-col bg-background-deep">
+    <div className="h-dvh flex flex-col bg-background-deep">
       {/* Glow Rings - 装饰性光晕 */}
       <div className="fixed top-1/4 -left-10 w-40 h-40 bg-accent-pink opacity-5 blur-[100px] pointer-events-none" />
       <div className="fixed bottom-1/4 -right-10 w-60 h-60 bg-accent-purple opacity-5 blur-[120px] pointer-events-none" />
 
-      {/* Sticky Header */}
+      {/* Header */}
       <header
-        className="sticky top-0 z-50 flex items-center justify-between px-4 h-14 bg-background-deep/80 backdrop-blur-xl border-b border-outline-variant/30 safe-top shrink-0"
+        className="z-50 flex items-center justify-between px-4 h-14 bg-background-deep/80 backdrop-blur-xl border-b border-outline-variant/30 safe-top shrink-0"
       >
         <button
           onClick={onBack}
@@ -88,15 +88,15 @@ export default function AuthLayout({
       {/* Main Content - 可滚动，居中 */}
       <main
         ref={mainRef}
-        className="flex-1 flex flex-col items-center justify-start sm:justify-center px-5 py-3 w-full max-w-md mx-auto z-10 gap-3 sm:gap-4"
+        className="flex-1 min-h-0 overflow-y-auto flex flex-col items-center justify-start sm:justify-center px-5 py-3 w-full max-w-md mx-auto z-10 gap-3 sm:gap-4"
         data-auth-main
       >
         {children}
       </main>
 
-      {/* Sticky Footer - 键盘弹出时隐藏 */}
+      {/* Footer - 键盘弹出时隐藏 */}
       {footer && !keyboardVisible && (
-        <div className="sticky bottom-0 bg-background-deep/95 backdrop-blur-xl border-t border-outline-variant/30 px-5 py-3 safe-bottom z-10 shrink-0">
+        <div className="bg-background-deep/95 backdrop-blur-xl border-t border-outline-variant/30 px-5 py-3 safe-bottom z-10 shrink-0">
           {footer}
         </div>
       )}

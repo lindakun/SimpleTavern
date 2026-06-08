@@ -191,7 +191,7 @@ export default function DiscoverScreen({
                   : 'bg-surface-elevated/40 border-outline-variant/30 text-on-surface hover:border-accent-pink/50'
               }`}
             >
-              {tag === 'ALL' ? '全部特征' : tag}
+              {tag === 'ALL' ? '全部' : tag}
             </button>
           ))}
         </div>
