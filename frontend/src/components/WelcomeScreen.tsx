@@ -49,30 +49,30 @@ export default function WelcomeScreen({ onNavigate, onGoogleLogin }: WelcomeScre
       </header>
 
       {/* Hero Visual Area */}
-      <div className="flex-1 flex flex-col justify-center items-center max-w-md mx-auto w-full relative z-10 gap-8 my-4">
-        <div className="relative w-full aspect-[4/5] rounded-[32px] overflow-hidden shadow-[0_0_80px_rgba(232,121,199,0.15)] group transition-all duration-500">
+      <div className="flex flex-col justify-center items-center max-w-md mx-auto w-full relative z-10 gap-4 my-2">
+        <div className="relative w-full max-w-[280px] aspect-[3/4] max-h-[320px] rounded-[24px] overflow-hidden shadow-[0_0_60px_rgba(232,121,199,0.12)] group transition-all duration-500">
           <img
-            alt="Yuzu AI Avatar Header"
+            alt="Yuzu AI 欢迎页"
             referrerPolicy="no-referrer"
             className="w-full h-full object-cover transform scale-105 group-hover:scale-100 transition-transform duration-700"
-            src="https://lh3.googleusercontent.com/aida-public/AB6AXuBfjryuD8BX6GcV9fuijJ1-OdSEI2mNo_ow_WJczWyOqCvA5vmYEWFa76u64k1aBNu2ZH4ZpSu7M3KgCHwhiDVkXskWCKHDi0xwEqbqrsH76DLUpJuRd0dLc3JVcwocl5A3-dwvHpx0wVOh43HrF5Dw1x1QopgavBkOFyHp0SKXLi81J3-KVo5GDqAhTQ-cuoM3SWoo4hyA5wQr_ziEoCVK1ifkWTrAAc5dtTxLot5k1b_TS3sdlMeF_19PkDceAsMfrTXsgR0a_w"
+            src="/welcome_girl.png"
           />
-          <div className="absolute inset-0 bg-gradient-to-t from-background-deep via-transparent to-transparent opacity-60" />
+          <div className="absolute inset-0 bg-gradient-to-t from-background-deep via-transparent to-transparent opacity-50" />
           
           {/* Subtle Cyber Status Tag over avatar */}
-          <div className="absolute top-4 right-4 px-3 py-1 bg-surface-elevated/80 border border-accent-pink/30 rounded-full flex items-center gap-2 backdrop-blur-md">
-            <span className="w-2 h-2 rounded-full bg-accent-pink animate-pulse" />
-            <span className="text-[10px] uppercase font-bold text-accent-pink tracking-widest font-mono">NEON_V2.0</span>
+          <div className="absolute top-3 right-3 px-2.5 py-0.5 bg-surface-elevated/80 border border-accent-pink/30 rounded-full flex items-center gap-1.5 backdrop-blur-md">
+            <span className="w-1.5 h-1.5 rounded-full bg-accent-pink animate-pulse" />
+            <span className="text-[9px] uppercase font-bold text-accent-pink tracking-widest font-mono">霓虹V2.0</span>
           </div>
         </div>
 
         {/* Brand slogan */}
         <div className="text-center">
-          <h1 className="text-3xl font-bold mb-3 tracking-tight text-white leading-tight font-headline-lg">
-            Explore the <span className="text-accent-pink animate-pulse">Neon</span> Frontier
+          <h1 className="text-2xl font-bold mb-2 tracking-tight text-white leading-tight font-headline-lg">
+            探索<span className="text-accent-pink animate-pulse">霓虹</span>边境
           </h1>
           <p className="text-sm text-on-surface-variant max-w-xs mx-auto">
-            Interact with high-fidelity AI personalities in an immersive cyberpunk landscape.
+            在赛博朋克世界中与高拟真AI角色互动
           </p>
         </div>
 
@@ -123,15 +123,14 @@ export default function WelcomeScreen({ onNavigate, onGoogleLogin }: WelcomeScre
       {/* Footer */}
       <footer className="w-full py-4 text-center z-10 relative">
         <p className="text-xs text-on-surface-variant/60 max-w-xs mx-auto leading-relaxed">
-          By continuing, you agree to our{' '}
+          继续即表示您同意我们的{' '}
           <a className="underline text-on-surface-variant/80 hover:text-accent-pink transition-colors" href="#terms">
-            Terms
-          </a>{' '}
-          and{' '}
-          <a className="underline text-on-surface-variant/80 hover:text-accent-pink transition-colors" href="#privacy">
-            Privacy Policy
+            服务条款
           </a>
-          .
+          {' '}和{' '}
+          <a className="underline text-on-surface-variant/80 hover:text-accent-pink transition-colors" href="#privacy">
+            隐私政策
+          </a>
         </p>
       </footer>
     </div>

@@ -114,17 +114,17 @@ export default function MyCharactersScreen({
                           {/* Online status indicator */}
                           {c.status === 'online' && (
                             <span className="px-2 py-0.5 text-[8px] bg-green-500/10 text-green-400 border border-green-500/30 rounded font-mono uppercase font-bold">
-                              ONLINE
+                              在线
                             </span>
                           )}
                           {isPrivate && (
                             <span className="px-2 py-0.5 text-[8px] bg-accent-purple/10 text-accent-purple border border-accent-purple/30 rounded font-mono uppercase font-bold">
-                              PRIVATE
+                              私有
                             </span>
                           )}
                           {isDraft && (
                             <span className="px-2 py-0.5 text-[8px] bg-neutral-500/10 text-gray-400 border border-neutral-500/30 rounded font-mono uppercase font-bold">
-                              DRAFT
+                              草稿
                             </span>
                           )}
                           {/* 隐私类型标签 */}

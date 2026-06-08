@@ -40,7 +40,7 @@ export default function CreateChoiceScreen({ onNavigate }: CreateChoiceScreenPro
       <main className="flex-grow flex flex-col justify-center max-w-md w-full mx-auto relative z-10 space-y-6">
         <div className="text-center space-y-2 mb-4">
           <span className="text-[10px] font-bold text-accent-pink uppercase font-mono tracking-widest bg-accent-pink/10 border border-accent-pink/20 px-3 py-1 rounded-full">
-            NEURAL_CREATOR_V1.0
+            霓虹创世V1.0
           </span>
           <h2 className="text-xl font-bold text-white font-headline-lg">您想如何塑造您的AI分身？</h2>
           <p className="text-xs text-on-surface-variant max-w-xs mx-auto">
@@ -127,7 +127,7 @@ export default function CreateChoiceScreen({ onNavigate }: CreateChoiceScreenPro
       {/* Footer */}
       <footer className="w-full py-4 text-center">
         <span className="text-[10px] text-on-surface-variant/40 font-mono tracking-widest block">
-          CRAFTED BY YUZU INTELLIGENCE DEVELOPMENT GROUP
+          由柚姬智能开发组打造
         </span>
       </footer>
     </div>

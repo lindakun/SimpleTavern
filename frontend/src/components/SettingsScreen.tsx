@@ -173,9 +173,9 @@ export default function SettingsScreen({ onNavigate }: SettingsScreenProps) {
 
         {/* Clean details banner */}
         <div className="bg-surface-elevated/30 border border-outline-variant/10 p-4 rounded-xl space-y-2 text-[10px] text-on-surface-variant leading-relaxed text-center font-mono">
-          <p>YUZU-AI DEPLOYMENT UNIT: NEON_CLI_PRO_V2.0</p>
-          <p>AUTHORIZED INGRESS: OK-2099</p>
-          <p>STATUS: NEURAL_CORE_STREAM_ACTIVE</p>
+          <p>柚姬AI 部署单元: 霓虹客户端 V2.0</p>
+          <p>授权入口: 正常-2099</p>
+          <p>状态: 神经核心流活跃</p>
         </div>
       </main>
     </div>

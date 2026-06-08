@@ -283,7 +283,7 @@ export default function ChatScreen({
             <Search className="w-3.5 h-3.5" />
           </button>
           <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-ping" />
-          <span className="text-[10px] font-mono font-bold text-green-400 tracking-widest">ONLINE</span>
+          <span className="text-[10px] font-mono font-bold text-green-400 tracking-widest">在线</span>
         </div>
       </header>
 
@@ -371,7 +371,7 @@ export default function ChatScreen({
               同步成功！我是 {character.name}。<br />
               {character.tagline || '赛博深处与你链接，开始发问吧。'}
             </p>
-            <span className="text-[8px] text-on-surface-variant/40 font-mono mt-1 block">Yuzu Protocol Connection OK</span>
+            <span className="text-[8px] text-on-surface-variant/40 font-mono mt-1 block">柚姬协议连接正常</span>
           </div>
         </div>
 

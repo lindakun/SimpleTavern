@@ -96,7 +96,7 @@ export default function ResetPasswordScreen({ onNavigate }: ResetPasswordScreenP
             </div>
           </div>
           <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 bg-accent-pink px-3 py-0.5 rounded-full shadow-lg">
-            <span className="text-[9px] font-bold text-on-primary-fixed uppercase tracking-wider font-mono">RESET</span>
+            <span className="text-[9px] font-bold text-on-primary-fixed uppercase tracking-wider font-mono">重置</span>
           </div>
         </div>
 
