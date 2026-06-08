@@ -96,11 +96,6 @@ export default function LoginScreen({ onNavigate, onLogin, onGoogleLogin }: Logi
             src="/yuzuai_logo.png"
           />
         </div>
-        {!isSmallScreen && (
-          <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 bg-accent-pink px-3 py-0.5 rounded-full shadow-lg">
-            <span className="text-[9px] font-bold text-on-primary-fixed uppercase tracking-wider font-mono">AI ACTIVE</span>
-          </div>
-        )}
       </div>
 
       {/* Heading */}
@@ -163,7 +158,7 @@ export default function LoginScreen({ onNavigate, onLogin, onGoogleLogin }: Logi
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               onFocus={() => handleFocusScroll(passwordInputRef.current)}
-              placeholder="••••••••"
+              placeholder="输入密码"
               className="w-full bg-surface-elevated/40 border border-outline-variant/50 focus:border-accent-pink rounded-xl px-4 py-2.5 sm:py-3 pr-10 text-white text-sm outline-none transition-all duration-300 backdrop-blur-md"
             />
             <button
