@@ -1,6 +1,7 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { ScreenId, Character, ChatMessage, SendState } from '../types';
-import { Volume2, Send, Loader2, AlertCircle, ChevronLeft } from 'lucide-react';
+import { Volume2, Send, Loader2, AlertCircle, ChevronLeft, Copy, Trash2, RefreshCw, Check, Search, X, ChevronUp, ChevronDown } from 'lucide-react';
 import BottomNav from './BottomNav';
 import LazyImage from './LazyImage';
 import { track } from '../utils/analytics';
@@ -10,6 +11,7 @@ interface ChatScreenProps {
   character: Character;
   messages: ChatMessage[];
   onSendMessage: (characterId: string, text: string) => Promise<void>;
+  onDeleteMessage?: (characterId: string, msgId: string) => void;
   onNavigate: (screen: ScreenId) => void;
   onGoBack?: () => void;
   sendState?: SendState;
@@ -19,6 +21,7 @@ export default function ChatScreen({
   character,
   messages,
   onSendMessage,
+  onDeleteMessage,
   onNavigate,
   onGoBack,
   sendState = 'idle',
@@ -27,6 +30,17 @@ export default function ChatScreen({
   const [lastError, setLastError] = useState<string | null>(null);
   const [failedText, setFailedText] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // 消息操作菜单状态
+  const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  // 搜索状态
+  const [showSearch, setShowSearch] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [currentMatchIndex, setCurrentMatchIndex] = useState(0);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // 判断 AI 是否正在流式回复：最后一条是 AI 消息但内容为空 或 sendState 为 streaming/sending
   const lastMsg = messages[messages.length - 1];
@@ -42,6 +56,81 @@ export default function ChatScreen({
 
   // 键盘回避：当输入框聚焦时，确保它在可视区域内
   const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  // 输入框自动调整高度
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, 96)}px`;
+  }, [inputText]);
+
+  // ── 搜索：计算匹配的消息索引列表 ──
+  const searchMatchIndices = React.useMemo(() => {
+    if (!searchQuery.trim()) return [];
+    const q = searchQuery.toLowerCase();
+    const indices: number[] = [];
+    messages.forEach((msg, idx) => {
+      if (msg.text.toLowerCase().includes(q)) {
+        indices.push(idx);
+      }
+    });
+    return indices;
+  }, [searchQuery, messages]);
+
+  // ── 搜索：匹配索引 Set（O(1) 查找，替代 includes(idx)） ──
+  const matchSet = React.useMemo(() => new Set(searchMatchIndices), [searchMatchIndices]);
+
+  // ── 搜索：滚动到当前匹配消息 ──
+  useEffect(() => {
+    if (!showSearch || searchMatchIndices.length === 0) return;
+    const idx = searchMatchIndices[currentMatchIndex];
+    if (idx === undefined) return;
+    const el = document.getElementById(`msg-${messages[idx]?.id}`);
+    el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [currentMatchIndex, showSearch]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── 键盘快捷键：Ctrl+F 打开搜索 ──
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+        e.preventDefault();
+        setShowSearch(true);
+        setTimeout(() => searchInputRef.current?.focus(), 50);
+      }
+      if (e.key === 'Escape' && showSearch) {
+        setShowSearch(false);
+        setSearchQuery('');
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [showSearch]);
+
+  // ── 搜索：上/下导航 ──
+  const searchPrev = useCallback(() => {
+    setCurrentMatchIndex(prev =>
+      prev > 0 ? prev - 1 : searchMatchIndices.length - 1,
+    );
+  }, [searchMatchIndices.length]);
+
+  const searchNext = useCallback(() => {
+    setCurrentMatchIndex(prev =>
+      prev < searchMatchIndices.length - 1 ? prev + 1 : 0,
+    );
+  }, [searchMatchIndices.length]);
+
+  // ── 文本高亮组件 ──
+  const highlightText = useCallback((text: string, query: string) => {
+    if (!query.trim()) return text;
+    const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const parts = text.split(new RegExp(`(${escaped})`, 'gi'));
+    return parts.map((part, i) =>
+      part.toLowerCase() === query.toLowerCase()
+        ? <mark key={i} className="bg-yellow-400/30 text-yellow-200 rounded-sm px-0.5">{part}</mark>
+        : part,
+    );
+  }, []);
 
   useEffect(() => {
     const handleVisualViewport = () => {
@@ -74,6 +163,73 @@ export default function ChatScreen({
       setFailedText(textToSend);
     }
   };
+
+  // ── 消息操作：复制 ──
+  const handleCopyMessage = useCallback(async (text: string, msgId: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+    }
+    setCopiedId(msgId);
+    setTimeout(() => setCopiedId(null), 1500);
+    setActiveMenuId(null);
+  }, []);
+
+  // ── 消息操作：重新生成 ──
+  const handleRegenerateMessage = useCallback((msgId: string) => {
+    const idx = messages.findIndex(m => m.id === msgId);
+    if (idx <= 0) { setActiveMenuId(null); return; }
+    for (let i = idx - 1; i >= 0; i--) {
+      if (messages[i].role === 'user') {
+        setActiveMenuId(null);
+        setTimeout(() => handleSend(undefined, messages[i].text), 50);
+        return;
+      }
+    }
+    setActiveMenuId(null);
+  }, [messages]);
+
+  // ── 消息操作：删除 ──
+  const handleDeleteMessage = useCallback((msgId: string) => {
+    if (onDeleteMessage) {
+      onDeleteMessage(character.id, msgId);
+    }
+    setActiveMenuId(null);
+  }, [character.id, onDeleteMessage]);
+
+  // ── 全局点击关闭操作菜单 ──
+  useEffect(() => {
+    if (!activeMenuId) return;
+    const timer = setTimeout(() => {
+      document.addEventListener('click', () => setActiveMenuId(null), { once: true });
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [activeMenuId]);
+
+  // ── 右键 / 长按打开操作菜单 ──
+  const handleMessageContextMenu = useCallback(
+    (e: React.MouseEvent, msgId: string) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setActiveMenuId(prev => prev === msgId ? null : msgId);
+    },
+    [],
+  );
+
+  const handleMessageLongPress = useCallback(
+    (msgId: string) => {
+      setActiveMenuId(prev => prev === msgId ? null : msgId);
+    },
+    [],
+  );
 
   return (
     <div className="relative h-full w-full max-w-lg mx-auto bg-background-deep text-white flex flex-col overflow-hidden">
@@ -119,10 +275,87 @@ export default function ChatScreen({
         </button>
 
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => { setShowSearch(true); setTimeout(() => searchInputRef.current?.focus(), 50); }}
+            className="p-1.5 rounded-full hover:bg-white/5 text-on-surface-variant/60 hover:text-accent-pink transition-colors"
+            title="搜索聊天记录 (Ctrl+F)"
+          >
+            <Search className="w-3.5 h-3.5" />
+          </button>
           <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-ping" />
           <span className="text-[10px] font-mono font-bold text-green-400 tracking-widest">ONLINE</span>
         </div>
       </header>
+
+      {/* ── 搜索工具栏 ── */}
+      <AnimatePresence>
+        {showSearch && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.15 }}
+            className="flex-shrink-0 z-30 overflow-hidden"
+          >
+            <div className="flex items-center gap-2 px-4 py-2 bg-surface-container/95 border-b border-accent-pink/20 backdrop-blur-md">
+              <Search className="w-3.5 h-3.5 text-accent-pink flex-shrink-0" />
+              <input
+                ref={searchInputRef}
+                type="text"
+                value={searchQuery}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setCurrentMatchIndex(0);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    e.shiftKey ? searchPrev() : searchNext();
+                  }
+                  if (e.key === 'Escape') {
+                    setShowSearch(false);
+                    setSearchQuery('');
+                  }
+                }}
+                placeholder="搜索聊天记录..."
+                className="flex-1 bg-transparent text-xs text-white focus:outline-none placeholder:text-on-surface-variant/40"
+              />
+              {searchQuery && (
+                <span className="text-[10px] text-on-surface-variant/60 font-mono flex-shrink-0">
+                  {searchMatchIndices.length > 0
+                    ? `${currentMatchIndex + 1}/${searchMatchIndices.length}`
+                    : '无结果'}
+                </span>
+              )}
+              {searchMatchIndices.length > 0 && (
+                <>
+                  <button
+                    onClick={searchPrev}
+                    className="p-1 rounded hover:bg-white/10 text-on-surface-variant hover:text-white transition-colors flex-shrink-0"
+                    title="上一个 (Shift+Enter)"
+                  >
+                    <ChevronUp className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    onClick={searchNext}
+                    className="p-1 rounded hover:bg-white/10 text-on-surface-variant hover:text-white transition-colors flex-shrink-0"
+                    title="下一个 (Enter)"
+                  >
+                    <ChevronDown className="w-3.5 h-3.5" />
+                  </button>
+                </>
+              )}
+              <button
+                onClick={() => { setShowSearch(false); setSearchQuery(''); }}
+                className="p-1 rounded hover:bg-white/10 text-on-surface-variant/60 hover:text-white transition-colors flex-shrink-0"
+                title="关闭搜索 (Esc)"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Messages Scroll Area */}
       <main ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto px-4 py-6 flex flex-col justify-end gap-4 select-text scrollbar-thin scrollable-touch">
@@ -148,9 +381,35 @@ export default function ChatScreen({
           if (isLastEmptyAi) return null;
           const isUser = msg.role === 'user';
           return (
-            <div
+            <motion.div
               key={msg.id}
-              className={`flex items-start gap-2.5 ${isUser ? 'flex-row-reverse' : ''} animate-subtle-fadeIn`}
+              id={`msg-${msg.id}`}
+              initial={{ opacity: 0, y: 12, scale: 0.97 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              transition={{ duration: 0.25, ease: 'easeOut' }}
+              className={`flex items-start gap-2.5 ${isUser ? 'flex-row-reverse' : ''} ${
+                showSearch && matchSet.has(idx)
+                  ? idx === searchMatchIndices[currentMatchIndex]
+                    ? 'ring-2 ring-yellow-400/50 rounded-2xl'
+                    : ''
+                  : ''
+              }`}
+              onContextMenu={(e) => handleMessageContextMenu(e, msg.id)}
+              onTouchStart={() => {
+                longPressTimerRef.current = setTimeout(() => handleMessageLongPress(msg.id), 500);
+              }}
+              onTouchEnd={() => {
+                if (longPressTimerRef.current) {
+                  clearTimeout(longPressTimerRef.current);
+                  longPressTimerRef.current = null;
+                }
+              }}
+              onTouchMove={() => {
+                if (longPressTimerRef.current) {
+                  clearTimeout(longPressTimerRef.current);
+                  longPressTimerRef.current = null;
+                }
+              }}
             >
               {/* Profile Bubble */}
               {!isUser && (
@@ -168,13 +427,13 @@ export default function ChatScreen({
 
               {/* Text Dialogue Bubble */}
               <div
-                className={`p-3.5 rounded-2xl text-xs leading-relaxed max-w-[85%] border backdrop-blur-md ${
+                className={`p-3.5 rounded-2xl text-xs leading-relaxed max-w-[85%] border backdrop-blur-md relative cursor-context-menu ${
                   isUser
                     ? 'bg-gradient-to-r from-accent-pink/10 to-accent-purple/10 border-accent-pink/40 text-white rounded-tr-none'
                     : 'bg-surface-container/80 border-outline-variant/10 text-[#e3e1ee] rounded-tl-none shadow-md'
                 }`}
               >
-                <p className="whitespace-pre-wrap">{msg.text}</p>
+                <p className="whitespace-pre-wrap select-text">{showSearch ? highlightText(msg.text, searchQuery) : msg.text}</p>
                 <div className="flex items-center justify-between mt-2 pt-1 border-t border-white/5 text-on-surface-variant/30 font-mono">
                   <span className="text-[8px] text-on-surface-variant/40">{formatChatDate(msg.timestamp)}</span>
                   {!isUser && (
@@ -187,23 +446,72 @@ export default function ChatScreen({
                     </div>
                   )}
                 </div>
+
+                {/* 操作菜单按钮（右键/长按后显示） */}
+                <AnimatePresence>
+                  {activeMenuId === msg.id && (
+                    <motion.div
+                      initial={{ opacity: 0, scale: 0.85, y: 4 }}
+                      animate={{ opacity: 1, scale: 1, y: 0 }}
+                      exit={{ opacity: 0, scale: 0.85, y: 4 }}
+                      transition={{ duration: 0.15 }}
+                      className={`absolute z-50 flex items-center gap-1 bg-[#1A1625] border border-outline-variant/40 rounded-xl px-2 py-1.5 shadow-2xl backdrop-blur-xl ${
+                        isUser ? 'right-0 -bottom-9' : 'left-0 -bottom-9'
+                      }`}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <button
+                        onClick={() => handleCopyMessage(msg.text, msg.id)}
+                        className="p-1.5 rounded-lg hover:bg-white/10 transition-colors text-on-surface-variant hover:text-white"
+                        title="复制"
+                      >
+                        {copiedId === msg.id ? (
+                          <Check className="w-3.5 h-3.5 text-green-400" />
+                        ) : (
+                          <Copy className="w-3.5 h-3.5" />
+                        )}
+                      </button>
+                      {!isUser && (
+                        <button
+                          onClick={() => handleRegenerateMessage(msg.id)}
+                          className="p-1.5 rounded-lg hover:bg-white/10 transition-colors text-on-surface-variant hover:text-amber-400"
+                          title="重新生成"
+                          disabled={isStreaming || isSending}
+                        >
+                          <RefreshCw className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                      <button
+                        onClick={() => handleDeleteMessage(msg.id)}
+                        className="p-1.5 rounded-lg hover:bg-white/10 transition-colors text-on-surface-variant hover:text-red-400"
+                        title="删除"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
-            </div>
+            </motion.div>
           );
         })}
 
-        {/* 流式接收中：AI 占位消息的内容实时更新，此处显示空占位时的加载动画 */}
+        {/* 流式接收中加载动画 */}
         {isStreaming && (
-          <div className="flex items-start gap-2.5 animate-pulse">
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="flex items-start gap-2.5"
+          >
             <LazyImage alt={character.name} src={character.avatar} className="w-8 h-8 rounded-full object-cover border border-outline-variant/40" />
             <div className="bg-surface-container/60 border border-outline-variant/20 px-4 py-3 rounded-2xl rounded-tl-none">
               <div className="flex gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-accent-pink animate-bounce delay-100" />
-                <span className="w-1.5 h-1.5 rounded-full bg-accent-pink animate-bounce delay-200" />
-                <span className="w-1.5 h-1.5 rounded-full bg-accent-pink animate-bounce delay-300" />
+                <span className="w-1.5 h-1.5 rounded-full bg-accent-pink animate-bounce" style={{ animationDelay: '0ms' }} />
+                <span className="w-1.5 h-1.5 rounded-full bg-accent-pink animate-bounce" style={{ animationDelay: '150ms' }} />
+                <span className="w-1.5 h-1.5 rounded-full bg-accent-pink animate-bounce" style={{ animationDelay: '300ms' }} />
               </div>
             </div>
-          </div>
+          </motion.div>
         )}
       </main>
 
@@ -237,7 +545,7 @@ export default function ChatScreen({
             }}
             placeholder={`给 ${character.name} 发送秘密信号...`}
             rows={1}
-            className="flex-grow bg-transparent text-base text-white focus:outline-none placeholder:text-on-surface-variant/40 resize-none leading-relaxed py-1.5 max-h-24 min-h-[1.5rem]"
+            className="flex-grow bg-transparent text-base text-white focus:outline-none placeholder:text-on-surface-variant/40 resize-none leading-relaxed py-1.5 overflow-y-auto"
           />
           <button
             type="submit"
