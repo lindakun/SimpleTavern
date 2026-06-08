@@ -71,11 +71,24 @@ export function getSeedCharacters(): SeedCharacter[] {
     if (!characters) {
         characters = loadSeedCharacters();
     }
-    // 为所有种子角色补充 privacyType: 'public'
-    return characters.map(c => ({
-        ...c,
-        privacyType: 'public' as const,
-    }));
+    // 合并持久化的评价数据（从 seed-reviews.json）
+    const allReviews = getAllSeedReviews();
+    return characters.map(c => {
+        const persistedReviews = allReviews[c.id] || [];
+        // 优先使用持久化评价（最新）
+        const mergedReviews = persistedReviews.length > 0 ? persistedReviews : (c.reviews || []);
+        const totalRating = mergedReviews.reduce((sum, r) => sum + r.rating, 0);
+        const avgRating = mergedReviews.length > 0
+            ? parseFloat((totalRating / mergedReviews.length).toFixed(1))
+            : (c.rating || 0);
+        return {
+            ...c,
+            privacyType: 'public' as const,
+            reviews: mergedReviews,
+            rating: avgRating,
+            reviewCount: mergedReviews.length,
+        };
+    });
 }
 
 export function getSeedCharacterById(id: string): SeedCharacter | undefined {
