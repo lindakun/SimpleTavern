@@ -92,7 +92,7 @@ export default function WelcomeScreen({ onNavigate, onGoogleLogin }: WelcomeScre
           {/* Email Access - Triggers Email Connection view */}
           <button
             id="btn_email_login"
-            onClick={() => onNavigate(ScreenId.EMAIL_LOGIN)}
+            onClick={() => onNavigate(ScreenId.LOGIN)}
             className="w-full h-14 flex items-center justify-center gap-3 bg-surface-container border border-accent-pink/20 hover:border-accent-pink/50 text-white rounded-xl active:scale-95 transition-all duration-200 cursor-pointer"
           >
             <Mail className="w-5 h-5 text-accent-pink" />

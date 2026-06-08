@@ -41,7 +41,7 @@ const WorldBookManageScreen = lazy(() => import('./components/WorldBookManageScr
 // ── ScreenId ↔ URL Path mapping ──
 const SCREEN_PATHS: Record<ScreenId, string> = {
   [ScreenId.WELCOME]: '/',
-  [ScreenId.EMAIL_LOGIN]: '/login',
+  [ScreenId.LOGIN]: '/login',
   [ScreenId.REGISTER]: '/register',
   [ScreenId.FORGOT_PASSWORD]: '/forgot-password',
   [ScreenId.RESET_PASSWORD]: '/reset-password',
@@ -118,7 +118,7 @@ export default function App() {
   // 认证守卫
   useEffect(() => {
     const publicScreens: ScreenId[] = [
-      ScreenId.WELCOME, ScreenId.EMAIL_LOGIN, ScreenId.REGISTER,
+      ScreenId.WELCOME, ScreenId.LOGIN, ScreenId.REGISTER,
       ScreenId.FORGOT_PASSWORD, ScreenId.RESET_PASSWORD,
     ];
     const wasLoggedIn = prevUserRef.current !== null;
@@ -615,12 +615,11 @@ export default function App() {
 
   // ── 路由渲染 ──
   return (
-    <div className="h-dvh w-full bg-[#090A0F] text-[#E0E0E6] flex flex-col justify-self-center overflow-hidden max-w-lg mx-auto shadow-[0_0_80px_rgba(9,10,15,0.95)] border-x border-white/5 relative safe-top" style={{ WebkitOverflowScrolling: 'touch' }}>
+    <div className="min-h-dvh w-full bg-[#090A0F] text-[#E0E0E6] flex flex-col justify-self-center overflow-y-auto overflow-x-hidden max-w-lg mx-auto shadow-[0_0_80px_rgba(9,10,15,0.95)] border-x border-white/5 relative safe-top" style={{ WebkitOverflowScrolling: 'touch' }}>
       <AnimatePresence mode="wait">
-        <Suspense fallback={<div className="h-full w-full bg-[#090A0F] text-[#E0E0E6] flex items-center justify-center"><div className="text-center space-y-4"><div className="text-4xl">🔄</div><p className="text-sm text-on-surface-variant">加载中...</p></div></div>}>
-        <div
+        <Suspense fallback={<div className="h-full w-full bg-[#090A0F] text-[#E0E0E6] flex items-center justify-center"><div className="text-center space-y-4"><div className="text-4xl">🔄</div><p className="text-sm text-on-surface-variant">加载中...</p></div></div>}>          <div
           key={location.pathname}
-          className="flex-1 flex flex-col min-h-0 overflow-hidden"
+          className="flex-1 flex flex-col min-h-0"
         >
           <Routes location={location}>
             {/* 公开页面 */}

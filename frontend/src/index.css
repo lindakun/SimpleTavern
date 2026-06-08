@@ -203,6 +203,22 @@ body.no-scroll {
   animation: shimmer 1.8s ease-in-out infinite;
 }
 
+/* ---- Auth 页面响应式压缩工具类 ---- */
+/* 短屏设备 (<700px 高度) 的紧凑布局辅助 */
+@media (max-height: 700px) {
+  .auth-compact .auth-avatar {
+    width: 5rem !important;
+    height: 5rem !important;
+  }
+  .auth-compact .auth-heading {
+    font-size: 1.125rem !important;
+  }
+  .auth-compact .auth-input {
+    padding-top: 0.5rem !important;
+    padding-bottom: 0.5rem !important;
+  }
+}
+
 /* ---- 微交互增强 ---- */
 /* 按钮 hover 霓虹边框光晕 */
 .hover-neon {

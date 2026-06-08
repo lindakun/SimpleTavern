@@ -1,6 +1,6 @@
 export enum ScreenId {
   WELCOME = 'welcome',                         // 欢迎登录 - 换色头像 - 柚姬AI
-  EMAIL_LOGIN = 'email_login',                 // 邮箱登录 - 柚姬AI
+  LOGIN = 'login',                               // 登录 - 柚姬AI
   REGISTER = 'register',                       // 注册账号 - 柚姬AI
   DISCOVER = 'discover',                       // 角色发现 - 柚姬AI
   CHARACTER_DETAIL = 'character_detail',       // 角色详情 - 增加创作者与评价 - 柚姬AI
