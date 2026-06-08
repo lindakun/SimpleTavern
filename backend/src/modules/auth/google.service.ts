@@ -21,7 +21,7 @@ export interface GoogleUserProfile {
  */
 export async function verifyGoogleIdToken(idToken: string): Promise<GoogleUserProfile> {
     if (!CLIENT_ID) {
-        throw new UnauthorizedError('Google OAuth is not configured on the server');
+        throw new UnauthorizedError('Google 登录未配置');
     }
 
     try {
@@ -32,7 +32,7 @@ export async function verifyGoogleIdToken(idToken: string): Promise<GoogleUserPr
 
         const payload = ticket.getPayload();
         if (!payload?.sub || !payload?.email) {
-            throw new UnauthorizedError('Invalid Google token payload');
+            throw new UnauthorizedError('Google 令牌无效');
         }
 
         return {
@@ -43,7 +43,7 @@ export async function verifyGoogleIdToken(idToken: string): Promise<GoogleUserPr
         };
     } catch (err) {
         if (err instanceof UnauthorizedError) throw err;
-        throw new UnauthorizedError('Google token verification failed');
+        throw new UnauthorizedError('Google 令牌验证失败');
     }
 }
 

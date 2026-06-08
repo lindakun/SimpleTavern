@@ -50,7 +50,7 @@ export async function login(handleOrEmail: string, password?: string): Promise<L
         }
     }
     if (!user) {
-        throw new UnauthorizedError('Incorrect credentials');
+        throw new UnauthorizedError('用户名不存在');
     }
 
     // 登录成功，如有邮箱映射缺失则自动补全（兼容旧账号）
@@ -58,13 +58,13 @@ export async function login(handleOrEmail: string, password?: string): Promise<L
         await saveEmailMapping(handleOrEmail, user.handle).catch(() => {});
     }
     if (!user.enabled) {
-        throw new ForbiddenError('User is disabled');
+        throw new ForbiddenError('账号已被禁用');
     }
     if (user.password && !password) {
-        throw new BadRequestError('Missing required fields');
+        throw new BadRequestError('请输入密码');
     }
     if (user.password && !verifyPassword(user, password!)) {
-        throw new UnauthorizedError('Incorrect credentials');
+        throw new UnauthorizedError('密码错误');
     }
 
     return {
@@ -122,16 +122,16 @@ export async function changeUserPassword(
 ): Promise<void> {
     const user = await getUserByHandle(handle);
     if (!user) {
-        throw new NotFoundError('User');
+        throw new NotFoundError('用户');
     }
     if (!user.enabled) {
-        throw new ForbiddenError('User is disabled');
+        throw new ForbiddenError('账号已被禁用');
     }
 
     // 非管理员需要验证旧密码
     if (!isAdmin && user.password) {
         if (!oldPassword || !verifyPassword(user, oldPassword)) {
-            throw new UnauthorizedError('Incorrect password');
+            throw new UnauthorizedError('密码错误');
         }
     }
 

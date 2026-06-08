@@ -11,6 +11,12 @@
 
 import { useToast } from '../components/Toast';
 
+// 401 全局回调忽略的端点：这些端点返回 401 表示操作失败（如凭证错误），非 session 过期
+const AUTH_EXEMPT_PATHS = new Set([
+  '/api/users/login',
+  '/api/users/google-login',
+]);
+
 // 401 全局回调：当任意 API 返回 401 时触发，用于强制跳转登录页
 let onUnauthorizedCallback: (() => void) | null = null;
 
@@ -124,8 +130,11 @@ export function useApiClient() {
       // 处理 API 错误
       if (error instanceof ApiError) {
         if (error.status === 401) {
-          // 401: session 过期/无效 → 全局回调跳转登录页
-          onUnauthorizedCallback?.();
+          // 认证相关的端点（login/google-login）返回 401 表示操作失败（凭证错误）
+          // 其他端点返回 401 表示 session 过期/无效 → 全局回调跳转登录页
+          if (!AUTH_EXEMPT_PATHS.has(url)) {
+            onUnauthorizedCallback?.();
+          }
         } else if (showError) {
           showToast(error.message, 'error');
         }

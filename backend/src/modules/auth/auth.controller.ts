@@ -206,7 +206,7 @@ export async function recoverStep1(req: Request, res: Response, next: NextFuncti
             return;
         }
         if (!user.enabled) {
-            res.status(403).json({ error: 'Forbidden', message: 'User is disabled' });
+            res.status(403).json({ error: 'Forbidden', message: '账号已被禁用' });
             return;
         }
 
@@ -240,7 +240,7 @@ export async function recoverStep2(req: Request, res: Response, next: NextFuncti
             return;
         }
         if (!user.enabled) {
-            res.status(403).json({ error: 'Forbidden', message: 'User is disabled' });
+            res.status(403).json({ error: 'Forbidden', message: '账号已被禁用' });
             return;
         }
 
