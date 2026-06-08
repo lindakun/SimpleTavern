@@ -45,9 +45,8 @@ export default function DiscoverScreen({
   const allTags = useMemo(() => ['ALL', ...Array.from(new Set(characters.flatMap((c) => c.tags)))], [characters]);
 
   const filteredCharacters = useMemo(() => characters.filter((c) => {
-    // Exclude draft and non-public characters from standard public discover feed
+    // Exclude draft characters from discover feed
     if (c.status === 'draft') return false;
-    if (c.privacyType === 'private') return false;
 
     const matchesSearch = c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                           (c.tagline || c.description).toLowerCase().includes(searchQuery.toLowerCase()) ||

@@ -9,7 +9,6 @@ interface MyCharactersScreenProps {
   onEditCharacter?: (character: Character) => void;
   onDeleteCharacter?: (id: string) => void;
   onUpdatePrivacy?: (characterId: string, privacyType: 'public' | 'private') => void;
-  currentUser?: string;
 }
 
 export default function MyCharactersScreen({
@@ -19,15 +18,7 @@ export default function MyCharactersScreen({
   onEditCharacter,
   onDeleteCharacter,
   onUpdatePrivacy,
-  currentUser,
 }: MyCharactersScreenProps) {
-  // 显示用户自己的角色：custom_ 前缀（用户发布）+ .png 结尾（用户目录下的 PNG 角色卡）
-  const authorCharacters = characters.filter((c) => {
-    if (c.id.startsWith('custom_') || c.id.endsWith('.png')) {
-      return !currentUser || !c.creator || c.creator === currentUser;
-    }
-    return false;
-  });
 
   const startChatAction = (id: string) => {
     onSelectCharacter(id);
@@ -94,12 +85,12 @@ export default function MyCharactersScreen({
 
         {/* Character List block */}
         <div className="space-y-4">
-          {authorCharacters.length === 0 ? (
+          {characters.length === 0 ? (
             <div className="py-12 bg-surface-container/30 border border-outline-variant/20 rounded-2xl text-center text-on-surface-variant">
               暂无已发布的自研角色，点击右上角 “+” 或点击下方卡片立即新建！
             </div>
           ) : (
-            authorCharacters.map((c) => {
+            characters.map((c) => {
               const isDraft = c.status === 'draft';
               const isPrivate = c.status === 'private';
 

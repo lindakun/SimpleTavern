@@ -563,8 +563,27 @@ export default function App() {
 
   const currentCharacter = characters.find((c) => c.id === activeCharacterId) || characters[0] || null;
 
+  // 当前用户自己的角色（仅用于 MyCharactersScreen）
+  const currentUserHandle = user?.username;
+  const userCharacters = useMemo(
+    () => {
+      if (!currentUserHandle) return [];
+      return characters.filter((c) => {
+        if (!(c.id.startsWith('custom_') || c.id.endsWith('.png'))) return false;
+        return !c.creator || c.creator === currentUserHandle;
+      });
+    },
+    [characters, currentUserHandle],
+  );
+
   const myCharactersCount = useMemo(
-    () => characters.filter(c => c.id.startsWith('custom_') || c.id.endsWith('.png')).length,
+    () => userCharacters.length,
+    [userCharacters],
+  );
+
+  // 公开角色（仅用于 DiscoverScreen 公共广场）
+  const publicCharacters = useMemo(
+    () => characters.filter(c => c.privacyType !== 'private'),
     [characters],
   );
 
@@ -614,7 +633,7 @@ export default function App() {
             {/* 受保护页面 */}
             <Route path="/discover" element={
               <DiscoverScreen
-                characters={characters}
+                characters={publicCharacters}
                 favoriteIds={favoriteIds as string[]}
                 onNavigate={handleNavigate}
                 onSelectCharacter={(id) => {
@@ -687,13 +706,12 @@ export default function App() {
             } />
             <Route path="/my-characters" element={
               <MyCharactersScreen
-                characters={characters}
+                characters={userCharacters}
                 onNavigate={handleNavigate}
                 onSelectCharacter={setActiveCharacterId}
                 onEditCharacter={(char) => setEditingCharacter(char)}
                 onDeleteCharacter={handleDeleteCharacter}
                 onUpdatePrivacy={handleUpdatePrivacy}
-                currentUser={user?.username || ''}
               />
             } />
             <Route path="/favorites" element={
