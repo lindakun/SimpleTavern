@@ -1,7 +1,10 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import { ScreenId, Character, ChatMessage, SendState } from '../types';
-import { Volume2, Send, Loader2, AlertCircle, ChevronLeft, Copy, Trash2, RefreshCw, Check, Search, X, ChevronUp, ChevronDown } from 'lucide-react';
+import { Volume2, Send, AlertCircle, ChevronLeft, Copy, Trash2, RefreshCw, Check, Search, X, ChevronUp, ChevronDown, Square, Pencil } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import BottomNav from './BottomNav';
 import LazyImage from './LazyImage';
 import { track } from '../utils/analytics';
@@ -15,6 +18,9 @@ interface ChatScreenProps {
   onNavigate: (screen: ScreenId) => void;
   onGoBack?: () => void;
   sendState?: SendState;
+  userHandle?: string;
+  onStopGeneration?: () => void;
+  onEditMessage?: (characterId: string, messageId: string, newText: string) => void;
 }
 
 export default function ChatScreen({
@@ -25,6 +31,9 @@ export default function ChatScreen({
   onNavigate,
   onGoBack,
   sendState = 'idle',
+  userHandle,
+  onStopGeneration,
+  onEditMessage,
 }: ChatScreenProps) {
   const [inputText, setInputText] = useState('');
   const [lastError, setLastError] = useState<string | null>(null);
@@ -42,17 +51,61 @@ export default function ChatScreen({
   const searchInputRef = useRef<HTMLInputElement>(null);
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+
+  // 消息编辑状态
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+  const [editText, setEditText] = useState('');
+  const editInputRef = useRef<HTMLTextAreaElement>(null);
+
   // 判断 AI 是否正在流式回复：最后一条是 AI 消息但内容为空 或 sendState 为 streaming/sending
   const lastMsg = messages[messages.length - 1];
   const isStreaming = sendState === 'streaming' || (lastMsg?.role === 'model' && lastMsg?.text === '');
   const isSending = sendState === 'sending';
 
-  // Auto-scroll when messages update or streaming
-  useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+  // ── 虚拟滚动：组合所有条目（Greeting + Messages + StreamingIndicator）──
+  const allItems = useMemo(() => {
+    const items: Array<{ type: 'greeting' } | { type: 'message'; msg: ChatMessage; idx: number } | { type: 'streaming' }> = [
+      { type: 'greeting' as const },
+    ];
+    messages.forEach((msg, idx) => {
+      const isLastEmptyAi = idx === messages.length - 1 && msg.role === 'model' && !msg.text;
+      if (!isLastEmptyAi) {
+        items.push({ type: 'message' as const, msg, idx });
+      }
+    });
+    if (isStreaming) {
+      items.push({ type: 'streaming' as const });
     }
+    return items;
   }, [messages, isStreaming]);
+
+  // ── 虚拟滚动实例 ──
+  const virtualizer = useVirtualizer({
+    count: allItems.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => 120,
+    overscan: 15,
+  });
+
+  // Auto-scroll to bottom when new messages arrive or streaming updates
+  const scrollToIndexRef = useRef(virtualizer.scrollToIndex);
+  scrollToIndexRef.current = virtualizer.scrollToIndex;
+  const prevMessageLenRef = useRef(messages.length);
+  const prevLastTextLenRef = useRef(lastMsg?.text?.length || 0);
+  useEffect(() => {
+    if (allItems.length === 0) return;
+    const isNewMsg = messages.length > prevMessageLenRef.current;
+    const isStreamUpdate = lastMsg?.text && lastMsg.text.length > prevLastTextLenRef.current;
+    prevMessageLenRef.current = messages.length;
+    prevLastTextLenRef.current = lastMsg?.text?.length || 0;
+    if (isNewMsg || isStreamUpdate) {
+      setTimeout(() => {
+        scrollToIndexRef.current(allItems.length - 1, { align: 'end' });
+      }, 50);
+    }
+  }, [messages, lastMsg?.text, allItems.length]);
 
   // 键盘回避：当输入框聚焦时，确保它在可视区域内
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -81,13 +134,15 @@ export default function ChatScreen({
   // ── 搜索：匹配索引 Set（O(1) 查找，替代 includes(idx)） ──
   const matchSet = React.useMemo(() => new Set(searchMatchIndices), [searchMatchIndices]);
 
-  // ── 搜索：滚动到当前匹配消息 ──
+  // ── 搜索：滚动到当前匹配消息（+1 因为 0 是 greeting）──
   useEffect(() => {
     if (!showSearch || searchMatchIndices.length === 0) return;
-    const idx = searchMatchIndices[currentMatchIndex];
-    if (idx === undefined) return;
-    const el = document.getElementById(`msg-${messages[idx]?.id}`);
-    el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    const msgIdx = searchMatchIndices[currentMatchIndex];
+    if (msgIdx === undefined) return;
+    const virtualIndex = msgIdx + 1; // +1 for greeting at index 0
+    if (virtualIndex < allItems.length) {
+      virtualizer.scrollToIndex(virtualIndex, { align: 'center', behavior: 'smooth' });
+    }
   }, [currentMatchIndex, showSearch]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── 键盘快捷键：Ctrl+F 打开搜索 ──
@@ -196,6 +251,26 @@ export default function ChatScreen({
     }
     setActiveMenuId(null);
   }, [messages]);
+
+  // ── 消息操作：编辑 ──
+  const handleStartEdit = useCallback((msgId: string, text: string) => {
+    setEditingMessageId(msgId);
+    setEditText(text);
+    setActiveMenuId(null);
+    setTimeout(() => editInputRef.current?.focus(), 50);
+  }, []);
+
+  const handleConfirmEdit = useCallback(() => {
+    if (!editingMessageId || !editText.trim()) return;
+    onEditMessage?.(character.id, editingMessageId, editText.trim());
+    setEditingMessageId(null);
+    setEditText('');
+  }, [editingMessageId, editText, character.id, onEditMessage]);
+
+  const handleCancelEdit = useCallback(() => {
+    setEditingMessageId(null);
+    setEditText('');
+  }, []);
 
   // ── 消息操作：删除 ──
   const handleDeleteMessage = useCallback((msgId: string) => {
@@ -357,192 +432,299 @@ export default function ChatScreen({
         )}
       </AnimatePresence>
 
-      {/* Messages Scroll Area */}
-      <main ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto px-4 py-6 flex flex-col gap-4 select-text scrollbar-thin scrollable-touch">
-        {/* Spacer: pushes content to bottom when it doesn't fill the container, unlike justify-end which breaks overflow scrolling */}
-        <div className="flex-grow min-h-0" />
-        {/* Default Greeting */}
-        <div className="flex items-start gap-2.5 animate-subtle-fadeIn">
-          <LazyImage
-            alt={character.name}
-            src={character.avatar}
-            className="w-8 h-8 rounded-full object-cover border border-outline-variant/40 flex-shrink-0"
-          />
-          <div className="bg-surface-container/60 border border-outline-variant/20 p-3.5 rounded-2xl rounded-tl-none max-w-[80%] backdrop-blur-md">
-            <p className="text-xs text-on-surface-variant leading-relaxed">
-              同步成功！我是 {character.name}。<br />
-              {character.tagline || '赛博深处与你链接，开始发问吧。'}
-            </p>
-            <span className="text-[8px] text-on-surface-variant/40 font-mono mt-1 block">柚姬协议连接正常</span>
-          </div>
-        </div>
+      {/* Messages Scroll Area — 虚拟滚动 */}
+      <main ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto px-4 select-text scrollbar-thin scrollable-touch" style={{ contain: 'strict' }}>
+        <div
+          className="relative w-full"
+          style={{
+            height: `${Math.max(virtualizer.getTotalSize(), 1)}px`,
+            minHeight: '100%',
+          }}
+        >
+          {/* Push-to-bottom: when total content is shorter than viewport, push to bottom */}
+          {virtualizer.getTotalSize() > 0 && (
+            <div style={{
+              paddingTop: `${Math.max(0, (scrollRef.current?.clientHeight || 0) - virtualizer.getTotalSize())}px`,
+            }} />
+          )}
+          {virtualizer.getVirtualItems().map((virtualItem) => {
+            const item = allItems[virtualItem.index];
+            if (!item) return null;
+            const isGreeting = item.type === 'greeting';
+            const isStreamingItem = item.type === 'streaming';
 
-        {/* Render chat history — 流式加载时跳过最后一条空 AI 占位消息，由下方加载动画替代 */}
-        {messages.map((msg, idx) => {
-          const isLastEmptyAi = idx === messages.length - 1 && msg.role === 'model' && !msg.text;
-          if (isLastEmptyAi) return null;
-          const isUser = msg.role === 'user';
-          return (
-            <motion.div
-              key={msg.id}
-              id={`msg-${msg.id}`}
-              initial={{ opacity: 0, y: 12, scale: 0.97 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              transition={{ duration: 0.25, ease: 'easeOut' }}
-              className={`flex items-start gap-2.5 ${isUser ? 'flex-row-reverse' : ''} ${
-                showSearch && matchSet.has(idx)
-                  ? idx === searchMatchIndices[currentMatchIndex]
-                    ? 'ring-2 ring-yellow-400/50 rounded-2xl'
-                    : ''
-                  : ''
-              }`}
-              onContextMenu={(e) => handleMessageContextMenu(e, msg.id)}
-              onTouchStart={() => {
-                longPressTimerRef.current = setTimeout(() => handleMessageLongPress(msg.id), 500);
-              }}
-              onTouchEnd={() => {
-                if (longPressTimerRef.current) {
-                  clearTimeout(longPressTimerRef.current);
-                  longPressTimerRef.current = null;
-                }
-              }}
-              onTouchMove={() => {
-                if (longPressTimerRef.current) {
-                  clearTimeout(longPressTimerRef.current);
-                  longPressTimerRef.current = null;
-                }
-              }}
-            >
-              {/* Profile Bubble */}
-              {!isUser && (
-                <img
-                  alt={character.name}
-                  src={character.avatar}
-                  className="w-8 h-8 rounded-full object-cover border border-outline-variant/40 flex-shrink-0"
-                />
-              )}
-              {isUser && (
-                <div className="w-8 h-8 rounded-full bg-accent-pink/20 uppercase font-bold text-accent-pink text-[10px] flex items-center justify-center border border-accent-pink/40 font-mono flex-shrink-0">
-                  PT
-                </div>
-              )}
-
-              {/* Text Dialogue Bubble */}
-              <div
-                className={`p-3.5 rounded-2xl text-xs leading-relaxed max-w-[85%] border backdrop-blur-md relative cursor-context-menu ${
-                  isUser
-                    ? 'bg-gradient-to-r from-accent-pink/10 to-accent-purple/10 border-accent-pink/40 text-white rounded-tr-none'
-                    : 'bg-surface-container/80 border-outline-variant/10 text-[#e3e1ee] rounded-tl-none shadow-md'
-                }`}
+            if (isGreeting) {
+              return (
+                <div
+                  key="greeting"
+                  ref={virtualizer.measureElement}
+                  data-index={virtualItem.index}
+                className="absolute top-0 left-0 right-0 py-3"
+                style={{ transform: `translateY(${virtualItem.start}px)` }}
               >
-                <p className="whitespace-pre-wrap select-text">{showSearch ? highlightText(msg.text, searchQuery) : msg.text}</p>
-                <div className="flex items-center justify-between mt-2 pt-1 border-t border-white/5 text-on-surface-variant/30 font-mono">
-                  <span className="text-[8px] text-on-surface-variant/40">{formatChatDate(msg.timestamp)}</span>
-                  {!isUser && (
-                    <div className="flex items-end gap-[2px] h-3 px-1.5 py-0.5 rounded-md bg-accent-pink/5 border border-accent-pink/15 shadow-[0_0_8px_rgba(236,72,153,0.15)] overflow-hidden" title="Voice waveform">
-                      <span className="w-[1.5px] h-2 bg-gradient-to-t from-accent-pink to-[#ffade2] rounded-full origin-bottom animate-wave-one" />
-                      <span className="w-[1.5px] h-3.5 bg-gradient-to-t from-accent-pink to-[#ffade2] rounded-full origin-bottom animate-wave-two" />
-                      <span className="w-[1.5px] h-1.5 bg-gradient-to-t from-accent-pink to-[#ffade2] rounded-full origin-bottom animate-wave-three" />
-                      <span className="w-[1.5px] h-2.5 bg-gradient-to-t from-accent-pink to-[#ffade2] rounded-full origin-bottom animate-wave-two" />
-                      <span className="w-[1.5px] h-1 bg-gradient-to-t from-accent-pink to-[#ffade2] rounded-full origin-bottom animate-wave-one" />
+                <div className="flex items-start gap-2.5 animate-subtle-fadeIn">
+                    <LazyImage
+                      alt={character.name}
+                      src={character.avatar}
+                      className="w-8 h-8 rounded-full object-cover border border-outline-variant/40 flex-shrink-0"
+                    />
+                    <div className="bg-surface-container/60 border border-outline-variant/20 p-3.5 rounded-2xl rounded-tl-none max-w-[80%] backdrop-blur-md">
+                      <p className="text-xs text-on-surface-variant leading-relaxed">
+                        {(() => {
+                          const template = character.first_mes || character.tagline || `同步成功！我是 ${character.name}。\n赛博深处与你链接，开始发问吧。`;
+                          const greetText = template
+                            .replace(/\{\{char\}\}/g, character.name)
+                            .replace(/\{\{user\}\}/g, userHandle || '你');
+                          return greetText.split('\n').map((line, i) => (
+                            <React.Fragment key={i}>{i > 0 && <br />}{line}</React.Fragment>
+                          ));
+                        })()}
+                      </p>
+                      <span className="text-[8px] text-on-surface-variant/40 font-mono mt-1 block">柚姬协议连接正常</span>
                     </div>
-                  )}
+                  </div>
                 </div>
+              );
+            }
 
-                {/* 操作菜单按钮（右键/长按后显示） */}
-                <AnimatePresence>
-                  {activeMenuId === msg.id && (
-                    <motion.div
-                      initial={{ opacity: 0, scale: 0.85, y: 4 }}
-                      animate={{ opacity: 1, scale: 1, y: 0 }}
-                      exit={{ opacity: 0, scale: 0.85, y: 4 }}
-                      transition={{ duration: 0.15 }}
-                      className={`absolute z-50 flex items-center gap-1 bg-[#1A1625] border border-outline-variant/40 rounded-xl px-2 py-1.5 shadow-2xl backdrop-blur-xl ${
-                        isUser ? 'right-0 -bottom-9' : 'left-0 -bottom-9'
-                      }`}
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <button
-                        onClick={() => handleCopyMessage(msg.text, msg.id)}
-                        className="p-1.5 rounded-lg hover:bg-white/10 transition-colors text-on-surface-variant hover:text-white"
-                        title="复制"
-                      >
-                        {copiedId === msg.id ? (
-                          <Check className="w-3.5 h-3.5 text-green-400" />
-                        ) : (
-                          <Copy className="w-3.5 h-3.5" />
-                        )}
-                      </button>
-                      {!isUser && (
-                        <button
-                          onClick={() => handleRegenerateMessage(msg.id)}
-                          className="p-1.5 rounded-lg hover:bg-white/10 transition-colors text-on-surface-variant hover:text-amber-400"
-                          title="重新生成"
-                          disabled={isStreaming || isSending}
-                        >
-                          <RefreshCw className="w-3.5 h-3.5" />
-                        </button>
-                      )}
-                      <button
-                        onClick={() => handleDeleteMessage(msg.id)}
-                        className="p-1.5 rounded-lg hover:bg-white/10 transition-colors text-on-surface-variant hover:text-red-400"
-                        title="删除"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </motion.div>
+            if (isStreamingItem) {
+              return (
+                <div
+                  key="streaming"
+                  ref={virtualizer.measureElement}
+                  data-index={virtualItem.index}
+                  className="absolute top-0 left-0 right-0 py-3"
+                  style={{ transform: `translateY(${virtualItem.start}px)` }}
+                >
+                  <motion.div
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="flex items-start gap-2.5"
+                  >
+                    <LazyImage alt={character.name} src={character.avatar} className="w-8 h-8 rounded-full object-cover border border-outline-variant/40" />
+                    <div className="bg-surface-container/60 border border-outline-variant/20 px-4 py-3 rounded-2xl rounded-tl-none">
+                      <div className="flex gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-accent-pink animate-bounce" style={{ animationDelay: '0ms' }} />
+                        <span className="w-1.5 h-1.5 rounded-full bg-accent-pink animate-bounce" style={{ animationDelay: '150ms' }} />
+                        <span className="w-1.5 h-1.5 rounded-full bg-accent-pink animate-bounce" style={{ animationDelay: '300ms' }} />
+                      </div>
+                    </div>
+                  </motion.div>
+                </div>
+              );
+            }
+
+            // Regular message item
+            if (item.type !== 'message') return null;
+            const { msg, idx } = item;
+            const isUser = msg.role === 'user';
+            return (
+              <div
+                key={msg.id}
+                id={`msg-${msg.id}`}
+                ref={virtualizer.measureElement}
+                data-index={virtualItem.index}
+                className="absolute top-0 left-0 right-0 py-3"
+                style={{ transform: `translateY(${virtualItem.start}px)` }}
+              >
+                <motion.div
+                  initial={{ opacity: 0, y: 12, scale: 0.97 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  transition={{ duration: 0.25, ease: 'easeOut' }}
+                  className={`flex items-start gap-2.5 ${isUser ? 'flex-row-reverse' : ''} ${
+                    showSearch && matchSet.has(idx)
+                      ? idx === searchMatchIndices[currentMatchIndex]
+                        ? 'ring-2 ring-yellow-400/50 rounded-2xl'
+                        : ''
+                      : ''
+                  }`}
+                  onContextMenu={(e) => handleMessageContextMenu(e, msg.id)}
+                  onTouchStart={() => {
+                    longPressTimerRef.current = setTimeout(() => handleMessageLongPress(msg.id), 500);
+                  }}
+                  onTouchEnd={() => {
+                    if (longPressTimerRef.current) {
+                      clearTimeout(longPressTimerRef.current);
+                      longPressTimerRef.current = null;
+                    }
+                  }}
+                  onTouchMove={() => {
+                    if (longPressTimerRef.current) {
+                      clearTimeout(longPressTimerRef.current);
+                      longPressTimerRef.current = null;
+                    }
+                  }}
+                >
+                  {/* Profile Bubble */}
+                  {!isUser && (
+                    <img
+                      alt={character.name}
+                      src={character.avatar}
+                      className="w-8 h-8 rounded-full object-cover border border-outline-variant/40 flex-shrink-0"
+                    />
                   )}
-                </AnimatePresence>
-              </div>
-            </motion.div>
-          );
-        })}
+                  {isUser && (() => {
+                    const initials = (userHandle ?? 'ME').slice(0, 2).toUpperCase();
+                    const hash = (userHandle ?? 'ME').split('').reduce((acc, c) => acc + c.charCodeAt(0), 0);
+                    const hue = hash % 360;
+                    return (
+                      <div
+                        className="w-8 h-8 rounded-full uppercase font-bold text-[10px] flex items-center justify-center border font-mono flex-shrink-0"
+                        style={{
+                          backgroundColor: `hsl(${hue}, 60%, 25%)`,
+                          color: `hsl(${hue}, 70%, 80%)`,
+                          borderColor: `hsl(${hue}, 50%, 50%)`,
+                        }}
+                      >
+                        {initials}
+                      </div>
+                    );
+                  })()}
 
-        {/* 流式接收中加载动画 */}
-        {isStreaming && (
-          <motion.div
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="flex items-start gap-2.5"
-          >
-            <LazyImage alt={character.name} src={character.avatar} className="w-8 h-8 rounded-full object-cover border border-outline-variant/40" />
-            <div className="bg-surface-container/60 border border-outline-variant/20 px-4 py-3 rounded-2xl rounded-tl-none">
-              <div className="flex gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-accent-pink animate-bounce" style={{ animationDelay: '0ms' }} />
-                <span className="w-1.5 h-1.5 rounded-full bg-accent-pink animate-bounce" style={{ animationDelay: '150ms' }} />
-                <span className="w-1.5 h-1.5 rounded-full bg-accent-pink animate-bounce" style={{ animationDelay: '300ms' }} />
+                  {/* Text Dialogue Bubble */}
+                  <div
+                    className={`p-3.5 rounded-2xl text-xs leading-relaxed max-w-[85%] border backdrop-blur-md relative cursor-context-menu ${
+                      isUser
+                        ? 'bg-gradient-to-r from-accent-pink/10 to-accent-purple/10 border-accent-pink/40 text-white rounded-tr-none'
+                        : 'bg-surface-container/80 border-outline-variant/10 text-[#e3e1ee] rounded-tl-none shadow-md'
+                    }`}
+                  >
+                    {/* 消息内容 — 编辑模式 */}
+                    {editingMessageId === msg.id ? (
+                      <div className="space-y-2">
+                        <textarea
+                          ref={editInputRef}
+                          value={editText}
+                          onChange={(e) => setEditText(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleConfirmEdit(); }
+                            if (e.key === 'Escape') { handleCancelEdit(); }
+                          }}
+                          rows={3}
+                          className="w-full bg-surface-elevated/80 border border-accent-pink/40 rounded-lg px-2 py-1.5 text-xs text-white placeholder:text-on-surface-variant/40 outline-none focus:border-accent-pink resize-none"
+                        />
+                        <div className="flex gap-2">
+                          <button onClick={handleConfirmEdit} className="px-3 py-1 bg-accent-pink/20 border border-accent-pink/40 rounded text-[10px] text-accent-pink hover:bg-accent-pink/30 cursor-pointer">确认</button>
+                          <button onClick={handleCancelEdit} className="px-3 py-1 bg-surface-elevated/60 border border-outline-variant/30 rounded text-[10px] text-on-surface-variant hover:text-white cursor-pointer">取消</button>
+                        </div>
+                      </div>
+                    ) : (
+                      isUser ? (
+                        <p className="whitespace-pre-wrap select-text">{showSearch ? highlightText(msg.text, searchQuery) : msg.text}</p>
+                      ) : showSearch ? (
+                        <p className="whitespace-pre-wrap select-text">{highlightText(msg.text, searchQuery)}</p>
+                      ) : (
+                        <div className="markdown-body select-text">
+                          <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.text}</ReactMarkdown>
+                        </div>
+                      )
+                    )}
+                    <div className="flex items-center justify-between mt-2 pt-1 border-t border-white/5 text-on-surface-variant/30 font-mono">
+                      <span className="text-[8px] text-on-surface-variant/40 cursor-default" title={new Date(msg.timestamp).toLocaleString()}>
+                        {formatChatDate(msg.timestamp)}
+                      </span>
+                      {!isUser && (
+                        <div className="flex items-end gap-[2px] h-3 px-1.5 py-0.5 rounded-md bg-accent-pink/5 border border-accent-pink/15 shadow-[0_0_8px_rgba(236,72,153,0.15)] overflow-hidden" title="Voice waveform">
+                          <span className="w-[1.5px] h-2 bg-gradient-to-t from-accent-pink to-[#ffade2] rounded-full origin-bottom animate-wave-one" />
+                          <span className="w-[1.5px] h-3.5 bg-gradient-to-t from-accent-pink to-[#ffade2] rounded-full origin-bottom animate-wave-two" />
+                          <span className="w-[1.5px] h-1.5 bg-gradient-to-t from-accent-pink to-[#ffade2] rounded-full origin-bottom animate-wave-three" />
+                          <span className="w-[1.5px] h-2.5 bg-gradient-to-t from-accent-pink to-[#ffade2] rounded-full origin-bottom animate-wave-two" />
+                          <span className="w-[1.5px] h-1 bg-gradient-to-t from-accent-pink to-[#ffade2] rounded-full origin-bottom animate-wave-one" />
+                        </div>
+                      )}
+                    </div>
+
+                    {/* 操作菜单按钮（右键/长按后显示） */}
+                    <AnimatePresence>
+                      {activeMenuId === msg.id && (
+                        <motion.div
+                          initial={{ opacity: 0, scale: 0.85, y: 4 }}
+                          animate={{ opacity: 1, scale: 1, y: 0 }}
+                          exit={{ opacity: 0, scale: 0.85, y: 4 }}
+                          transition={{ duration: 0.15 }}
+                          className={`absolute z-50 flex items-center gap-1 bg-[#1A1625] border border-outline-variant/40 rounded-xl px-2 py-1.5 shadow-2xl backdrop-blur-xl ${
+                            isUser ? 'right-0 -bottom-9' : 'left-0 -bottom-9'
+                          }`}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <button
+                            onClick={() => handleCopyMessage(msg.text, msg.id)}
+                            className="p-1.5 rounded-lg hover:bg-white/10 transition-colors text-on-surface-variant hover:text-white"
+                            title="复制"
+                          >
+                            {copiedId === msg.id ? (
+                              <Check className="w-3.5 h-3.5 text-green-400" />
+                            ) : (
+                              <Copy className="w-3.5 h-3.5" />
+                            )}
+                          </button>
+                          {isUser && (
+                            <button
+                              onClick={() => handleStartEdit(msg.id, msg.text)}
+                              className="p-1.5 rounded-lg hover:bg-white/10 transition-colors text-on-surface-variant hover:text-cyan-400"
+                              title="编辑"
+                              disabled={isStreaming || isSending}
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                          {!isUser && (
+                            <button
+                              onClick={() => handleRegenerateMessage(msg.id)}
+                              className="p-1.5 rounded-lg hover:bg-white/10 transition-colors text-on-surface-variant hover:text-amber-400"
+                              title="重新生成"
+                              disabled={isStreaming || isSending}
+                            >
+                              <RefreshCw className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                          <button
+                            onClick={() => handleDeleteMessage(msg.id)}
+                            className="p-1.5 rounded-lg hover:bg-white/10 transition-colors text-on-surface-variant hover:text-red-400"
+                            title="删除"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                </motion.div>
               </div>
-            </div>
-          </motion.div>
-        )}
+            );
+          })}
+        </div>
       </main>
 
       {/* Input controls */}
       <div className="flex-shrink-0 w-full bg-[#0B0720]/95 border-t border-outline-variant/20 p-3 flex items-center gap-2">
         <form onSubmit={(e) => handleSend(e)} className="w-full flex items-center gap-2 p-1.5 bg-surface-container/80 rounded-xl border border-outline-variant/40 backdrop-blur-md">
-          {/* Quick voice option simulation */}
+          {/* Voice TTS - Web Speech API */}
           <button
             type="button"
             onClick={() => {
-              try {
-                const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
-                const osc = ctx.createOscillator();
-                const gain = ctx.createGain();
-                osc.connect(gain);
-                gain.connect(ctx.destination);
-                osc.type = 'sine';
-                osc.frequency.setValueAtTime(880, ctx.currentTime);
-                osc.frequency.setValueAtTime(660, ctx.currentTime + 0.1);
-                gain.gain.setValueAtTime(0.15, ctx.currentTime);
-                gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
-                osc.onended = () => ctx.close();
-                osc.start(ctx.currentTime);
-                osc.stop(ctx.currentTime + 0.3);
-              } catch {}
-              alert(`（🔊 正在为您播放 ${character.name} 特属声音音频序列……）`);
+              if (isSpeaking) {
+                window.speechSynthesis.cancel();
+                setIsSpeaking(false);
+                return;
+              }
+              // Read last AI message
+              const lastAiMsg = [...messages].reverse().find(m => m.role === 'model' && m.text.trim());
+              if (lastAiMsg) {
+                const utter = new SpeechSynthesisUtterance(lastAiMsg.text);
+                utter.lang = 'zh-CN';
+                utter.rate = 1.0;
+                utter.onend = () => setIsSpeaking(false);
+                utter.onerror = () => setIsSpeaking(false);
+                utteranceRef.current = utter;
+                setIsSpeaking(true);
+                window.speechSynthesis.speak(utter);
+              }
             }}
-            className="p-1.5 text-accent-pink hover:bg-accent-pink/10 rounded-lg cursor-pointer flex-shrink-0 flex items-center justify-center"
-            title="配音朗读"
+            className={`p-1.5 rounded-lg cursor-pointer flex-shrink-0 flex items-center justify-center transition-colors ${
+              isSpeaking ? 'text-red-400 bg-red-500/10 animate-pulse' : 'text-accent-pink hover:bg-accent-pink/10'
+            }`}
+            title={isSpeaking ? '停止朗读' : '配音朗读'}
           >
             <Volume2 className="w-4 h-4" />
           </button>
@@ -563,27 +745,30 @@ export default function ChatScreen({
           />
           <button
             type="submit"
-            disabled={!inputText.trim() || isStreaming || isSending}
+            disabled={(!inputText.trim() && !isStreaming) || isSending}
+            onClick={(e) => {
+              if (isStreaming || isSending) {
+                e.preventDefault();
+                onStopGeneration?.();
+                return;
+              }
+            }}
             className={`p-2 w-8 h-8 shrink-0 rounded-lg transition-all flex items-center justify-center ${
-              sendState === 'error'
+              isStreaming
+                ? 'bg-red-500/20 border border-red-500/40 text-red-300 hover:bg-red-500/30'
+                : sendState === 'error'
                 ? 'bg-red-500/20 border border-red-500/40 text-red-300 hover:bg-red-500/30'
                 : 'bg-gradient-to-r from-accent-pink to-accent-purple text-white hover:brightness-110'
             } active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed`}
             title={
+              isStreaming ? '停止生成' :
               sendState === 'sending' ? '发送中...' :
-              sendState === 'streaming' ? 'AI 回复中...' :
               sendState === 'error' ? '重试' :
               '发送'
             }
           >
-            {sendState === 'sending' ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            ) : sendState === 'streaming' ? (
-              <span className="flex gap-[2px]">
-                <span className="w-1 h-1 rounded-full bg-white animate-bounce" style={{ animationDelay: '0ms' }} />
-                <span className="w-1 h-1 rounded-full bg-white animate-bounce" style={{ animationDelay: '120ms' }} />
-                <span className="w-1 h-1 rounded-full bg-white animate-bounce" style={{ animationDelay: '240ms' }} />
-              </span>
+            {isStreaming || isSending ? (
+              <Square className="w-3.5 h-3.5" />
             ) : sendState === 'error' ? (
               <AlertCircle className="w-3.5 h-3.5" />
             ) : (

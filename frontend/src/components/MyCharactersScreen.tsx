@@ -1,5 +1,6 @@
+import { useState, useMemo } from 'react';
 import { ScreenId, Character } from '../types';
-import { Plus, ChevronLeft, Lock, Unlock } from 'lucide-react';
+import { Plus, ChevronLeft, Lock, Unlock, Search, X } from 'lucide-react';
 import LazyImage from './LazyImage';
 
 interface MyCharactersScreenProps {
@@ -19,6 +20,17 @@ export default function MyCharactersScreen({
   onDeleteCharacter,
   onUpdatePrivacy,
 }: MyCharactersScreenProps) {
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // 客户端实时过滤：按 name + description 模糊搜索
+  const filteredCharacters = useMemo(() => {
+    if (!searchQuery.trim()) return characters;
+    const q = searchQuery.toLowerCase();
+    return characters.filter(c =>
+      c.name.toLowerCase().includes(q) ||
+      (c.description || '').toLowerCase().includes(q)
+    );
+  }, [characters, searchQuery]);
 
   const startChatAction = (id: string) => {
     onSelectCharacter(id);
@@ -72,25 +84,34 @@ export default function MyCharactersScreen({
       {/* Main characters inventory */}
       <main className="max-w-xl mx-auto px-6 py-6 space-y-6 relative z-10 select-none">
         
-        {/* Search input placeholder */}
+        {/* Search input */}
         <div className="relative">
+          <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant/40 pointer-events-none" />
           <input
             type="text"
             placeholder="搜索我的角色..."
-            className="w-full bg-surface-container/60 border border-outline-variant/30 rounded-xl py-2 px-4 text-xs text-white"
-            disabled
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full bg-surface-container/60 border border-outline-variant/30 rounded-xl py-2 pl-9 pr-8 text-xs text-white placeholder:text-on-surface-variant/40 focus:outline-none focus:border-accent-pink transition-colors"
           />
-          <span className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 font-mono text-xs">🔍</span>
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery('')}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-on-surface-variant/50 hover:text-white transition-colors cursor-pointer"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
 
         {/* Character List block */}
         <div className="space-y-4">
-          {characters.length === 0 ? (
+          {filteredCharacters.length === 0 ? (
             <div className="py-12 bg-surface-container/30 border border-outline-variant/20 rounded-2xl text-center text-on-surface-variant">
-              暂无已发布的自研角色，点击右上角 “+” 或点击下方卡片立即新建！
+              {searchQuery.trim() ? '没有找到匹配的角色' : '暂无已发布的自研角色，点击右上角 “+” 或点击下方卡片立即新建！'}
             </div>
           ) : (
-            characters.map((c) => {
+            filteredCharacters.map((c) => {
               const isDraft = c.status === 'draft';
               const isPrivate = c.status === 'private';
 

@@ -13,6 +13,7 @@ interface DiscoverScreenProps {
   onSelectCharacter: (id: string) => void;
   favoriteIds: string[];
   toggleFavorite: (id: string) => void;
+  onRefresh?: () => Promise<void>;
 }
 
 /** 估算每张角色卡片高度（含 gap） */
@@ -25,6 +26,7 @@ export default function DiscoverScreen({
   onSelectCharacter,
   favoriteIds,
   toggleFavorite,
+  onRefresh,
 }: DiscoverScreenProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTag, setSelectedTag] = useState('ALL');
@@ -32,6 +34,7 @@ export default function DiscoverScreen({
 
   // 下拉刷新状态
   const [refreshing, setRefreshing] = useState(false);
+  const [loadError, setLoadError] = useState(false);
   const [pullDistance, setPullDistance] = useState(0);
   const touchStartY = useRef(0);
   const isPulling = useRef(false);
@@ -84,12 +87,18 @@ export default function DiscoverScreen({
     if (pullDistance >= PULL_THRESHOLD && !refreshing) {
       setRefreshing(true);
       try {
+        if (onRefresh) {
+          await onRefresh();
+          setLoadError(false);
+        }
         rowVirtualizer.measure();
-      } catch { /* ignore */ }
-      setTimeout(() => setRefreshing(false), 600);
+      } catch {
+        setLoadError(true);
+      }
+      setRefreshing(false);
     }
     setPullDistance(0);
-  }, [pullDistance, refreshing, rowVirtualizer]);
+  }, [pullDistance, refreshing, rowVirtualizer, onRefresh]);
 
   const pullProgress = Math.min(pullDistance / PULL_THRESHOLD, 1);
 
@@ -227,8 +236,26 @@ export default function DiscoverScreen({
           </div>
         )}
 
+        {/* 加载失败 */}
+        {loadError && filteredCharacters.length === 0 && (
+          <div className="py-16 mx-[18px] bg-surface-container/30 border border-red-500/20 rounded-2xl text-center">
+            <p className="text-sm text-red-400 mb-3">加载失败</p>
+            <button
+              onClick={async () => {
+                setLoadError(false);
+                if (onRefresh) {
+                  try { await onRefresh(); } catch { setLoadError(true); }
+                }
+              }}
+              className="px-4 py-2 bg-red-500/10 border border-red-500/30 rounded-lg text-xs text-red-400 hover:bg-red-500/20 cursor-pointer transition-colors"
+            >
+              点击重试
+            </button>
+          </div>
+        )}
+
         {/* 骨架屏（数据未加载时） */}
-        {filteredCharacters.length === 0 && !searchQuery && (
+        {!loadError && filteredCharacters.length === 0 && !searchQuery && (
           <div className="px-[18px] max-w-7xl mx-auto">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {Array.from({ length: 6 }).map((_, i) => (

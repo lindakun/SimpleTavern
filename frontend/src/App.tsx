@@ -78,6 +78,7 @@ export default function App() {
   const currentScreen = pathToScreen(location.pathname);
 
   const [activeCharacterId, setActiveCharacterId] = useState<string>('yuki');
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   // ── Zustand stores ──
   const {
@@ -347,6 +348,10 @@ export default function App() {
 
     let streamedText = '';
 
+    // 创建新的 AbortController 用于停止生成
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
+
     try {
       await new Promise<void>((resolve, reject) => {
         chatApi.sendMessageStream(
@@ -409,12 +414,57 @@ export default function App() {
             useChatStore.getState().setSendState(characterId, 'error');
             reject(err);
           },
+          abortController.signal,
         );
       });
     } catch {
       useChatStore.getState().setSendState(characterId, 'error');
     }
   }, [chatApi, showToast]);
+
+  // 停止 AI 生成
+  const handleStopGeneration = useCallback((characterId: string) => {
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = null;
+    const store = useChatStore.getState();
+    const charStore = useCharacterStore.getState();
+    const thread = store.chatThreads[characterId];
+    if (thread) {
+      const msgs = thread.messages.map((m, i) => {
+        if (i === thread.messages.length - 1 && m.role === 'model') {
+          return { ...m, text: m.text ? m.text + '\n[已中断]' : '[已中断]' };
+        }
+        return m;
+      });
+      store.updateChatThread(characterId, () => ({ ...thread, messages: msgs }));
+      // 持久化部分回复
+      const chatChar = charStore.characters.find(c => c.id === characterId) || charStore.characters[0];
+      if (chatChar) {
+        chatApi.saveChat(characterId, toStoredChatMessages(chatChar, msgs)).catch(() => {});
+        cacheMessages(characterId, msgs);
+      }
+    }
+    store.setSendState(characterId, 'idle');
+  }, [chatApi]);
+
+  // 编辑用户消息：更新内容 + 删除之后的所有 AI 回复 + 自动重新生成
+  const handleEditMessage = useCallback((characterId: string, messageId: string, newText: string) => {
+    const store = useChatStore.getState();
+    const thread = store.chatThreads[characterId];
+    if (!thread) return;
+    const msgIdx = thread.messages.findIndex(m => m.id === messageId);
+    if (msgIdx === -1) return;
+    // 保留该消息及之前的所有消息，更新消息内容
+    const updatedMessages = thread.messages.slice(0, msgIdx + 1).map(m =>
+      m.id === messageId ? { ...m, text: newText } : m
+    );
+    // 先更新 store，然后立即触发重新生成（读最新 store 状态）
+    store.updateChatThread(characterId, () => ({ ...thread, messages: updatedMessages }));
+    // 使用微任务确保 store 更新后再读取
+    queueMicrotask(() => {
+      handleSendMessage(characterId, newText);
+    });
+  }, [handleSendMessage]);
 
   // 删除单条消息
   const handleDeleteMessage = useCallback((characterId: string, messageId: string) => {
@@ -643,6 +693,12 @@ export default function App() {
                   }
                 }}
                 toggleFavorite={handleToggleFavorite}
+                onRefresh={async () => {
+                  const data = await characterApi.getDiscoverCharacters();
+                  if (Array.isArray(data) && data.length > 0) {
+                    useCharacterStore.getState().setCharacters(data);
+                  }
+                }}
               />
             } />
             <Route path="/character" element={
@@ -660,6 +716,36 @@ export default function App() {
                 />
               ) : <Navigate to="/discover" replace />
             } />
+            <Route path="/character/:id" element={
+              (() => {
+                const idFromPath = decodeURIComponent(location.pathname.split('/character/')[1] || '');
+                const char = characters.find(c => c.id === idFromPath);
+                if (char) {
+                  return (
+                    <CharacterDetailScreen
+                      character={char as Character}
+                      userHandle={user?.username}
+                      favoriteIds={favoriteIds as string[]}
+                      toggleFavorite={handleToggleFavorite}
+                      onNavigate={handleNavigate}
+                      onGoBack={() => handleGoBack(ScreenId.DISCOVER)}
+                      onSelectCharacter={setActiveCharacterId}
+                      onAddReview={handleAddReview}
+                      onCopyCharacter={handleCopyCharacter}
+                    />
+                  );
+                }
+                return (
+                  <div className="flex-1 flex items-center justify-center bg-background-deep text-on-surface-variant">
+                    <div className="text-center space-y-3">
+                      <span className="text-4xl">🔍</span>
+                      <p className="text-sm">角色不存在或已被删除</p>
+                      <button onClick={() => handleNavigate(ScreenId.DISCOVER)} className="text-xs text-accent-pink hover:text-white border border-accent-pink/40 rounded-xl px-4 py-2 cursor-pointer">返回发现页</button>
+                    </div>
+                  </div>
+                );
+              })()
+            } />
             <Route path="/chat" element={
               currentCharacter ? (
                 <ChatScreen
@@ -670,6 +756,9 @@ export default function App() {
                   onNavigate={handleNavigate}
                   onGoBack={() => handleGoBack(ScreenId.MESSAGE_CENTER)}
                   sendState={sendingStates[activeCharacterId] || 'idle'}
+                  userHandle={currentUser?.handle}
+                  onStopGeneration={() => handleStopGeneration(activeCharacterId)}
+                  onEditMessage={handleEditMessage}
                 />
               ) : <Navigate to="/discover" replace />
             } />

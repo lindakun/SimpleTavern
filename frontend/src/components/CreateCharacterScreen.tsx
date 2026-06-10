@@ -103,20 +103,25 @@ function Section({
   );
 }
 
-// 可复用的 textarea
+// 可复用的 textarea（含字符统计）
 function Field({
   label,
   value,
   onChange,
   placeholder,
   rows = 3,
+  maxChars,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
   rows?: number;
+  maxChars?: number;
 }) {
+  const current = value.length;
+  const ratio = maxChars ? current / maxChars : 0;
+  const warnColor = ratio > 1 ? 'text-red-400' : ratio > 0.8 ? 'text-amber-400' : 'text-on-surface-variant/40';
   return (
     <div className="space-y-1">
       <label className="text-[11px] font-semibold text-on-surface-variant ml-1">{label}</label>
@@ -127,6 +132,11 @@ function Field({
         rows={rows}
         className="w-full bg-surface-elevated/60 border border-outline-variant/20 rounded-xl px-3 py-2.5 text-xs text-white placeholder:text-on-surface-variant/30 outline-none focus:border-accent-pink transition-colors resize-none"
       />
+      {maxChars !== undefined && (
+        <div className={`text-[9px] text-right font-mono ${warnColor}`}>
+          {current} / {maxChars}
+        </div>
+      )}
     </div>
   );
 }
@@ -200,6 +210,20 @@ export default function CreateCharacterScreen({ onNavigate, onPublish, editChara
     if (!form.name.trim()) {
       showToast('角色名称不能为空', 'error');
       return;
+    }
+
+    // 字符数限制校验
+    const limits: [string, string, number][] = [
+      ['描述', form.description, 500],
+      ['性格', form.personality, 1000],
+      ['场景', form.scenario, 2000],
+      ['第一条消息', form.first_mes, 1000],
+    ];
+    for (const [label, text, max] of limits) {
+      if (text.length > max) {
+        showToast(`${label}不能超过${max}字（当前${text.length}字）`, 'error');
+        return;
+      }
     }
 
     // 使用 selectedWorldFile 作为 worldBook 的源，确保与 UI 选择同步
@@ -332,6 +356,7 @@ export default function CreateCharacterScreen({ onNavigate, onPublish, editChara
             onChange={(v) => updateForm('description', v)}
             placeholder="角色的背景故事、外貌特征、核心设定..."
             rows={5}
+            maxChars={500}
           />
 
           <Field
@@ -340,6 +365,7 @@ export default function CreateCharacterScreen({ onNavigate, onPublish, editChara
             onChange={(v) => updateForm('personality', v)}
             placeholder="角色的性格特征、说话风格、行为习惯..."
             rows={3}
+            maxChars={1000}
           />
 
           <div className="space-y-1">
@@ -430,6 +456,7 @@ export default function CreateCharacterScreen({ onNavigate, onPublish, editChara
             onChange={(v) => updateForm('scenario', v)}
             placeholder="角色出现的初始场景设定、环境描述..."
             rows={3}
+            maxChars={2000}
           />
 
           <Field
@@ -438,6 +465,7 @@ export default function CreateCharacterScreen({ onNavigate, onPublish, editChara
             onChange={(v) => updateForm('first_mes', v)}
             placeholder="角色对用户说的第一句话，可以用 {{user}} 代表用户名，{{char}} 代表角色名..."
             rows={4}
+            maxChars={1000}
           />
         </Section>
 

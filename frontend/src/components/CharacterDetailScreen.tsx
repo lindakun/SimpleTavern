@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { ScreenId, Character, Review } from '../types';
-import { ChevronLeft, BookOpen, MessageSquare, ChevronDown, ChevronUp, Copy } from 'lucide-react';
+import { ChevronLeft, BookOpen, MessageSquare, ChevronDown, ChevronUp, Copy, Share2 } from 'lucide-react';
 import BottomNav from './BottomNav';
 import LazyImage from './LazyImage';
 import { useWorldApi, WorldListItem } from '../api/worlds';
+import { useToast } from './Toast';
 import { track } from '../utils/analytics';
 
 interface CharacterDetailScreenProps {
@@ -42,6 +43,7 @@ export default function CharacterDetailScreen({
   toggleFavorite,
   onGoBack,
 }: CharacterDetailScreenProps) {
+  const { showToast } = useToast();
   const [commentText, setCommentText] = useState('');
   const [userRating, setUserRating] = useState(5);
   const [newReviews, setNewReviews] = useState<Review[]>(character.reviews || []);
@@ -166,12 +168,29 @@ export default function CharacterDetailScreen({
         <span className="font-bold text-sm tracking-widest text-[#ffd8ee] font-headline-lg-mobile">
           角色档案 • {character.name}
         </span>
-        <button
-          onClick={() => toggleFavorite(character.id)}
-          className="p-2 text-accent-pink hover:scale-110 active:scale-95 transition-transform"
-        >
-          <span className="text-xl">{isFavorite ? '♥' : '♡'}</span>
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={async () => {
+              const url = `${window.location.origin}/character/${character.id}`;
+              try {
+                await navigator.clipboard.writeText(url);
+                showToast('链接已复制', 'success');
+              } catch {
+                showToast('复制失败', 'error');
+              }
+            }}
+            className="p-2 text-on-surface-variant hover:text-accent-pink active:scale-95 transition-all cursor-pointer"
+            title="分享角色"
+          >
+            <Share2 className="w-4 h-4" />
+          </button>
+          <button
+            onClick={() => toggleFavorite(character.id)}
+            className="p-2 text-accent-pink hover:scale-110 active:scale-95 transition-transform"
+          >
+            <span className="text-xl">{isFavorite ? '♥' : '♡'}</span>
+          </button>
+        </div>
       </header>
 
       {/* Hero Visual Area */}

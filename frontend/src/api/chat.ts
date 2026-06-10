@@ -46,9 +46,23 @@ export function useChatApi() {
       onChunk: (text: string) => void,
       onDone: () => void,
       onError: (err: Error) => void,
+      externalSignal?: AbortSignal,
     ) => {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 180000); // 3分钟超时
+
+      // 当外部 signal 被 abort 时，也 abort 内部 controller
+      if (externalSignal) {
+        if (externalSignal.aborted) {
+          clearTimeout(timeoutId);
+          controller.abort();
+        } else {
+          externalSignal.addEventListener('abort', () => {
+            clearTimeout(timeoutId);
+            controller.abort();
+          }, { once: true });
+        }
+      }
 
       try {
         const response = await fetch('/api/chat/stream', {
