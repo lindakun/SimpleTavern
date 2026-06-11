@@ -89,27 +89,32 @@ export default function ChatScreen({
     overscan: 15,
   });
 
-  // Auto-scroll to bottom when new messages arrive, streaming updates, or initial load
+  // Auto-scroll to bottom: on mount (with pre-loaded messages) AND on new messages/streaming
   const scrollToIndexRef = useRef(virtualizer.scrollToIndex);
   scrollToIndexRef.current = virtualizer.scrollToIndex;
+  // Scroll on mount when messages are already loaded (e.g. re-opening chat)
+  useEffect(() => {
+    if (messages.length === 0) return;
+    const timer = setTimeout(() => {
+      scrollToIndexRef.current(allItems.length - 1, { align: 'end' });
+    }, 200);
+    return () => clearTimeout(timer);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps — only on mount
+  // Scroll when new messages arrive or streaming updates
   const prevMessageLenRef = useRef(messages.length);
   const prevLastTextLenRef = useRef(lastMsg?.text?.length || 0);
-  const prevCharacterIdRef = useRef(character.id);
   useEffect(() => {
     if (allItems.length === 0) return;
     const isNewMsg = messages.length > prevMessageLenRef.current;
     const isStreamUpdate = lastMsg?.text && lastMsg.text.length > prevLastTextLenRef.current;
-    const isNewCharacter = character.id !== prevCharacterIdRef.current;
     prevMessageLenRef.current = messages.length;
     prevLastTextLenRef.current = lastMsg?.text?.length || 0;
-    prevCharacterIdRef.current = character.id;
-    if (isNewMsg || isStreamUpdate || isNewCharacter) {
-      // Wait for virtualizer to measure items (200ms gives enough time for initial layout)
+    if (isNewMsg || isStreamUpdate) {
       setTimeout(() => {
         scrollToIndexRef.current(allItems.length - 1, { align: 'end' });
-      }, 200);
+      }, 100);
     }
-  }, [messages, lastMsg?.text, allItems.length, character.id]);
+  }, [messages, lastMsg?.text, allItems.length]);
 
   // 键盘回避：当输入框聚焦时，确保它在可视区域内
   const inputRef = useRef<HTMLTextAreaElement>(null);
