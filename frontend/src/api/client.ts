@@ -35,9 +35,10 @@ async function getCsrfToken(): Promise<string | null> {
     return csrfTokenPromise;
 }
 
-/** 清除缓存的 CSRF token（401 / 退出登录时调用） */
-function clearCsrfToken() {
+/** 清除缓存的 CSRF token（401 / 退出登录 / 重新登录时调用） */
+export function clearCsrfToken() {
     csrfToken = null;
+    csrfTokenPromise = null;
 }
 
 // 401 全局回调忽略的端点：这些端点返回 401 表示操作失败（如凭证错误），非 session 过期

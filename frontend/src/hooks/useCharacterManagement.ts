@@ -8,6 +8,7 @@ import { useUserApi } from '../api/users';
 import { useFavorites, useToggleFavorite } from './useFavorites';
 import { useCharacterStore } from '../stores/characterStore';
 import { useChatStore } from '../stores/chatStore';
+import { clearCsrfToken } from '../api/client';
 import { track } from '../utils/analytics';
 
 export function useCharacterManagement(navigate: ReturnType<typeof useNavigate>) {
@@ -46,6 +47,7 @@ export function useCharacterManagement(navigate: ReturnType<typeof useNavigate>)
 
   // ── Login/Logout ──
   const handleLogin = useCallback(async (input: string, password?: string) => {
+    clearCsrfToken(); // 新 session 需要新 CSRF token
     const data = await userApi.login({ handle: input, password });
     queryClient.setQueryData(['user', 'me'], { handle: data.handle || input, name: data.handle });
     showToast(`欢迎回来，${data.handle || input}！`, 'success');
@@ -55,6 +57,7 @@ export function useCharacterManagement(navigate: ReturnType<typeof useNavigate>)
   }, [showToast, userApi, queryClient]);
 
   const handleGoogleLogin = useCallback(async (idToken: string) => {
+    clearCsrfToken();
     try {
       await userApi.googleLogin(idToken);
       queryClient.invalidateQueries({ queryKey: ['user', 'me'] });
@@ -67,6 +70,7 @@ export function useCharacterManagement(navigate: ReturnType<typeof useNavigate>)
   }, [showToast, userApi, queryClient]);
 
   const handleRegister = useCallback(async (username: string, email: string, password?: string) => {
+    clearCsrfToken();
     await userApi.register({ handle: username, name: username, password, email });
     queryClient.setQueryData(['user', 'me'], { handle: username, name: username });
     showToast('注册成功，欢迎加入！', 'success');
@@ -76,6 +80,7 @@ export function useCharacterManagement(navigate: ReturnType<typeof useNavigate>)
   }, [showToast, userApi, queryClient]);
 
   const handleLogout = useCallback(async () => {
+    clearCsrfToken(); // 清除旧 session 的 CSRF token
     track('logout');
     await userApi.logout().catch(() => {});
     if ('caches' in window) {
