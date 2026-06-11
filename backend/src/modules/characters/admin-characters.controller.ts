@@ -81,7 +81,7 @@ export async function adminDeleteCharacter(req: Request, res: Response, next: Ne
         const { handle, avatar_url } = req.body as { handle?: string; avatar_url?: string };
 
         if (!handle || !avatar_url) {
-            res.status(400).json({ error: 'BAD_REQUEST', message: 'Missing required fields: handle, avatar_url' });
+            res.status(400).json({ code: 'BAD_REQUEST', message: 'Missing required fields: handle, avatar_url' });
             return;
         }
 
@@ -90,7 +90,7 @@ export async function adminDeleteCharacter(req: Request, res: Response, next: Ne
         const deleted = removeCharacter(avatar_url, dirs.characters);
 
         if (!deleted) {
-            res.status(404).json({ error: 'NOT_FOUND', message: 'Character not found' });
+            res.status(404).json({ code: 'NOT_FOUND', message: 'Character not found' });
             return;
         }
 
@@ -112,7 +112,7 @@ export async function adminEditCharacter(req: Request, res: Response, next: Next
         };
 
         if (!handle || !avatar_url) {
-            res.status(400).json({ error: 'BAD_REQUEST', message: 'Missing required fields: handle, avatar_url' });
+            res.status(400).json({ code: 'BAD_REQUEST', message: 'Missing required fields: handle, avatar_url' });
             return;
         }
 
@@ -122,7 +122,7 @@ export async function adminEditCharacter(req: Request, res: Response, next: Next
         // 读取完整角色数据
         const fullChar = processCharacter(avatar_url, dirs.characters, dirs.chats, false);
         if (!fullChar) {
-            res.status(404).json({ error: 'NOT_FOUND', message: 'Character not found' });
+            res.status(404).json({ code: 'NOT_FOUND', message: 'Character not found' });
             return;
         }
 
@@ -158,12 +158,12 @@ export async function adminImportUgirl(req: Request, res: Response, next: NextFu
         const { file_path, handle: handleRaw } = req.body as { file_path?: string; handle?: string };
 
         if (!file_path || typeof file_path !== 'string') {
-            res.status(400).json({ error: 'BAD_REQUEST', message: '请提供服务器上的 JSON 文件路径 (file_path)' });
+            res.status(400).json({ code: 'BAD_REQUEST', message: '请提供服务器上的 JSON 文件路径 (file_path)' });
             return;
         }
 
         if (!fs.existsSync(file_path)) {
-            res.status(400).json({ error: 'BAD_REQUEST', message: `文件不存在: ${file_path}` });
+            res.status(400).json({ code: 'BAD_REQUEST', message: `文件不存在: ${file_path}` });
             return;
         }
 
@@ -173,7 +173,7 @@ export async function adminImportUgirl(req: Request, res: Response, next: NextFu
         const users = await getAllUsers();
         const targetUser = users.find(u => u.handle === handle);
         if (!targetUser) {
-            res.status(400).json({ error: 'BAD_REQUEST', message: `目标用户 "${handle}" 不存在` });
+            res.status(400).json({ code: 'BAD_REQUEST', message: `目标用户 "${handle}" 不存在` });
             return;
         }
 
@@ -206,13 +206,13 @@ export async function adminDeletePublishedCharacter(req: Request, res: Response,
         const { handle, characterId } = req.body as { handle?: string; characterId?: string };
 
         if (!handle || !characterId) {
-            res.status(400).json({ error: 'BAD_REQUEST', message: 'Missing required fields: handle, characterId' });
+            res.status(400).json({ code: 'BAD_REQUEST', message: 'Missing required fields: handle, characterId' });
             return;
         }
 
         const deleted = await deleteUserCharacter(handle, characterId);
         if (!deleted) {
-            res.status(404).json({ error: 'NOT_FOUND', message: 'Published character not found' });
+            res.status(404).json({ code: 'NOT_FOUND', message: 'Published character not found' });
             return;
         }
 

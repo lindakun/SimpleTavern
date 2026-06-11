@@ -114,14 +114,14 @@ export function getDiscoverCharacter(req: Request, res: Response): void {
                 if (found) {
                     res.json(found);
                 } else {
-                    res.status(404).json({ error: 'Character not found' });
+                    res.status(404).json({ code: 'NOT_FOUND', message: 'Character not found' });
                 }
             })
-            .catch(() => res.status(404).json({ error: 'Character not found' }));
+                    .catch(() => res.status(404).json({ code: 'NOT_FOUND', message: 'Character not found' }));
         return;
     }
 
-    res.status(404).json({ error: 'Character not found' });
+    res.status(404).json({ code: 'NOT_FOUND', message: 'Character not found' });
 }
 
 /**
@@ -248,7 +248,7 @@ export function addReview(req: Request, res: Response, next: NextFunction): void
                     }
                 }
             }
-            res.status(404).json({ error: 'Character not found' });
+            res.status(404).json({ code: 'NOT_FOUND', message: 'Character not found' });
             return;
         }
 
@@ -260,14 +260,14 @@ export function addReview(req: Request, res: Response, next: NextFunction): void
                     if (updated) {
                         res.json(updated);
                     } else {
-                        res.status(404).json({ error: 'Character not found' });
+                        res.status(404).json({ code: 'NOT_FOUND', message: 'Character not found' });
                     }
                 })
-                .catch(() => res.status(404).json({ error: 'Character not found' }));
+                        .catch(() => res.status(404).json({ code: 'NOT_FOUND', message: 'Character not found' }));
             return;
         }
 
-        res.status(404).json({ error: 'Character not found' });
+        res.status(404).json({ code: 'NOT_FOUND', message: 'Character not found' });
     } catch (err) {
         next(err);
     }

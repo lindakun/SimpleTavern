@@ -27,7 +27,7 @@ export async function getFavorites(req: Request, res: Response, next: NextFuncti
 export async function addFavorite(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
         const handle = getHandle(req);
-        if (!handle) { res.status(403).json({ error: 'Unauthorized' }); return; }
+        if (!handle) { res.status(401).json({ code: 'UNAUTHORIZED', message: 'You must be logged in' }); return; }
         const { characterId } = req.body;
         if (!characterId) throw new BadRequestError('characterId is required');
 
@@ -44,7 +44,7 @@ export async function addFavorite(req: Request, res: Response, next: NextFunctio
 export async function removeFavorite(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
         const handle = getHandle(req);
-        if (!handle) { res.status(403).json({ error: 'Unauthorized' }); return; }
+        if (!handle) { res.status(401).json({ code: 'UNAUTHORIZED', message: 'You must be logged in' }); return; }
         const { characterId } = req.params;
         if (!characterId) throw new BadRequestError('characterId is required');
 
@@ -61,7 +61,7 @@ export async function removeFavorite(req: Request, res: Response, next: NextFunc
 export async function saveSettings(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
         const handle = getHandle(req);
-        if (!handle) { res.status(403).json({ error: 'Unauthorized' }); return; }
+        if (!handle) { res.status(401).json({ code: 'UNAUTHORIZED', message: 'You must be logged in' }); return; }
         const { settings } = req.body;
         if (!settings) throw new BadRequestError('settings is required');
 

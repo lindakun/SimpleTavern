@@ -41,6 +41,9 @@ export function useChatApi() {
       post<SendMessageResponse>('/api/chat', params, { timeout: 180000 }),
 
     // 流式聊天 — 通过 SSE 逐 token 接收，onChunk 每次收到文本片段时调用
+    // ⚠️ 此处使用原生 fetch() 绕过 useApiClient，因此不附带 CSRF token。
+    //    /api/chat/stream 作为公开端点注册在 CSRF 中间件之前，所以不受影响。
+    //    如需迁移到受保护端点，请改用 request() 方法以自动包含 x-csrf-token 头。
     sendMessageStream: async (
       params: SendMessageParams,
       onChunk: (text: string) => void,

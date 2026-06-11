@@ -24,7 +24,7 @@ export function createPublicImportRoutes(): Router {
             if (!file) throw new BadRequestError('No file uploaded');
 
             const handle = getHandle(req);
-            if (!handle) { res.status(403).json({ error: 'Unauthorized' }); return; }
+            if (!handle) { res.status(401).json({ code: 'UNAUTHORIZED', message: 'You must be logged in' }); return; }
             const dirs = getUserDirectories(config.dataRoot, handle);
 
             // 确保 characters 目录存在

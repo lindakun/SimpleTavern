@@ -102,7 +102,7 @@ export async function adminGetWorld(req: Request, res: Response, next: NextFunct
         const { name } = req.body as { name?: string };
 
         if (!name || typeof name !== 'string') {
-            res.status(400).json({ error: 'BAD_REQUEST', message: '缺少必填字段: name' });
+            res.status(400).json({ code: 'BAD_REQUEST', message: '缺少必填字段: name' });
             return;
         }
 
@@ -110,7 +110,7 @@ export async function adminGetWorld(req: Request, res: Response, next: NextFunct
         const world = getWorld(config.dataRoot, name);
 
         if (!world) {
-            res.status(404).json({ error: 'NOT_FOUND', message: `世界书 "${name}" 不存在` });
+            res.status(404).json({ code: 'NOT_FOUND', message: `世界书 "${name}" 不存在` });
             return;
         }
 
@@ -129,12 +129,12 @@ export async function adminSaveWorld(req: Request, res: Response, next: NextFunc
         const { name, data } = req.body as { name?: string; data?: WorldInfo };
 
         if (!name || typeof name !== 'string') {
-            res.status(400).json({ error: 'BAD_REQUEST', message: '缺少必填字段: name' });
+            res.status(400).json({ code: 'BAD_REQUEST', message: '缺少必填字段: name' });
             return;
         }
 
         if (!data || typeof data !== 'object' || !('entries' in data)) {
-            res.status(400).json({ error: 'BAD_REQUEST', message: '数据必须包含 entries 字段' });
+            res.status(400).json({ code: 'BAD_REQUEST', message: '数据必须包含 entries 字段' });
             return;
         }
 
@@ -156,7 +156,7 @@ export async function adminDeleteWorld(req: Request, res: Response, next: NextFu
         const { name } = req.body as { name?: string };
 
         if (!name || typeof name !== 'string') {
-            res.status(400).json({ error: 'BAD_REQUEST', message: '缺少必填字段: name' });
+            res.status(400).json({ code: 'BAD_REQUEST', message: '缺少必填字段: name' });
             return;
         }
 
@@ -164,7 +164,7 @@ export async function adminDeleteWorld(req: Request, res: Response, next: NextFu
         const deleted = deleteWorld(config.dataRoot, name);
 
         if (!deleted) {
-            res.status(404).json({ error: 'NOT_FOUND', message: `世界书 "${name}" 不存在` });
+            res.status(404).json({ code: 'NOT_FOUND', message: `世界书 "${name}" 不存在` });
             return;
         }
 
@@ -183,12 +183,12 @@ export async function adminImportWorld(req: Request, res: Response, next: NextFu
     getUpload().single('file')(req, res, async (err: any) => {
         try {
             if (err) {
-                res.status(400).json({ error: 'BAD_REQUEST', message: '文件上传失败' });
+                res.status(400).json({ code: 'BAD_REQUEST', message: '文件上传失败' });
                 return;
             }
 
             if (!req.file) {
-                res.status(400).json({ error: 'BAD_REQUEST', message: '请选择要上传的 .json 文件' });
+                res.status(400).json({ code: 'BAD_REQUEST', message: '请选择要上传的 .json 文件' });
                 return;
             }
 
@@ -198,12 +198,12 @@ export async function adminImportWorld(req: Request, res: Response, next: NextFu
                 const raw = JSON.parse(req.file.buffer.toString('utf-8'));
                 worldData = normalizeEntries(raw);
             } catch {
-                res.status(400).json({ error: 'BAD_REQUEST', message: '文件不是有效的 JSON 格式' });
+                res.status(400).json({ code: 'BAD_REQUEST', message: '文件不是有效的 JSON 格式' });
                 return;
             }
 
             if (!worldData || typeof worldData !== 'object' || !('entries' in worldData)) {
-                res.status(400).json({ error: 'BAD_REQUEST', message: '世界书文件必须包含 entries 字段' });
+                res.status(400).json({ code: 'BAD_REQUEST', message: '世界书文件必须包含 entries 字段' });
                 return;
             }
 
@@ -213,14 +213,14 @@ export async function adminImportWorld(req: Request, res: Response, next: NextFu
             }
 
             if (!worldName.trim()) {
-                res.status(400).json({ error: 'BAD_REQUEST', message: '世界书名称不能为空' });
+                res.status(400).json({ code: 'BAD_REQUEST', message: '世界书名称不能为空' });
                 return;
             }
 
             const config = getConfig();
             const existing = getWorld(config.dataRoot, worldName);
             if (existing) {
-                res.status(409).json({ error: 'CONFLICT', message: `世界书 "${worldName}" 已存在，请使用其他名称或先删除旧文件` });
+                res.status(409).json({ code: 'CONFLICT', message: `世界书 "${worldName}" 已存在，请使用其他名称或先删除旧文件` });
                 return;
             }
 

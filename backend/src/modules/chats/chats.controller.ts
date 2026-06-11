@@ -33,7 +33,7 @@ export function saveChat(req: Request, res: Response, next: NextFunction): void 
             throw new BadRequestError('Missing required fields');
         }
         if (!Array.isArray(chatData)) {
-            res.status(400).json({ error: 'The request\'s body.chat is not an array.' });
+            res.status(400).json({ code: 'BAD_REQUEST', message: "The request's body.chat is not an array." });
             return;
         }
 

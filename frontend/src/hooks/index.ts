@@ -33,8 +33,6 @@ export {
   useChangePassword,
   useChangeAvatar,
   useChangeName,
-  getCurrentUser,
-  setCurrentUser,
 } from './useAuth';
 
 export {

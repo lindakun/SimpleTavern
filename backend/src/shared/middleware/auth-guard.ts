@@ -7,7 +7,7 @@ import { Request, Response, NextFunction } from 'express';
 export function requireLogin(req: Request, res: Response, next: NextFunction): void {
     const session = req.session as Record<string, any> | null;
     if (!session?.handle) {
-        res.status(403).json({ error: 'Unauthorized', message: 'You must be logged in' });
+        res.status(401).json({ code: 'UNAUTHORIZED', message: 'You must be logged in' });
         return;
     }
     next();
@@ -20,11 +20,11 @@ export function requireLogin(req: Request, res: Response, next: NextFunction): v
 export function requireAdmin(req: Request, res: Response, next: NextFunction): void {
     const session = req.session as Record<string, any> | null;
     if (!session?.handle) {
-        res.status(403).json({ error: 'Unauthorized', message: 'You must be logged in' });
+        res.status(401).json({ code: 'UNAUTHORIZED', message: 'You must be logged in' });
         return;
     }
     if (!session.admin) {
-        res.status(403).json({ error: 'Forbidden', message: 'Admin privileges required' });
+        res.status(403).json({ code: 'FORBIDDEN', message: 'Admin privileges required' });
         return;
     }
     next();

@@ -75,13 +75,13 @@ export async function getMe(req: Request, res: Response, next: NextFunction): Pr
         const session = req.session as Record<string, any> | null;
         const handle = session?.handle;
         if (!handle) {
-            res.status(403).json({ error: 'Unauthorized' });
+            res.status(401).json({ code: 'UNAUTHORIZED', message: 'You must be logged in' });
             return;
         }
 
         const user = await getUserByHandle(handle);
         if (!user) {
-            res.status(403).json({ error: 'Unauthorized' });
+            res.status(401).json({ code: 'ACCOUNT_DELETED', message: 'User account no longer exists' });
             return;
         }
 
@@ -108,7 +108,7 @@ export async function changePassword(req: Request, res: Response, next: NextFunc
         const isOwner = session?.handle === handle;
 
         if (!isOwner && !isAdmin) {
-            res.status(403).json({ error: 'Unauthorized' });
+            res.status(403).json({ code: 'FORBIDDEN', message: 'Not authorized to modify this user' });
             return;
         }
 
@@ -134,13 +134,13 @@ export async function changeName(req: Request, res: Response, next: NextFunction
         const isOwner = session?.handle === handle;
 
         if (!isOwner && !isAdmin) {
-            res.status(403).json({ error: 'Unauthorized' });
+            res.status(403).json({ code: 'FORBIDDEN', message: 'Not authorized to modify this user' });
             return;
         }
 
         const user = await getUserByHandle(handle);
         if (!user) {
-            res.status(404).json({ error: 'Not Found', message: 'User not found' });
+            res.status(404).json({ code: 'NOT_FOUND', message: 'User not found' });
             return;
         }
 
@@ -163,7 +163,7 @@ export async function changeAvatar(req: Request, res: Response, next: NextFuncti
         }
 
         if (avatar !== '' && !avatar.startsWith('data:image/')) {
-            res.status(400).json({ error: 'Invalid data URL' });
+            res.status(400).json({ code: 'BAD_REQUEST', message: 'Invalid data URL' });
             return;
         }
 
@@ -172,13 +172,13 @@ export async function changeAvatar(req: Request, res: Response, next: NextFuncti
         const isOwner = session?.handle === handle;
 
         if (!isOwner && !isAdmin) {
-            res.status(403).json({ error: 'Unauthorized' });
+            res.status(403).json({ code: 'FORBIDDEN', message: 'Not authorized to modify this user' });
             return;
         }
 
         const user = await getUserByHandle(handle);
         if (!user) {
-            res.status(404).json({ error: 'Not Found', message: 'User not found' });
+            res.status(404).json({ code: 'NOT_FOUND', message: 'User not found' });
             return;
         }
 
@@ -202,11 +202,11 @@ export async function recoverStep1(req: Request, res: Response, next: NextFuncti
 
         const user = await getUserByHandle(handle);
         if (!user) {
-            res.status(404).json({ error: 'Not Found', message: 'User not found' });
+            res.status(404).json({ code: 'NOT_FOUND', message: 'User not found' });
             return;
         }
         if (!user.enabled) {
-            res.status(403).json({ error: 'Forbidden', message: '账号已被禁用' });
+            res.status(403).json({ code: 'FORBIDDEN', message: '账号已被禁用' });
             return;
         }
 
@@ -236,18 +236,18 @@ export async function recoverStep2(req: Request, res: Response, next: NextFuncti
 
         const user = await getUserByHandle(handle);
         if (!user) {
-            res.status(404).json({ error: 'Not Found', message: 'User not found' });
+            res.status(404).json({ code: 'NOT_FOUND', message: 'User not found' });
             return;
         }
         if (!user.enabled) {
-            res.status(403).json({ error: 'Forbidden', message: '账号已被禁用' });
+            res.status(403).json({ code: 'FORBIDDEN', message: '账号已被禁用' });
             return;
         }
 
         const stored = recoveryCodes.get(handle);
         if (!stored || stored.code !== code || stored.expires < Date.now()) {
             recoveryCodes.delete(handle);
-            res.status(403).json({ error: 'Incorrect code' });
+            res.status(403).json({ code: 'FORBIDDEN', message: 'Incorrect recovery code' });
             return;
         }
 
@@ -272,12 +272,12 @@ export async function publicRegisterUser(req: Request, res: Response, next: Next
 
         const slugged = slugify(handle);
         if (!slugged) {
-            res.status(400).json({ error: 'Invalid handle' });
+            res.status(400).json({ code: 'BAD_REQUEST', message: 'Invalid handle' });
             return;
         }
 
         if (await userExists(slugged)) {
-            res.status(409).json({ error: 'User already exists' });
+            res.status(409).json({ code: 'CONFLICT', message: 'User already exists' });
             return;
         }
 
@@ -317,12 +317,12 @@ export async function adminCreateUser(req: Request, res: Response, next: NextFun
 
         const slugged = slugify(handle);
         if (!slugged) {
-            res.status(400).json({ error: 'Invalid handle' });
+            res.status(400).json({ code: 'BAD_REQUEST', message: 'Invalid handle' });
             return;
         }
 
         if (await userExists(slugged)) {
-            res.status(409).json({ error: 'User already exists' });
+            res.status(409).json({ code: 'CONFLICT', message: 'User already exists' });
             return;
         }
 
@@ -348,18 +348,18 @@ export async function adminDeleteUser(req: Request, res: Response, next: NextFun
 
         const session = req.session as Record<string, any> | null;
         if (session?.handle === handle) {
-            res.status(400).json({ error: 'Cannot delete yourself' });
+            res.status(400).json({ code: 'BAD_REQUEST', message: 'Cannot delete yourself' });
             return;
         }
 
         if (handle === 'default-user') {
-            res.status(400).json({ error: 'Sorry, but the default user cannot be deleted. It is required as a fallback.' });
+            res.status(400).json({ code: 'BAD_REQUEST', message: 'Sorry, but the default user cannot be deleted. It is required as a fallback.' });
             return;
         }
 
         const user = await getUserByHandle(handle);
         if (!user) {
-            res.status(404).json({ error: 'Not Found', message: 'User not found' });
+            res.status(404).json({ code: 'NOT_FOUND', message: 'User not found' });
             return;
         }
 
@@ -390,13 +390,13 @@ export async function adminToggleUser(req: Request, res: Response, next: NextFun
         const action = req.path.split('/').pop(); // disable/enable/promote/demote
 
         if ((action === 'disable' || action === 'demote') && session?.handle === handle) {
-            res.status(400).json({ error: `Cannot ${action} yourself` });
+            res.status(400).json({ code: 'BAD_REQUEST', message: `Cannot ${action} yourself` });
             return;
         }
 
         const user = await getUserByHandle(handle);
         if (!user) {
-            res.status(404).json({ error: 'Not Found', message: 'User not found' });
+            res.status(404).json({ code: 'NOT_FOUND', message: 'User not found' });
             return;
         }
 

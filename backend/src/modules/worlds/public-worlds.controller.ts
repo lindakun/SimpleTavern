@@ -32,7 +32,7 @@ export async function publicGetWorld(req: Request, res: Response, next: NextFunc
         const config = getConfig();
         const world = getWorld(config.dataRoot, worldId);
         if (!world) {
-            res.status(404).json({ error: 'World not found' });
+            res.status(404).json({ code: 'NOT_FOUND', message: 'World not found' });
             return;
         }
 

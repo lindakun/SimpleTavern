@@ -12,7 +12,7 @@ export async function chatStream(req: Request, res: Response, _next: NextFunctio
         const { message, history, characterName, characterDescription, provider } = req.body;
 
         if (!message) {
-            res.status(400).json({ error: 'Message is required' });
+            res.status(400).json({ code: 'BAD_REQUEST', message: 'Message is required' });
             return;
         }
 
@@ -45,6 +45,11 @@ export async function chatStream(req: Request, res: Response, _next: NextFunctio
         const reader = llmStream.getReader();
         const decoder = new TextDecoder();
         let buffer = '';
+
+        // 客户端断开连接时取消上游流，避免资源泄漏
+        req.on('close', () => {
+            reader.cancel().catch(() => {});
+        });
 
         try {
             while (true) {
@@ -87,7 +92,7 @@ export async function chatStream(req: Request, res: Response, _next: NextFunctio
         logger.error('Chat Stream API 错误:', err);
         // 如果还没开始发送 SSE，返回 JSON 错误
         if (!res.headersSent) {
-            res.status(500).json({ error: err.message || '流式聊天接口调用失败' });
+            res.status(500).json({ code: 'INTERNAL_ERROR', message: err.message || '流式聊天接口调用失败' });
         } else {
             // 已经发送 SSE，用 SSE 格式发送错误
             res.write(`data: ${JSON.stringify({ error: err.message || '流式聊天失败' })}\n\n`);
@@ -105,7 +110,7 @@ export async function chat(req: Request, res: Response, _next: NextFunction): Pr
         const { message, history, characterName, characterDescription, provider } = req.body;
 
         if (!message) {
-            res.status(400).json({ error: 'Message is required' });
+            res.status(400).json({ code: 'BAD_REQUEST', message: 'Message is required' });
             return;
         }
 
@@ -130,7 +135,7 @@ export async function chat(req: Request, res: Response, _next: NextFunction): Pr
         res.json({ text: result.text, provider: result.provider, model: result.model });
     } catch (err: any) {
         logger.error('Chat API 错误:', err);
-        res.status(500).json({ error: err.message || '聊天接口调用失败' });
+        res.status(500).json({ code: 'INTERNAL_ERROR', message: err.message || '聊天接口调用失败' });
     }
 }
 

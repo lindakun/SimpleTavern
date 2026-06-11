@@ -6,17 +6,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useUserApi } from '../api/users';
 import { useToast } from '../components/Toast';
 
-// 本地用户状态管理（简单版本，后续可迁移到 Context）
-let currentUser: { handle: string; name: string; email?: string } | null = null;
-
-export function setCurrentUser(user: typeof currentUser) {
-  currentUser = user;
-}
-
-export function getCurrentUser() {
-  return currentUser;
-}
-
 /**
  * 用户登录
  */
@@ -30,10 +19,6 @@ export function useLogin() {
       return response;
     },
     onSuccess: (data) => {
-      setCurrentUser({
-        handle: data.handle,
-        name: data.name || data.handle,
-      });
       showToast(`欢迎回来，${data.handle}！`, 'success');
     },
     onError: (error: Error) => {
@@ -66,12 +51,7 @@ export function useRegister() {
       await userApi.register({ handle, name, password, email });
       return { handle, name, email };
     },
-    onSuccess: (data) => {
-      setCurrentUser({
-        handle: data.handle,
-        name: data.name,
-        email: data.email,
-      });
+    onSuccess: () => {
       showToast('注册成功！', 'success');
     },
     onError: (error: Error) => {
@@ -93,12 +73,10 @@ export function useLogout() {
       await userApi.logout();
     },
     onSuccess: () => {
-      setCurrentUser(null);
       showToast('已安全退出', 'info');
     },
     onError: () => {
       // 即使 API 失败也清除本地状态
-      setCurrentUser(null);
     },
   });
 }
@@ -111,14 +89,7 @@ export function useCurrentUser() {
 
   return useQuery({
     queryKey: ['user', 'me'],
-    queryFn: async () => {
-      const data = await userApi.getMe();
-      setCurrentUser({
-        handle: data.handle,
-        name: data.name,
-      });
-      return data;
-    },
+    queryFn: () => userApi.getMe(),
     staleTime: 5 * 60 * 1000,
     retry: false, // 不重试，避免 401 时反复请求
   });

@@ -23,10 +23,10 @@ export function createPublicCharacterRoutes(): Router {
     router.post('/characters/copy', async (req, res, next) => {
         try {
             const handle = getHandle(req);
-            if (!handle) { res.status(403).json({ error: 'Unauthorized' }); return; }
+            if (!handle) { res.status(401).json({ code: 'UNAUTHORIZED', message: 'You must be logged in' }); return; }
 
             if (!req.body.name) {
-                res.status(400).json({ error: 'name is required' });
+                res.status(400).json({ code: 'BAD_REQUEST', message: 'name is required' });
                 return;
             }
 
@@ -70,7 +70,7 @@ export function createPublicCharacterRoutes(): Router {
     router.post('/users/characters/edit', async (req, res, next) => {
         try {
             const handle = getHandle(req);
-            if (!handle) { res.status(403).json({ error: 'Unauthorized' }); return; }
+            if (!handle) { res.status(401).json({ code: 'UNAUTHORIZED', message: 'You must be logged in' }); return; }
 
             const characterId = String(req.body.id || req.body.characterId || '');
             if (!characterId) throw new BadRequestError('characterId is required');
@@ -102,7 +102,7 @@ export function createPublicCharacterRoutes(): Router {
             });
 
             if (!updated) {
-                res.status(404).json({ error: 'Character not found' });
+                res.status(404).json({ code: 'NOT_FOUND', message: 'Character not found' });
                 return;
             }
 
@@ -115,14 +115,14 @@ export function createPublicCharacterRoutes(): Router {
     router.post('/users/characters/delete', async (req, res, next) => {
         try {
             const handle = getHandle(req);
-            if (!handle) { res.status(403).json({ error: 'Unauthorized' }); return; }
+            if (!handle) { res.status(401).json({ code: 'UNAUTHORIZED', message: 'You must be logged in' }); return; }
 
             const characterId = String(req.body.id || req.body.characterId || '');
             if (!characterId) throw new BadRequestError('characterId is required');
 
             const deleted = await userCharacterService.deleteUserCharacter(handle, characterId);
             if (!deleted) {
-                res.status(404).json({ error: 'Character not found' });
+                res.status(404).json({ code: 'NOT_FOUND', message: 'Character not found' });
                 return;
             }
 
@@ -136,22 +136,22 @@ export function createPublicCharacterRoutes(): Router {
     router.post('/users/characters/privacy', async (req, res, next) => {
         try {
             const handle = getHandle(req);
-            if (!handle) { res.status(403).json({ error: 'Unauthorized' }); return; }
+            if (!handle) { res.status(401).json({ code: 'UNAUTHORIZED', message: 'You must be logged in' }); return; }
 
             const characterId = String(req.body.characterId || '');
             const privacyType = req.body.privacyType;
             if (!characterId || !privacyType) {
-                res.status(400).json({ error: 'characterId and privacyType are required' });
+                res.status(400).json({ code: 'BAD_REQUEST', message: 'characterId and privacyType are required' });
                 return;
             }
             if (privacyType !== 'public' && privacyType !== 'private') {
-                res.status(400).json({ error: 'privacyType must be "public" or "private"' });
+                res.status(400).json({ code: 'BAD_REQUEST', message: 'privacyType must be "public" or "private"' });
                 return;
             }
 
             const updated = await userCharacterService.updateCharacterPrivacy(handle, characterId, privacyType);
             if (!updated) {
-                res.status(404).json({ error: 'Character not found' });
+                res.status(404).json({ code: 'NOT_FOUND', message: 'Character not found' });
                 return;
             }
 
@@ -280,7 +280,7 @@ export function createPublicCharacterRoutes(): Router {
                 if (tryServeFromDir(defaultDirs.characters)) return;
             }
 
-            res.status(404).json({ error: 'Not found' });
+            res.status(404).json({ code: 'NOT_FOUND', message: 'Not found' });
         } catch (err) {
             next(err);
         }

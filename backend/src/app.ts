@@ -6,6 +6,7 @@ import cookieSession from 'cookie-session';
 import path from 'node:path';
 import fs from 'node:fs';
 import crypto from 'node:crypto';
+import { csrfSync } from 'csrf-sync';
 import { createCorsMiddleware } from './shared/middleware/cors.js';
 import { errorHandler } from './shared/middleware/error-handler.js';
 import { requireLogin, requireAdmin } from './shared/middleware/auth-guard.js';
@@ -44,8 +45,20 @@ function getCookieSecret(dataRoot: string): string {
 export function createApp(config: ServerConfig): express.Express {
     const app = express();
 
-    // ---- 安全头 ----
-    app.use(helmet({ contentSecurityPolicy: false }));
+    // ---- 安全头（含 CSP 防护，允许 React 内联脚本/样式） ----
+    app.use(helmet({
+        contentSecurityPolicy: {
+            directives: {
+                defaultSrc: ["'self'"],
+                scriptSrc: ["'self'", "'unsafe-inline'", "https://accounts.google.com"],
+                styleSrc: ["'self'", "'unsafe-inline'"],
+                imgSrc: ["'self'", "data:", "https:"],
+                connectSrc: ["'self'", "https:"],
+                fontSrc: ["'self'", "data:"],
+                frameSrc: ["'self'", "https://accounts.google.com"],
+            },
+        },
+    }));
 
     // ---- 压缩（跳过 SSE 流式端点，否则会缓冲破坏实时性） ----
     app.use(compression({
@@ -77,9 +90,22 @@ export function createApp(config: ServerConfig): express.Express {
         secret: sessionSecret,
     }));
 
-    // ---- 公开端点 ----
-    app.get('/csrf-token', (_req, res) => {
-        res.json({ token: config.disableCsrf ? 'disabled' : 'enabled' });
+    // ---- CSRF 防护 ----
+    const { csrfSynchronisedProtection, generateToken } = csrfSync({
+        getTokenFromRequest: (req) => {
+            const token = (req.headers['x-csrf-token'] || req.headers['x-xsrf-token']) as string | undefined;
+            return token ?? null;
+        },
+    });
+
+    // ---- CSRF Token 公开端点 ----
+    app.get('/csrf-token', (req, res) => {
+        if (config.disableCsrf) {
+            res.json({ token: 'disabled' });
+            return;
+        }
+        const token = generateToken(req);
+        res.json({ token });
     });
 
     app.get('/version', (_req, res) => {
@@ -87,7 +113,8 @@ export function createApp(config: ServerConfig): express.Express {
         res.json({ version: '0.1.0', name: 'simple-tavern' });
     });
 
-    // ---- 公开路由（无需登录） ----
+    // ─── 公开路由（无需登录）—— 以下路由不受 CSRF 保护 ───
+    // ⚠️ 任何新增公开 POST 路由必须注册在此行之上，否则会被 CSRF 中间件拦截
     app.use('/api', createPublicAuthRoutes(config));
 
     // ---- AI 聊天 providers 缓存 ----
@@ -131,7 +158,13 @@ export function createApp(config: ServerConfig): express.Express {
         res.json({ ok: true });
     });
 
-    // ---- 认证守卫 ----
+    // ─── CSRF 保护（仅校验下一行 requireLogin 之后的私有路由）───
+    // ⚠️ 公开 POST 路由（登录/注册/AI聊天）已在上方注册完毕，不受此中间件影响
+    if (!config.disableCsrf) {
+        app.use(csrfSynchronisedProtection);
+    }
+
+    // ─── 认证守卫 ───
     app.use(requireLogin);
 
     // ---- 私有路由（需登录） ----
@@ -150,12 +183,9 @@ export function createApp(config: ServerConfig): express.Express {
     // ---- 世界书管理路由（需 Admin 权限） ----
     app.use('/api/worlds', requireAdmin, createAdminWorldRoutes());
 
-    // ---- AI 聊天接口 ----
-    app.use('/api', createAiChatRoutes());
-
-    // ---- 静态文件 ----
-    const staticDir = '/Users/linda/code/SillyTavern/public';
-    if (fs.existsSync(staticDir)) {
+    // ---- 静态文件（通过环境变量可选配置） ----
+    const staticDir = process.env.SIMPLE_TAVERN_STATIC_DIR;
+    if (staticDir && fs.existsSync(staticDir)) {
         app.use(express.static(staticDir));
     }
 
