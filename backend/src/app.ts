@@ -158,14 +158,14 @@ export function createApp(config: ServerConfig): express.Express {
         res.json({ ok: true });
     });
 
-    // ─── CSRF 保护（仅校验下一行 requireLogin 之后的私有路由）───
+    // ─── 认证守卫 ───
+    app.use(requireLogin);
+
+    // ─── CSRF 保护（注册在 requireLogin 之后，仅校验已认证用户的写操作）───
     // ⚠️ 公开 POST 路由（登录/注册/AI聊天）已在上方注册完毕，不受此中间件影响
     if (!config.disableCsrf) {
         app.use(csrfSynchronisedProtection);
     }
-
-    // ─── 认证守卫 ───
-    app.use(requireLogin);
 
     // ---- 私有路由（需登录） ----
     app.use('/api', createPrivateAuthRoutes(config));
