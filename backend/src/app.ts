@@ -6,8 +6,8 @@ import cookieSession from 'cookie-session';
 import path from 'node:path';
 import fs from 'node:fs';
 import crypto from 'node:crypto';
-import { csrfSync } from 'csrf-sync';
 import { createCorsMiddleware } from './shared/middleware/cors.js';
+import { logger } from './common/logger.js';
 import { errorHandler } from './shared/middleware/error-handler.js';
 import { requireLogin, requireAdmin } from './shared/middleware/auth-guard.js';
 import { createPublicAuthRoutes, createPrivateAuthRoutes } from './modules/auth/auth.routes.js';
@@ -90,23 +90,41 @@ export function createApp(config: ServerConfig): express.Express {
         secret: sessionSecret,
     }));
 
-    // ---- CSRF 防护 ----
-    const { csrfSynchronisedProtection, generateToken } = csrfSync({
-        getTokenFromRequest: (req) => {
-            const token = (req.headers['x-csrf-token'] || req.headers['x-xsrf-token']) as string | undefined;
-            return token ?? null;
-        },
-    });
-
-    // ---- CSRF Token 公开端点 ----
+    // ---- CSRF 防护（自定义实现，替代 csrf-sync） ----
+    // GET /csrf-token 生成 token 存入 session，POST/PUT/DELETE 校验 x-csrf-token 头
     app.get('/csrf-token', (req, res) => {
         if (config.disableCsrf) {
             res.json({ token: 'disabled' });
             return;
         }
-        const token = generateToken(req);
+        const token = crypto.randomBytes(32).toString('hex');
+        if (req.session) {
+            req.session.csrfToken = token;
+        } else {
+            logger.warn('CSRF token 生成时 session 不可用——请检查 cookie-session 中间件顺序');
+        }
         res.json({ token });
     });
+
+    const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
+
+    // CSRF 校验中间件（用于 requireLogin 之后的私有路由）
+    const csrfProtection = (req: Request, res: Response, next: express.NextFunction) => {
+        if (config.disableCsrf) return next();
+        if (SAFE_METHODS.has(req.method)) return next();
+
+        const clientToken = (req.headers['x-csrf-token'] || req.headers['x-xsrf-token']) as string | undefined;
+        const serverToken = req.session?.csrfToken as string | undefined;
+
+        if (!clientToken || !serverToken || clientToken.length !== serverToken.length ||
+            !crypto.timingSafeEqual(Buffer.from(clientToken), Buffer.from(serverToken))) {
+            logger.warn('CSRF 校验失败', { method: req.method, path: req.path, hasSession: !!req.session, hasSessionToken: !!serverToken, hasClientToken: !!clientToken });
+            return next(Object.assign(new Error('invalid csrf token'), { code: 'EBADCSRFTOKEN' }));
+        }
+        next();
+    };
+
+    // ---- CSRF Token 公开端点 ----
 
     app.get('/version', (_req, res) => {
         res.setHeader('Cache-Control', 'public, max-age=3600');
@@ -164,7 +182,7 @@ export function createApp(config: ServerConfig): express.Express {
     // ─── CSRF 保护（注册在 requireLogin 之后，仅校验已认证用户的写操作）───
     // ⚠️ 公开 POST 路由（登录/注册/AI聊天）已在上方注册完毕，不受此中间件影响
     if (!config.disableCsrf) {
-        app.use(csrfSynchronisedProtection);
+        app.use(csrfProtection);
     }
 
     // ---- 私有路由（需登录） ----

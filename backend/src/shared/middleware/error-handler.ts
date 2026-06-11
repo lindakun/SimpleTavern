@@ -7,7 +7,7 @@ const THIRD_PARTY_ERROR_MAP: Record<string, { status: number; logLevel: 'warn' |
     EBADCSRFTOKEN: { status: 403, logLevel: 'warn' },
 };
 
-export function errorHandler(err: Error & { code?: string }, _req: Request, res: Response, _next: NextFunction): void {
+export function errorHandler(err: Error & { code?: string }, req: Request, res: Response, _next: NextFunction): void {
     if (err instanceof AppError) {
         res.status(err.statusCode).json({
             code: err.code,
@@ -20,9 +20,9 @@ export function errorHandler(err: Error & { code?: string }, _req: Request, res:
     if (err.code && THIRD_PARTY_ERROR_MAP[err.code]) {
         const mapped = THIRD_PARTY_ERROR_MAP[err.code];
         if (mapped.logLevel === 'warn') {
-            logger.warn(`请求被拒绝: ${err.message} (code: ${err.code})`);
+            logger.warn(`请求被拒绝: ${err.message} (code: ${err.code}, ${req.method} ${req.path})`);
         } else {
-            logger.error(`请求被拒绝: ${err.message} (code: ${err.code})`);
+            logger.error(`请求被拒绝: ${err.message} (code: ${err.code}, ${req.method} ${req.path})`);
         }
         res.status(mapped.status).json({
             code: err.code,
