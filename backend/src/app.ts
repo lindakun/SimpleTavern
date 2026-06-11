@@ -118,7 +118,8 @@ export function createApp(config: ServerConfig): express.Express {
 
         if (!clientToken || !serverToken || clientToken.length !== serverToken.length ||
             !crypto.timingSafeEqual(Buffer.from(clientToken), Buffer.from(serverToken))) {
-            logger.warn('CSRF 校验失败', { method: req.method, path: req.path, hasSession: !!req.session, hasSessionToken: !!serverToken, hasClientToken: !!clientToken });
+            const sessionKeys = req.session ? Object.keys(req.session).filter(k => k !== 'csrfToken') : ['no-session'];
+            logger.warn('CSRF 校验失败', { method: req.method, path: req.path, hasSession: !!req.session, sessionKeys, hasSessionToken: !!serverToken, hasClientToken: !!clientToken });
             return next(Object.assign(new Error('invalid csrf token'), { code: 'EBADCSRFTOKEN' }));
         }
         next();
