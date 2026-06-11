@@ -94,6 +94,11 @@ export function createApp(config: ServerConfig): express.Express {
         res.json({ version: '0.1.0', name: 'simple-tavern' });
     });
 
+    // ---- 健康检查 ----
+    app.get('/health', (_req, res) => {
+        res.json({ status: 'ok' });
+    });
+
     // ─── 公开路由（无需登录）—— 以下路由不受 CSRF 保护 ───
     // ⚠️ 任何新增公开 POST 路由必须注册在此行之上，否则会被 CSRF 中间件拦截
     app.use('/api', createPublicAuthRoutes(config));
