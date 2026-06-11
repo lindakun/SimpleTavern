@@ -89,23 +89,27 @@ export default function ChatScreen({
     overscan: 15,
   });
 
-  // Auto-scroll to bottom when new messages arrive or streaming updates
+  // Auto-scroll to bottom when new messages arrive, streaming updates, or initial load
   const scrollToIndexRef = useRef(virtualizer.scrollToIndex);
   scrollToIndexRef.current = virtualizer.scrollToIndex;
   const prevMessageLenRef = useRef(messages.length);
   const prevLastTextLenRef = useRef(lastMsg?.text?.length || 0);
+  const prevCharacterIdRef = useRef(character.id);
   useEffect(() => {
     if (allItems.length === 0) return;
     const isNewMsg = messages.length > prevMessageLenRef.current;
     const isStreamUpdate = lastMsg?.text && lastMsg.text.length > prevLastTextLenRef.current;
+    const isNewCharacter = character.id !== prevCharacterIdRef.current;
     prevMessageLenRef.current = messages.length;
     prevLastTextLenRef.current = lastMsg?.text?.length || 0;
-    if (isNewMsg || isStreamUpdate) {
+    prevCharacterIdRef.current = character.id;
+    if (isNewMsg || isStreamUpdate || isNewCharacter) {
+      // Wait for virtualizer to measure items (200ms gives enough time for initial layout)
       setTimeout(() => {
         scrollToIndexRef.current(allItems.length - 1, { align: 'end' });
-      }, 50);
+      }, 200);
     }
-  }, [messages, lastMsg?.text, allItems.length]);
+  }, [messages, lastMsg?.text, allItems.length, character.id]);
 
   // 键盘回避：当输入框聚焦时，确保它在可视区域内
   const inputRef = useRef<HTMLTextAreaElement>(null);
