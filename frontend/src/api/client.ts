@@ -11,36 +11,6 @@
 
 import { useToast } from '../components/Toast';
 
-// ── CSRF Token 缓存 ──
-let csrfToken: string | null = null;
-let csrfTokenPromise: Promise<string | null> | null = null;
-
-async function getCsrfToken(): Promise<string | null> {
-    if (csrfToken !== null) return csrfToken;
-    if (csrfTokenPromise) return csrfTokenPromise;
-
-    csrfTokenPromise = fetch('/csrf-token', { credentials: 'include' })
-        .then(res => res.json())
-        .then(data => {
-            const token = data?.token;
-            if (token && token !== 'disabled') {
-                csrfToken = token;
-                return token;
-            }
-            return null;
-        })
-        .catch(() => null)
-        .finally(() => { csrfTokenPromise = null; });
-
-    return csrfTokenPromise;
-}
-
-/** 清除缓存的 CSRF token（401 / 退出登录 / 重新登录时调用） */
-export function clearCsrfToken() {
-    csrfToken = null;
-    csrfTokenPromise = null;
-}
-
 // 401 全局回调忽略的端点：这些端点返回 401 表示操作失败（如凭证错误），非 session 过期
 const AUTH_EXEMPT_PATHS = new Set([
     '/api/users/login',
@@ -86,9 +56,6 @@ export class ApiError extends Error {
 // 默认超时时间 (ms)
 const DEFAULT_TIMEOUT = 30000;
 
-/** 不需要 CSRF token 的 HTTP 方法 */
-const CSRF_EXEMPT_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
-
 /**
  * 创建 API 客户端
  * 需要在组件内部调用（因为使用了 useToast hook）
@@ -112,15 +79,6 @@ export function useApiClient() {
         // FormData 上传时不设置 Content-Type，让浏览器自动设置 multipart boundary
         if (!headers.has('Content-Type') && fetchConfig.body && !(fetchConfig.body instanceof FormData)) {
             headers.set('Content-Type', 'application/json');
-        }
-
-        // 为状态变更方法附加 CSRF token
-        const method = (fetchConfig.method || 'GET').toUpperCase();
-        if (!CSRF_EXEMPT_METHODS.has(method) && !headers.has('x-csrf-token')) {
-            const token = await getCsrfToken();
-            if (token) {
-                headers.set('x-csrf-token', token);
-            }
         }
 
         // 创建 AbortController 实现超时
@@ -172,7 +130,6 @@ export function useApiClient() {
             // 处理 API 错误
             if (error instanceof ApiError) {
                 if (error.status === 401) {
-                    clearCsrfToken(); // 清除 CSRF token，下次请求重新获取
                     // 认证相关的端点（login/google-login）返回 401 表示操作失败（凭证错误）
                     // 其他端点返回 401 表示 session 过期/无效 → 全局回调跳转登录页
                     if (!AUTH_EXEMPT_PATHS.has(url)) {
