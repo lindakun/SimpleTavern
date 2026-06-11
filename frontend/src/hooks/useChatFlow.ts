@@ -322,7 +322,7 @@ export function useChatFlow(currentScreen: ScreenId | null) {
           }
         });
       });
-  }, [activeCharacterId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [activeCharacterId, currentScreen]);
 
   return {
     activeCharacterId,
