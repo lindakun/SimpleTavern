@@ -9,6 +9,11 @@ import { useCurrentUser } from './useAuth';
 import { useChatStore } from '../stores/chatStore';
 import { SCREEN_PATHS, pathToScreen } from '../routes';
 
+const PUBLIC_SCREENS: ScreenId[] = [
+  ScreenId.WELCOME, ScreenId.LOGIN, ScreenId.REGISTER,
+  ScreenId.FORGOT_PASSWORD, ScreenId.RESET_PASSWORD,
+];
+
 export function useAppNavigation() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -30,6 +35,10 @@ export function useAppNavigation() {
   // ── 401 global callback ──
   useEffect(() => {
     registerUnauthorizedCallback(() => {
+      const currentPath = window.location.pathname;
+      const screen = pathToScreen(currentPath);
+      // 如果当前已在公开页面，401 是预期行为（未登录），不触发重定向
+      if (screen && PUBLIC_SCREENS.includes(screen)) return;
       queryClient.clear();
       useChatStore.getState().clearChatThreads();
       useChatStore.getState().resetLoaded();
@@ -39,14 +48,10 @@ export function useAppNavigation() {
 
   // ── Auth guard ──
   useEffect(() => {
-    const publicScreens: ScreenId[] = [
-      ScreenId.WELCOME, ScreenId.LOGIN, ScreenId.REGISTER,
-      ScreenId.FORGOT_PASSWORD, ScreenId.RESET_PASSWORD,
-    ];
     const wasLoggedIn = prevUserRef.current !== null;
     prevUserRef.current = user;
 
-    if (wasLoggedIn && !user && currentScreen && !publicScreens.includes(currentScreen)) {
+    if (wasLoggedIn && !user && currentScreen && !PUBLIC_SCREENS.includes(currentScreen)) {
       navigate('/', { replace: true });
     }
   }, [user, currentScreen, navigate]);
