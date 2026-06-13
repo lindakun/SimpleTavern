@@ -8,6 +8,9 @@ import fs from 'node:fs';
 import crypto from 'node:crypto';
 import { createCorsMiddleware } from './shared/middleware/cors.js';
 import { errorHandler } from './shared/middleware/error-handler.js';
+import { requestLogger } from './shared/middleware/request-logger.js';
+import { requestIdMiddleware } from './shared/middleware/request-id.js';
+import { performanceMonitor } from './shared/middleware/performance.js';
 import { requireLogin, requireAdmin } from './shared/middleware/auth-guard.js';
 import { createPublicAuthRoutes, createPrivateAuthRoutes } from './modules/auth/auth.routes.js';
 import { createCharacterRoutes } from './modules/characters/characters.routes.js';
@@ -74,6 +77,15 @@ export function createApp(config: ServerConfig): express.Express {
 
     // ---- CORS ----
     app.use(createCorsMiddleware());
+
+    // ---- 请求 ID 追踪 ----
+    app.use(requestIdMiddleware);
+
+    // ---- 性能监控 ----
+    app.use(performanceMonitor);
+
+    // ---- 请求日志 ----
+    app.use(requestLogger);
 
     // ---- Cookie 会话 ----
     const sessionSecret = getCookieSecret(config.dataRoot);

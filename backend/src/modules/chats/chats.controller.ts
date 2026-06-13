@@ -5,18 +5,18 @@ import * as chatService from './chats.service.js';
 import { readChatFile, writeChatFile, listChatFiles, readFirstLine, readPinnedList } from './chats.repository.js';
 import { BadRequestError } from '../../common/errors.js';
 import { getConfig } from '../../config/index.js';
+import { getUserDirs, getSessionHandle } from '../../shared/utils/user-dirs.js';
 import { getUserDirectories } from '../users/users.repository.js';
+import type { Chat, ChatMessage } from './types.js';
 
-function getUserDirs(req: Request) {
-    const session = req.session as Record<string, any>;
-    const handle = session?.handle as string;
-    const config = getConfig();
-    return getUserDirectories(config.dataRoot, handle);
-}
-
-function getSessionHandle(req: Request): string | null {
-    const session = req.session as Record<string, any>;
-    return session?.handle || null;
+/** 聊天线程信息 */
+interface ChatThread {
+    characterId: string;
+    characterName: string;
+    lastMessageText: string;
+    lastActive: string;
+    messageCount: number;
+    pinned: boolean;
 }
 
 /**
@@ -38,7 +38,8 @@ export function saveChat(req: Request, res: Response, next: NextFunction): void 
         }
 
         const charName = avatarUrl.replace('.png', '');
-        chatService.saveChat(dirs.chats, charName, fileName, chatData);
+        // req.body.chat 是外部输入，类型断言为 Chat
+        chatService.saveChat(dirs.chats, charName, fileName, chatData as Chat);
         res.json({ ok: true });
     } catch (err) {
         next(err);
@@ -68,6 +69,7 @@ export function getChat(req: Request, res: Response, _next: NextFunction): void 
         const chatData = chatService.getChatData(dirs.chats, charName, String(fileName));
         res.json(chatData);
     } catch {
+        // 预期：读取失败，返回空响应
         res.json({});
     }
 }
@@ -148,7 +150,7 @@ export function importChat(req: Request, res: Response, next: NextFunction): voi
 
         if (!avatarUrl || !fileName) throw new BadRequestError('Missing required fields');
 
-        const file = (req as any).file;
+        const file = req.file;
         if (!file) throw new BadRequestError('No file uploaded');
 
         const uploadPath = file.path;
@@ -186,6 +188,7 @@ export function getGroupChat(req: Request, res: Response, _next: NextFunction): 
         const data = readChatFile(filePath);
         res.json(data);
     } catch {
+        // 预期：读取失败，返回空响应
         res.json({});
     }
 }
@@ -244,7 +247,7 @@ export function importGroupChat(req: Request, res: Response, next: NextFunction)
 
         if (!file) throw new BadRequestError('Missing required fields');
 
-        const uploadFile = (req as any).file;
+        const uploadFile = req.file;
         if (!uploadFile) throw new BadRequestError('No file uploaded');
 
         const uploadPath = uploadFile.path;
@@ -279,7 +282,7 @@ export function getChatThreads(req: Request, res: Response, next: NextFunction):
         }
 
         const entries = fs.readdirSync(dirs.chats, { withFileTypes: true });
-        const threads: any[] = [];
+        const threads: ChatThread[] = [];
         const pinnedSet = new Set(readPinnedList(dirs.chats));
 
         for (const entry of entries) {
@@ -293,7 +296,7 @@ export function getChatThreads(req: Request, res: Response, next: NextFunction):
             const firstLine = readFirstLine(filePath);
             const meta = firstLine ? tryParseJson(firstLine) : {};
             const chatData = readChatFile(filePath);
-            const lastMsg = chatData.length > 1 ? chatData[chatData.length - 1] : null;
+            const lastMsg = chatData.length > 1 ? chatData[chatData.length - 1] as import('./types.js').ChatMessage : null;
             const charName = meta?.character_name || entry.name;
 
             threads.push({
@@ -333,12 +336,14 @@ export function getThreadHistory(req: Request, res: Response, next: NextFunction
         if (!fs.existsSync(chatDir)) { res.json([]); return; }
 
         const files = listChatFiles(chatDir);
-        const allMessages: any[] = [];
+        const allMessages: ChatMessage[] = [];
 
         for (const file of files) {
             const filePath = path.join(chatDir, file);
             const chatData = readChatFile(filePath);
-            for (const msg of chatData) {
+            // 跳过 header（第一行），只取 messages
+            for (let i = 1; i < chatData.length; i++) {
+                const msg = chatData[i] as ChatMessage;
                 allMessages.push({ ...msg, chatFile: file });
             }
         }

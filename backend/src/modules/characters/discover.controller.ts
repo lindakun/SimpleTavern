@@ -203,7 +203,7 @@ export function addReview(req: Request, res: Response, next: NextFunction): void
 
         // 3. PNG 角色卡（id 以 .png 结尾，如 "奥利弗.png"）
         if (id.endsWith('.png')) {
-            const handle = (req as any).session?.handle;
+            const handle = req.session?.handle;
             if (handle) {
                 const charactersDir = path.join(config.dataRoot, handle, 'characters');
                 const filePath = path.join(charactersDir, id);
@@ -253,7 +253,7 @@ export function addReview(req: Request, res: Response, next: NextFunction): void
         }
 
         // 4. 用户创建的角色（custom_ 前缀）
-        const handle = (req as any).session?.handle;
+        const handle = req.session?.handle;
         if (handle && id.startsWith('custom_')) {
             userCharacterService.addReviewToUserCharacter(handle, id, review)
                 .then(updated => {

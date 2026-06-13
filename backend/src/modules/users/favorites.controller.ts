@@ -3,8 +3,7 @@ import * as userService from './users.service.js';
 import { BadRequestError } from '../../common/errors.js';
 
 function getHandle(req: Request): string | null {
-    const session = req.session as Record<string, any> | null;
-    return session?.handle || null;
+    return req.session?.handle || null;
 }
 
 /**

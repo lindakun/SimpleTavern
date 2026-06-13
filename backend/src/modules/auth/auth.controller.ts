@@ -1,8 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
 import * as authService from './auth.service.js';
 import * as googleService from './google.service.js';
-import { BadRequestError } from '../../common/errors.js';
-import { slugify } from '../../common/utils.js';
+import { BadRequestError, UnauthorizedError, ForbiddenError, NotFoundError, ConflictError } from '../../common/errors.js';
+import { slugify as slugifyText } from '../../common/utils.js';
 import { getUserByHandle, saveUser, deleteUser, createUserDirectories, removeUserDirectories, userExists, saveEmailMapping } from '../users/users.repository.js';
 import { getConfig } from '../../config/index.js';
 import { logger } from '../../common/logger.js';
@@ -37,10 +37,11 @@ export async function login(req: Request, res: Response, next: NextFunction): Pr
         // 简化版：暂时绕过 rate limiter
         const result = await authService.login(handle, password);
 
-        const session = req.session as Record<string, any>;
-        session.handle = result.handle;
-        session.version = result.version;
-        session.admin = result.admin;
+        if (req.session) {
+            req.session.handle = result.handle;
+            req.session.version = result.version;
+            req.session.admin = result.admin;
+        }
 
         res.json({ handle: result.handle, admin: result.admin });
     } catch (err) {
@@ -51,37 +52,29 @@ export async function login(req: Request, res: Response, next: NextFunction): Pr
 /**
  * POST /api/users/logout
  */
-export async function logout(req: Request, res: Response, next: NextFunction): Promise<void> {
-    try {
-        const session = req.session as Record<string, any> | null;
-        if (session) {
-            session.handle = null;
-            session.csrfToken = null;
-            session.version = null;
-            session.admin = null;
-            (req.session as any) = null;
-        }
-        res.status(204).send();
-    } catch (err) {
-        next(err);
+export function logout(req: Request, res: Response, next: NextFunction): void {
+    // cookie-session 通过设置 max-age=0 来清除 cookie
+    if (req.session) {
+        req.session = null;
     }
+    res.status(204).send();
 }
 
 /**
  * GET /api/users/me
  */
-export async function getMe(req: Request, res: Response, next: NextFunction): Promise<void> {
+export async function getCurrentUser(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-        const session = req.session as Record<string, any> | null;
+        const session = req.session;
         const handle = session?.handle;
         if (!handle) {
-            res.status(401).json({ code: 'UNAUTHORIZED', message: 'You must be logged in' });
+            throw new UnauthorizedError('You must be logged in');
             return;
         }
 
         const user = await getUserByHandle(handle);
         if (!user) {
-            res.status(401).json({ code: 'ACCOUNT_DELETED', message: 'User account no longer exists' });
+            throw new UnauthorizedError('User account no longer exists');
             return;
         }
 
@@ -103,12 +96,12 @@ export async function changePassword(req: Request, res: Response, next: NextFunc
             throw new BadRequestError('Missing required fields');
         }
 
-        const session = req.session as Record<string, any> | null;
+        const session = req.session;
         const isAdmin = session?.admin === true;
         const isOwner = session?.handle === handle;
 
         if (!isOwner && !isAdmin) {
-            res.status(403).json({ code: 'FORBIDDEN', message: 'Not authorized to modify this user' });
+            throw new ForbiddenError('Not authorized to modify this user');
             return;
         }
 
@@ -129,18 +122,18 @@ export async function changeName(req: Request, res: Response, next: NextFunction
             throw new BadRequestError('Missing required fields');
         }
 
-        const session = req.session as Record<string, any> | null;
+        const session = req.session;
         const isAdmin = session?.admin === true;
         const isOwner = session?.handle === handle;
 
         if (!isOwner && !isAdmin) {
-            res.status(403).json({ code: 'FORBIDDEN', message: 'Not authorized to modify this user' });
+            throw new ForbiddenError('Not authorized to modify this user');
             return;
         }
 
         const user = await getUserByHandle(handle);
         if (!user) {
-            res.status(404).json({ code: 'NOT_FOUND', message: 'User not found' });
+            throw new NotFoundError('User');
             return;
         }
 
@@ -163,22 +156,22 @@ export async function changeAvatar(req: Request, res: Response, next: NextFuncti
         }
 
         if (avatar !== '' && !avatar.startsWith('data:image/')) {
-            res.status(400).json({ code: 'BAD_REQUEST', message: 'Invalid data URL' });
+            throw new BadRequestError('Invalid data URL');
             return;
         }
 
-        const session = req.session as Record<string, any> | null;
+        const session = req.session;
         const isAdmin = session?.admin === true;
         const isOwner = session?.handle === handle;
 
         if (!isOwner && !isAdmin) {
-            res.status(403).json({ code: 'FORBIDDEN', message: 'Not authorized to modify this user' });
+            throw new ForbiddenError('Not authorized to modify this user');
             return;
         }
 
         const user = await getUserByHandle(handle);
         if (!user) {
-            res.status(404).json({ code: 'NOT_FOUND', message: 'User not found' });
+            throw new NotFoundError('User');
             return;
         }
 
@@ -202,11 +195,11 @@ export async function recoverStep1(req: Request, res: Response, next: NextFuncti
 
         const user = await getUserByHandle(handle);
         if (!user) {
-            res.status(404).json({ code: 'NOT_FOUND', message: 'User not found' });
+            throw new NotFoundError('User');
             return;
         }
         if (!user.enabled) {
-            res.status(403).json({ code: 'FORBIDDEN', message: '账号已被禁用' });
+            throw new ForbiddenError('账号已被禁用');
             return;
         }
 
@@ -221,8 +214,23 @@ export async function recoverStep1(req: Request, res: Response, next: NextFuncti
     }
 }
 
-// 恢复码内存存储（简化版）
+// 恢复码内存存储（带 TTL 清理）
+// 使用对象存储 code 和 expires，便于 TTL 清理
 const recoveryCodes = new Map<string, { code: string; expires: number }>();
+const recoveryCleanupTimer = setInterval(() => {
+    const now = Date.now();
+    for (const [key, value] of recoveryCodes.entries()) {
+        if (value.expires < now) {
+            recoveryCodes.delete(key);
+        }
+    }
+}, 5 * 60 * 1000);
+
+/** 清理恢复码定时器，用于测试或模块卸载时释放资源 */
+export function disposeRecoveryCodes(): void {
+    clearInterval(recoveryCleanupTimer);
+    recoveryCodes.clear();
+}
 
 /**
  * POST /api/users/recover-step2
@@ -236,18 +244,18 @@ export async function recoverStep2(req: Request, res: Response, next: NextFuncti
 
         const user = await getUserByHandle(handle);
         if (!user) {
-            res.status(404).json({ code: 'NOT_FOUND', message: 'User not found' });
+            throw new NotFoundError('User');
             return;
         }
         if (!user.enabled) {
-            res.status(403).json({ code: 'FORBIDDEN', message: '账号已被禁用' });
+            throw new ForbiddenError('账号已被禁用');
             return;
         }
 
         const stored = recoveryCodes.get(handle);
         if (!stored || stored.code !== code || stored.expires < Date.now()) {
             recoveryCodes.delete(handle);
-            res.status(403).json({ code: 'FORBIDDEN', message: 'Incorrect recovery code' });
+            throw new ForbiddenError('Incorrect recovery code');
             return;
         }
 
@@ -270,14 +278,14 @@ export async function publicRegisterUser(req: Request, res: Response, next: Next
             throw new BadRequestError('Missing required fields');
         }
 
-        const slugged = slugify(handle);
+        const slugged = slugifyText(handle);
         if (!slugged) {
-            res.status(400).json({ code: 'BAD_REQUEST', message: 'Invalid handle' });
+            throw new BadRequestError('Invalid handle');
             return;
         }
 
         if (await userExists(slugged)) {
-            res.status(409).json({ code: 'CONFLICT', message: 'User already exists' });
+            throw new ConflictError('User already exists');
             return;
         }
 
@@ -292,12 +300,14 @@ export async function publicRegisterUser(req: Request, res: Response, next: Next
         }
 
         // 自动登录：设置 session
-        const session = req.session as Record<string, any>;
-        session.handle = slugged;
-        session.version = authService.getAccountVersion(
-            await getUserByHandle(slugged) as any
-        );
-        session.admin = false;
+        if (req.session) {
+            req.session.handle = slugged;
+            const newUser = await getUserByHandle(slugged);
+            if (newUser) {
+                req.session.version = authService.getAccountVersion(newUser);
+            }
+            req.session.admin = false;
+        }
 
         res.json({ handle: slugged });
     } catch (err) {
@@ -315,14 +325,14 @@ export async function adminCreateUser(req: Request, res: Response, next: NextFun
             throw new BadRequestError('Missing required fields');
         }
 
-        const slugged = slugify(handle);
+        const slugged = slugifyText(handle);
         if (!slugged) {
-            res.status(400).json({ code: 'BAD_REQUEST', message: 'Invalid handle' });
+            throw new BadRequestError('Invalid handle');
             return;
         }
 
         if (await userExists(slugged)) {
-            res.status(409).json({ code: 'CONFLICT', message: 'User already exists' });
+            throw new ConflictError('User already exists');
             return;
         }
 
@@ -346,9 +356,9 @@ export async function adminDeleteUser(req: Request, res: Response, next: NextFun
             throw new BadRequestError('Missing required fields');
         }
 
-        const session = req.session as Record<string, any> | null;
+        const session = req.session;
         if (session?.handle === handle) {
-            res.status(400).json({ code: 'BAD_REQUEST', message: 'Cannot delete yourself' });
+            throw new BadRequestError('Cannot delete yourself');
             return;
         }
 
@@ -359,7 +369,7 @@ export async function adminDeleteUser(req: Request, res: Response, next: NextFun
 
         const user = await getUserByHandle(handle);
         if (!user) {
-            res.status(404).json({ code: 'NOT_FOUND', message: 'User not found' });
+            throw new NotFoundError('User');
             return;
         }
 
@@ -386,7 +396,7 @@ export async function adminToggleUser(req: Request, res: Response, next: NextFun
             throw new BadRequestError('Missing required fields');
         }
 
-        const session = req.session as Record<string, any> | null;
+        const session = req.session;
         const action = req.path.split('/').pop(); // disable/enable/promote/demote
 
         if ((action === 'disable' || action === 'demote') && session?.handle === handle) {
@@ -396,7 +406,7 @@ export async function adminToggleUser(req: Request, res: Response, next: NextFun
 
         const user = await getUserByHandle(handle);
         if (!user) {
-            res.status(404).json({ code: 'NOT_FOUND', message: 'User not found' });
+            throw new NotFoundError('User');
             return;
         }
 
@@ -436,10 +446,11 @@ export async function googleLogin(req: Request, res: Response, next: NextFunctio
         const { user, isNewUser } = await googleService.findOrCreateGoogleUser(profile);
         const result = googleService.getGoogleLoginResult(user);
 
-        const session = req.session as Record<string, any>;
-        session.handle = result.handle;
-        session.version = result.version;
-        session.admin = result.admin;
+        if (req.session) {
+            req.session.handle = result.handle;
+            req.session.version = result.version;
+            req.session.admin = result.admin;
+        }
 
         res.json({ handle: result.handle, admin: result.admin, isNewUser });
     } catch (err) {
@@ -456,7 +467,7 @@ export async function slugifyEndpoint(req: Request, res: Response, next: NextFun
         if (!text) {
             throw new BadRequestError('Missing required fields');
         }
-        res.send(slugify(text));
+        res.send(slugifyText(text));
     } catch (err) {
         next(err);
     }

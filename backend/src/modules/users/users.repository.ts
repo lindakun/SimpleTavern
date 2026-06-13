@@ -3,7 +3,6 @@ import fs from 'node:fs';
 import storage from 'node-persist';
 import { User, UserDirectoryList } from '../../types/models.types.js';
 import { logger } from '../../common/logger.js';
-import { getRequestContext } from '../../shared/middleware/request-context.js';
 
 let initialized = false;
 
@@ -48,6 +47,7 @@ export async function getUserByHandle(handle: string): Promise<User | null> {
         const user = await storage.getItem(`user:${handle}`);
         return user || null;
     } catch {
+        // 预期：存储操作失败，返回 null
         return null;
     }
 }
@@ -64,6 +64,7 @@ export async function getAllUsers(): Promise<User[]> {
         }
         return users;
     } catch {
+        // 预期：存储操作失败，返回空数组
         return [];
     }
 }
@@ -79,6 +80,7 @@ export async function getHandleByEmail(email: string): Promise<string | null> {
         const handle = await storage.getItem(`email:${email.toLowerCase().trim()}`);
         return handle || null;
     } catch {
+        // 预期：存储操作失败，返回 null
         return null;
     }
 }
@@ -96,6 +98,7 @@ export async function getUserByGoogleId(googleId: string): Promise<User | null> 
         }
         return null;
     } catch {
+        // 预期：存储操作失败，返回 null
         return null;
     }
 }
@@ -117,6 +120,7 @@ export async function getAvatar(handle: string): Promise<string | null> {
         const avatar = await storage.getItem(`avatar:${handle}`);
         return avatar || null;
     } catch {
+        // 预期：存储操作失败，返回 null
         return null;
     }
 }
@@ -218,6 +222,7 @@ export async function getHandleByGoogleId(googleId: string): Promise<string | nu
         const handle = await storage.getItem(`google:${googleId}`);
         return handle || null;
     } catch {
+        // 预期：存储操作失败，返回 null
         return null;
     }
 }

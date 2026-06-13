@@ -13,6 +13,7 @@ import {
 } from './characters.repository.js';
 import { createDefaultCharacterData, validateCharacterData } from './characters.validator.js';
 import { BadRequestError, NotFoundError } from '../../common/errors.js';
+import { createMinimalPngSync } from '../../shared/utils/png-utils.js';
 
 /**
  * 生成角色的 PNG 文件名（去重）
@@ -120,6 +121,7 @@ export function processCharacter(
     try {
         jsonObject = JSON.parse(imgData);
     } catch {
+        // 预期：操作失败，返回 null
         return null;
     }
 
@@ -223,46 +225,7 @@ export function getCharacter(
     return result;
 }
 
-/**
- * 生成最小有效的 1x1 PNG 图像
- */
-function createMinimalPng(): Buffer {
-    // PNG 签名
-    const signature = Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]);
-
-    // IHDR 块: 1x1, 8-bit RGB
-    const ihdrData = Buffer.alloc(13);
-    ihdrData.writeUInt32BE(1, 0);   // width
-    ihdrData.writeUInt32BE(1, 4);   // height
-    ihdrData[8] = 8;                // bit depth
-    ihdrData[9] = 2;                // color type (RGB)
-    ihdrData[10] = 0;               // compression
-    ihdrData[11] = 0;               // filter
-    ihdrData[12] = 0;               // interlace
-    const ihdr = createPngChunk('IHDR', ihdrData);
-
-    // IDAT 块: 最小压缩数据
-    // 扫描线: filter byte(0) + RGB(0,0,0)
-    const rawScanline = Buffer.from([0, 0, 0, 0]);
-    const compressed = zlib.deflateSync(rawScanline);
-    const idat = createPngChunk('IDAT', compressed);
-
-    // IEND 块
-    const iend = createPngChunk('IEND', Buffer.alloc(0));
-
-    return Buffer.concat([signature, ihdr, idat, iend]);
-}
-
-function createPngChunk(name: string, data: Buffer): Buffer {
-    const len = Buffer.alloc(4);
-    len.writeUInt32BE(data.length);
-    const type = Buffer.from(name, 'ascii');
-    const crcInput = Buffer.concat([type, data]);
-    const crcVal = crc32(crcInput);
-    const crcBuf = Buffer.alloc(4);
-    crcBuf.writeUInt32BE(crcVal >>> 0);
-    return Buffer.concat([len, type, data, crcBuf]);
-}
+// createMinimalPng 和 createPngChunk 已迁移到 shared/utils/png-utils.ts
 
 /**
  * 创建新角色
@@ -289,7 +252,7 @@ export function createCharacter(
     const jsonStr = JSON.stringify(charData);
 
     // 使用传入的图像或生成最小 PNG
-    const imgBuffer = imageBuffer || createMinimalPng();
+    const imgBuffer = imageBuffer || createMinimalPngSync();
 
     const success = writeCharacterData(filePath, jsonStr, imgBuffer);
     if (!success) {

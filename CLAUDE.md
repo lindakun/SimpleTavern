@@ -130,6 +130,7 @@ npm install
 npm run dev                  # tsx watch 热重载
 npm run build                # tsc 编译（tsconfig: strict, NodeNext）
 npm run start                # 无 watch 启动
+npm run lint                 # 当前为占位（echo 'TODO: add eslint'）
 
 # === 前端 ===
 cd frontend
@@ -147,6 +148,14 @@ npm run build                # tsc --noEmit && vite build
 npm run preview              # Vite 预览构建产物
 npm run lint                 # tsc --noEmit 类型检查
 ```
+
+### ⚠️ 重要说明：测试
+
+当前项目**没有编写单元测试**，`backend/package.json` 中的 `lint` 脚本为占位实现（`echo 'TODO: add eslint'`）。
+
+如需添加测试，建议：
+- 后端：使用 `vitest` 或 `jest` + `tsx` 运行 TypeScript 测试
+- 前端：使用 `vitest` + `@testing-library/react`
 
 ## 配置
 
@@ -180,6 +189,20 @@ SIMPLE_TAVERN_LLM_1_BASE_URL=...
 配置优先级：CLI 参数 > 环境变量 > config.yaml（从原项目读取）> 默认值。
 
 config.yaml 中的 port 会自动 +1（原项目 8000 → 新后端 8001）。
+
+### 调试技巧
+
+```bash
+# 启用 debug 级别日志
+LOG_LEVEL=debug docker compose up -f backend
+
+# 过滤特定模块日志
+docker compose logs -f backend | grep "auth\|chat\|error"
+
+# 进入容器内部调试
+docker compose exec backend sh
+docker compose exec frontend sh
+```
 
 ## 后端架构
 
@@ -404,7 +427,8 @@ interface CharacterBookEntry {
 
 ```
 App.tsx ← 14 个 Screen 组件（React.lazy 懒加载）
-  ├── WelcomeScreen / LoginScreen（EmailLoginScreen） / RegisterScreen
+  ├── WelcomeScreen / LoginScreen / RegisterScreen
+  ├── ForgotPasswordScreen
   ├── DiscoverScreen / CharacterDetailScreen
   ├── ChatScreen（AI 对话）
   ├── CreateChoiceScreen / CreateCharacterScreen
@@ -451,6 +475,7 @@ export interface CharacterSendState { state: SendState; }
 components/
   ├── Screen 组件（14个页面，React.lazy 懒加载）
   │   ├── WelcomeScreen / LoginScreen / RegisterScreen
+  │   ├── ForgotPasswordScreen
   │   ├── DiscoverScreen / CharacterDetailScreen
   │   ├── ChatScreen（AI 对话）
   │   ├── CreateChoiceScreen / CreateCharacterScreen
@@ -676,7 +701,7 @@ SIMPLE_TAVERN_GOOGLE_CLIENT_SECRET=your-client-secret
 
 **frontend/.env:**
 ```bash
-VITE_GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
+VITE_GOOGLE_CLIENT_ID=your-google-client-id.apps.googleusercontent.com
 ```
 
 > ⚠️ **注意**: Google OAuth 配置需要在 [Google Cloud Console](https://console.cloud.google.com/) 创建 OAuth 2.0 客户端 ID，并授权回调地址 `https://chat.hhxxttxs.icu/auth/callback`
@@ -726,6 +751,26 @@ cd /opt/simpletavern && sudo git fetch origin main && sudo git reset --hard orig
 ### 3. Docker 构建缓存误判
 
 当服务器本地代码未更新（`git reset --hard` 未执行）时，Docker 构建所有层都命中 CACHED，实际部署的是旧代码。**验证方法**：检查构建日志中前端 chunk 文件名是否变化（Vite build 产出带 hash 的文件名，代码变了文件名一定变）。
+
+## Git 工作流
+
+### 分支策略
+- `main` - 生产环境分支，部署脚本默认部署此分支
+- `feature/*` - 功能开发分支
+- `fix/*` - 修复分支
+
+### 提交信息规范
+使用 [Conventional Commits](https://www.conventionalcommits.org/) 格式：
+- `feat:` - 新功能
+- `fix:` - 修复 bug
+- `docs:` - 文档更新
+- `style:` - 代码格式（不影响功能）
+- `refactor:` - 重构
+- `perf:` - 性能优化
+- `test:` - 测试相关
+- `chore:` - 构建/工具链/依赖
+
+示例：`feat: 添加角色评价系统`
 
 ## 参考文档
 

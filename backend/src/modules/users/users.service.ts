@@ -8,6 +8,7 @@ export async function getUserFavorites(handle: string): Promise<string[]> {
         const favorites = await storage.getItem(`favorites:${handle}`);
         return Array.isArray(favorites) ? favorites : [];
     } catch {
+        // 预期：存储可能尚未初始化，返回空数组
         return [];
     }
 }
@@ -49,6 +50,7 @@ export async function getUserSettings(handle: string): Promise<UserSettings> {
         const settings = await storage.getItem(`settings:${handle}`);
         return (settings && typeof settings === 'object') ? settings as UserSettings : {};
     } catch {
+        // 预期：存储可能尚未初始化，返回空对象
         return {};
     }
 }

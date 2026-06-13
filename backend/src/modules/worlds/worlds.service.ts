@@ -1,7 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import sanitize from 'sanitize-filename';
-import { AdminWorldItem, WorldInfo } from './worlds.types.js';
+import { AdminWorldItem, WorldInfo } from './types.js';
+import { logger } from '../../common/logger.js';
 
 /**
  * 获取世界书全局目录路径
@@ -55,7 +56,7 @@ export function listWorlds(dataRoot: string): AdminWorldItem[] {
             });
         } catch (err) {
             // 跳过无法解析的文件
-            console.warn(`[worlds] 跳过无法读取的世界书文件: ${file.name}`, (err as Error).message);
+            logger.warn(`[worlds] 跳过无法读取的世界书文件: ${file.name}`, (err as Error).message);
         }
     }
 

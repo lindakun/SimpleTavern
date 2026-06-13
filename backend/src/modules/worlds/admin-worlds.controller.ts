@@ -1,9 +1,10 @@
 import { Request, Response, NextFunction } from 'express';
 import path from 'node:path';
 import multer from 'multer';
+import { MulterError } from 'multer';
 import { getConfig } from '../../config/index.js';
 import { listWorlds, getWorld, saveWorld, deleteWorld, getWorldsDir, sanitizeWorldName } from './worlds.service.js';
-import { WorldInfo } from './worlds.types.js';
+import { WorldInfo } from './types.js';
 
 // multer 配置：惰性初始化，避免模块加载时 getConfig() 尚未就绪
 let uploadInstance: multer.Multer | undefined;
@@ -180,10 +181,22 @@ export async function adminDeleteWorld(req: Request, res: Response, next: NextFu
  * multipart/form-data，文件字段名: file
  */
 export async function adminImportWorld(req: Request, res: Response, next: NextFunction): Promise<void> {
-    getUpload().single('file')(req, res, async (err: any) => {
+    getUpload().single('file')(req, res, async (err: unknown) => {
         try {
+            if (err instanceof MulterError) {
+                // multer 特定错误
+                if (err.code === 'LIMIT_FILE_SIZE') {
+                    res.status(400).json({ code: 'FILE_TOO_LARGE', message: '文件大小超过限制（最大 10MB）' });
+                } else if (err.code === 'LIMIT_UNEXPECTED_FILE') {
+                    res.status(400).json({ code: 'UNEXPECTED_FIELD', message: '意外的文件字段名，请使用 "file"' });
+                } else {
+                    res.status(400).json({ code: 'UPLOAD_FAILED', message: `文件上传失败: ${err.message}` });
+                }
+                return;
+            }
             if (err) {
-                res.status(400).json({ code: 'BAD_REQUEST', message: '文件上传失败' });
+                // 其他未知错误
+                res.status(500).json({ code: 'INTERNAL_ERROR', message: '文件上传时发生未知错误' });
                 return;
             }
 

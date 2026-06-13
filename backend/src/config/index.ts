@@ -3,6 +3,7 @@ import path from 'node:path';
 import YAML from 'yaml';
 import { logger } from '../common/logger.js';
 import { ServerConfig, CommandLineArgs } from '../types/config.types.js';
+import type { YamlConfig } from '../types/yaml-config.types.js';
 
 const DEFAULT_CONFIG: ServerConfig = {
     port: 8001,
@@ -70,47 +71,45 @@ function loadYamlConfig(dataRoot: string): Partial<ServerConfig> {
     return {};
 }
 
-function mapYamlToConfig(yaml: Record<string, unknown>): Partial<ServerConfig> {
+function mapYamlToConfig(yaml: YamlConfig): Partial<ServerConfig> {
     const result: Partial<ServerConfig> = {};
 
     // 映射端口——config.yaml 中的 port 是 8000，新项目需要用 8001
-    if (yaml.port !== undefined) result.port = Number(yaml.port) + 1;
-    if ((yaml as any).host !== undefined) result.host = (yaml as any).host as string;
+    if (yaml.port !== undefined) result.port = yaml.port + 1;
+    if (yaml.host !== undefined) result.host = yaml.host;
 
-    if ((yaml as any).enableUserAccounts !== undefined) {
-        result.enableUserAccounts = Boolean((yaml as any).enableUserAccounts);
+    if (yaml.enableUserAccounts !== undefined) {
+        result.enableUserAccounts = yaml.enableUserAccounts;
     }
-    if ((yaml as any).enableDiscreetLogin !== undefined) {
-        result.enableDiscreetLogin = Boolean((yaml as any).enableDiscreetLogin);
+    if (yaml.enableDiscreetLogin !== undefined) {
+        result.enableDiscreetLogin = yaml.enableDiscreetLogin;
     }
-    if ((yaml as any).sessionTimeout !== undefined) {
-        result.sessionTimeout = Number((yaml as any).sessionTimeout);
+    if (yaml.sessionTimeout !== undefined) {
+        result.sessionTimeout = yaml.sessionTimeout;
     }
 
-    const rl = (yaml as any).rateLimiting;
-    if (rl) {
+    if (yaml.rateLimiting) {
         result.rateLimiting = {
-            accountsLoginMaxAttempts: rl.accountsLoginMaxAttempts !== undefined ? Number(rl.accountsLoginMaxAttempts) : DEFAULT_CONFIG.rateLimiting.accountsLoginMaxAttempts,
-            accountsRecoverMaxAttempts: rl.accountsRecoverMaxAttempts !== undefined ? Number(rl.accountsRecoverMaxAttempts) : DEFAULT_CONFIG.rateLimiting.accountsRecoverMaxAttempts,
-            basicAuthMaxAttempts: rl.basicAuthMaxAttempts !== undefined ? Number(rl.basicAuthMaxAttempts) : DEFAULT_CONFIG.rateLimiting.basicAuthMaxAttempts,
+            accountsLoginMaxAttempts: yaml.rateLimiting.accountsLoginMaxAttempts ?? DEFAULT_CONFIG.rateLimiting.accountsLoginMaxAttempts,
+            accountsRecoverMaxAttempts: yaml.rateLimiting.accountsRecoverMaxAttempts ?? DEFAULT_CONFIG.rateLimiting.accountsRecoverMaxAttempts,
+            basicAuthMaxAttempts: yaml.rateLimiting.basicAuthMaxAttempts ?? DEFAULT_CONFIG.rateLimiting.basicAuthMaxAttempts,
             attemptsLoginWindow: DEFAULT_CONFIG.rateLimiting.attemptsLoginWindow,
             attemptsRecoverWindow: DEFAULT_CONFIG.rateLimiting.attemptsRecoverWindow,
             attemptsBasicAuthWindow: DEFAULT_CONFIG.rateLimiting.attemptsBasicAuthWindow,
         };
     }
 
-    const sso = (yaml as any).sso;
-    if (sso) {
+    if (yaml.sso) {
         result.sso = {
-            autheliaAuth: sso.autheliaAuth !== undefined ? Boolean(sso.autheliaAuth) : DEFAULT_CONFIG.sso.autheliaAuth,
-            authentikAuth: sso.authentikAuth !== undefined ? Boolean(sso.authentikAuth) : DEFAULT_CONFIG.sso.authentikAuth,
-            trustedProxies: sso.trustedProxies !== undefined ? sso.trustedProxies as string[] : DEFAULT_CONFIG.sso.trustedProxies,
+            autheliaAuth: yaml.sso.autheliaAuth ?? DEFAULT_CONFIG.sso.autheliaAuth,
+            authentikAuth: yaml.sso.authentikAuth ?? DEFAULT_CONFIG.sso.authentikAuth,
+            trustedProxies: yaml.sso.trustedProxies ?? DEFAULT_CONFIG.sso.trustedProxies,
         };
     }
 
-    if ((yaml as any).perUserBasicAuth !== undefined) result.perUserBasicAuth = Boolean((yaml as any).perUserBasicAuth);
-    if ((yaml as any).whitelistMode !== undefined) result.whitelistEnabled = Boolean((yaml as any).whitelistMode);
-    if ((yaml as any).disableCsrf !== undefined) result.disableCsrf = Boolean((yaml as any).disableCsrf);
+    if (yaml.perUserBasicAuth !== undefined) result.perUserBasicAuth = yaml.perUserBasicAuth;
+    if (yaml.whitelistMode !== undefined) result.whitelistEnabled = yaml.whitelistMode;
+    if (yaml.disableCsrf !== undefined) result.disableCsrf = yaml.disableCsrf;
 
     return result;
 }

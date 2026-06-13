@@ -7,7 +7,10 @@
         "dev": "tsx watch src/server.ts",
         "start": "tsx src/server.ts",
         "build": "tsc",
-        "lint": "echo 'TODO: add eslint'"
+        "lint": "echo 'TODO: add eslint'",
+        "test": "vitest run",
+        "test:watch": "vitest",
+        "test:coverage": "vitest run --coverage"
     },
     "dependencies": {
         "@google/genai": "^2.6.0",
@@ -43,12 +46,13 @@
         "@types/lodash": "^4.17.24",
         "@types/mime-types": "^3.0.1",
         "@types/multer": "^2.1.0",
-        "@types/node": "^22.0.0",
+        "@types/node": "^22.19.21",
         "@types/node-persist": "^3.1.8",
         "@types/sanitize-filename": "^1.1.28",
         "@types/uuid": "^10.0.0",
         "@types/yargs": "^17.0.33",
         "tsx": "^4.19.0",
-        "typescript": "^5.9.3"
+        "typescript": "^5.9.3",
+        "vitest": "^4.1.8"
     }
 }

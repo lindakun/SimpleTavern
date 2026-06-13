@@ -26,7 +26,7 @@ export function createPrivateAuthRoutes(config: ServerConfig): Router {
     const router = Router();
 
     router.post('/users/logout', requireLogin, authController.logout);
-    router.get('/users/me', requireLogin, authController.getMe);
+    router.get('/users/me', requireLogin, authController.getCurrentUser);
     router.post('/users/change-password', requireLogin, authController.changePassword);
     router.post('/users/change-name', requireLogin, authController.changeName);
     router.post('/users/change-avatar', requireLogin, authController.changeAvatar);

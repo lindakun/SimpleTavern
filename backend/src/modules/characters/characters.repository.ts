@@ -3,6 +3,7 @@ import path from 'node:path';
 import sanitize from 'sanitize-filename';
 import { readCharacterCardFromFile, writeCharacterCardToFile } from './characters.parser.js';
 import { MemoryLimitedMap } from '../../infrastructure/storage/disk-cache.js';
+import { logger } from '../../common/logger.js';
 
 const memoryCache = new MemoryLimitedMap<string>('100mb');
 
@@ -31,6 +32,7 @@ export function readCharacterData(filePath: string): string | undefined {
         memoryCache.set(cacheKey, result);
         return result;
     } catch {
+        // 预期：操作失败，返回 undefined
         return undefined;
     }
 }
@@ -54,7 +56,7 @@ export function writeCharacterData(
         writeCharacterCardToFile(filePath, data, imageBuffer);
         return true;
     } catch (err) {
-        console.error('写入角色卡失败:', err);
+        logger.error('写入角色卡失败:', err);
         return false;
     }
 }
@@ -77,6 +79,7 @@ export function deleteCharacterFile(filePath: string): boolean {
         }
         return false;
     } catch {
+        // 预期：操作失败，返回 false
         return false;
     }
 }

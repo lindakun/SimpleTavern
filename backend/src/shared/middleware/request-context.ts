@@ -5,6 +5,8 @@ export interface RequestContext {
     dataRoot: string;
     user?: RequestUser;
     sessionHandle?: string;
+    /** 请求唯一标识，用于日志追踪 */
+    requestId?: string;
 }
 
 export const requestContext = new AsyncLocalStorage<RequestContext>();

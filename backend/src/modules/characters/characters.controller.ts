@@ -7,14 +7,8 @@ import * as userCharacterService from './characters.user.service.js';
 import { BadRequestError, NotFoundError } from '../../common/errors.js';
 import { getConfig } from '../../config/index.js';
 import { getUserDirectories } from '../users/users.repository.js';
+import { getUserDirs } from '../../shared/utils/user-dirs.js';
 import { logger } from '../../common/logger.js';
-
-function getUserDirs(req: Request) {
-    const session = req.session as Record<string, any>;
-    const handle = session?.handle as string;
-    const config = getConfig();
-    return getUserDirectories(config.dataRoot, handle);
-}
 
 /** 获取 default-user 的角色目录（供全局共享） */
 function getDefaultUserDirs() {
@@ -24,8 +18,7 @@ function getDefaultUserDirs() {
 
 /** 当前登录用户是否为 default-user */
 function isDefaultUser(req: Request): boolean {
-    const session = req.session as Record<string, any>;
-    return session?.handle === 'default-user';
+    return req.session?.handle === 'default-user';
 }
 
 /**
@@ -249,7 +242,7 @@ export function getCharacterChats(req: Request, res: Response, next: NextFunctio
 export function importCharacter(req: Request, res: Response, next: NextFunction): void {
     try {
         const dirs = getUserDirs(req);
-        const file = (req as any).file;
+        const file = req.file;
         if (!file) throw new BadRequestError('No file uploaded');
 
         const uploadPath = file.path;
@@ -287,7 +280,7 @@ export function importCharacter(req: Request, res: Response, next: NextFunction)
  */
 export async function publishCharacter(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-        const handle = (req.session as Record<string, any>)?.handle;
+        const handle = req.session?.handle;
         if (!handle) { res.status(401).json({ code: 'UNAUTHORIZED', message: 'You must be logged in' }); return; }
         const { name } = req.body;
         if (!name) throw new BadRequestError('name is required');

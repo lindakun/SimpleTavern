@@ -1,43 +1,17 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import zlib from 'node:zlib';
-import { crc32 } from 'crc';
 import sanitize from 'sanitize-filename';
 import { readCharacterCardFromFile, writeCharacterCardToFile } from './characters.parser.js';
 import { createDefaultCharacterData } from './characters.validator.js';
 import { getPngName } from './characters.service.js';
+import { createMinimalPngSync } from '../../shared/utils/png-utils.js';
 import { logger } from '../../common/logger.js';
 import { getConfig } from '../../config/index.js';
-
-/**
- * 生成最小 1x1 PNG 图像（用于无头像的 JSON 导入）
- */
-function createMinimalPng(): Buffer {
-    const signature = Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]);
-    const ihdrData = Buffer.alloc(13);
-    ihdrData.writeUInt32BE(1, 0);
-    ihdrData.writeUInt32BE(1, 4);
-    ihdrData[8] = 8; ihdrData[9] = 2; ihdrData[10] = 0; ihdrData[11] = 0; ihdrData[12] = 0;
-    const ihdr = createPngChunk('IHDR', ihdrData);
-    const rawScanline = Buffer.from([0, 0, 0, 0]);
-    const compressed = zlib.deflateSync(rawScanline);
-    const idat = createPngChunk('IDAT', compressed);
-    const iend = createPngChunk('IEND', Buffer.alloc(0));
-    return Buffer.concat([signature, ihdr, idat, iend]);
-}
-
-function createPngChunk(name: string, data: Buffer): Buffer {
-    const len = Buffer.alloc(4); len.writeUInt32BE(data.length);
-    const type = Buffer.from(name, 'ascii');
-    const crcVal = crc32(Buffer.concat([type, data]));
-    const crcBuf = Buffer.alloc(4); crcBuf.writeUInt32BE(crcVal >>> 0);
-    return Buffer.concat([len, type, data, crcBuf]);
-}
 
 function getBaseImage(charactersDir: string): Buffer {
     const defaultAvatarPath = path.join(charactersDir, '..', '..', '..', 'img', 'default-user.png');
     if (fs.existsSync(defaultAvatarPath)) return fs.readFileSync(defaultAvatarPath);
-    return createMinimalPng();
+    return createMinimalPngSync();
 }
 
 /**

@@ -20,7 +20,7 @@ export function createPublicImportRoutes(): Router {
 
     router.post('/characters/import', upload.single('file'), async (req, res, next) => {
         try {
-            const file = (req as any).file;
+            const file = req.file;
             if (!file) throw new BadRequestError('No file uploaded');
 
             const handle = getHandle(req);

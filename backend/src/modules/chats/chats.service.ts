@@ -1,7 +1,7 @@
 import path from 'node:path';
 import fs from 'node:fs';
 import * as chatRepo from './chats.repository.js';
-import { ChatInfo } from './chats.types.js';
+import { ChatInfo, Chat, ChatMessage } from './types.js';
 import { NotFoundError } from '../../common/errors.js';
 
 /**
@@ -27,7 +27,8 @@ export function getChatInfo(
     const stats = fs.statSync(filePath);
     const chatData = chatRepo.readChatFile(filePath);
 
-    const lastMessage = chatData.length > 1 ? chatData[chatData.length - 1] : null;
+    // 获取最后一条消息（跳过 header）
+    const lastMessage = chatData.length > 1 ? chatData[chatData.length - 1] as ChatMessage : null;
 
     return {
         file_id: parsed.name,
@@ -46,7 +47,7 @@ export function getChatData(
     chatsDir: string,
     characterFileName: string,
     chatFileName: string,
-): any[] {
+): Chat {
     const chatDir = chatRepo.getCharacterChatDir(chatsDir, characterFileName);
     const filePath = chatRepo.getChatFilePath(chatsDir, characterFileName.replace('.png', ''), chatFileName);
 
@@ -64,7 +65,7 @@ export function saveChat(
     chatsDir: string,
     characterFileName: string,
     chatFileName: string,
-    chatData: any[],
+    chatData: Chat,
 ): void {
     const chatDir = chatRepo.getCharacterChatDir(chatsDir, characterFileName);
     const filePath = chatRepo.getChatFilePath(chatsDir, characterFileName.replace('.png', ''), chatFileName);
@@ -98,6 +99,7 @@ export function listCharacterChats(
         try {
             return getChatInfo(chatsDir, characterFileName, file);
         } catch {
+            // 预期：聊天文件解析失败，跳过该文件
             return null;
         }
     }).filter((c): c is ChatInfo => c !== null);

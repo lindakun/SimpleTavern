@@ -126,6 +126,7 @@ async function callLlmApi(config: LlmConfig, messages: ChatMessage[]): Promise<s
             temperature: 0.9,
             max_tokens: 8192,
         }),
+        signal: AbortSignal.timeout(60_000), // 60 秒超时
     });
 
     if (!response.ok) {
@@ -175,6 +176,7 @@ async function callLlmApiStream(config: LlmConfig, messages: ChatMessage[]): Pro
             max_tokens: 8192,
             stream: true,
         }),
+        signal: AbortSignal.timeout(120_000), // 流式请求 120 秒超时
     });
 
     if (!response.ok) {

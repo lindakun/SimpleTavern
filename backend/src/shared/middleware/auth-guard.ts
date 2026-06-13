@@ -5,7 +5,7 @@ import { Request, Response, NextFunction } from 'express';
  * 对应原项目的 requireLoginMiddleware
  */
 export function requireLogin(req: Request, res: Response, next: NextFunction): void {
-    const session = req.session as Record<string, any> | null;
+    const session = req.session;
     if (!session?.handle) {
         res.status(401).json({ code: 'UNAUTHORIZED', message: 'You must be logged in' });
         return;
@@ -18,7 +18,7 @@ export function requireLogin(req: Request, res: Response, next: NextFunction): v
  * 对应原项目的 requireAdminMiddleware
  */
 export function requireAdmin(req: Request, res: Response, next: NextFunction): void {
-    const session = req.session as Record<string, any> | null;
+    const session = req.session;
     if (!session?.handle) {
         res.status(401).json({ code: 'UNAUTHORIZED', message: 'You must be logged in' });
         return;
