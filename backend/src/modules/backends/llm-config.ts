@@ -7,6 +7,16 @@ import { logger } from '../../common/logger.js';
  * 支持多 LLM：按前缀 SIMPLE_TAVERN_LLM_{ID}_XXX 定义
  * 也可用单组 SIMPLE_TAVERN_BASE_URL / MODEL / API_KEY
  */
+/**
+ * host 网络模式下 host.docker.internal 不可用，重写为 127.0.0.1
+ */
+function normalizeBaseUrl(baseUrl: string): string {
+    if (process.env.SIMPLE_TAVERN_REWRITE_HOST_DOCKER_INTERNAL === '1') {
+        return baseUrl.replace(/host\.docker\.internal/gi, '127.0.0.1');
+    }
+    return baseUrl;
+}
+
 function loadLlmConfigs(): LlmConfig[] {
     const configs: LlmConfig[] = [];
 
@@ -20,7 +30,7 @@ function loadLlmConfigs(): LlmConfig[] {
         configs.push({
             id: `llm_${index}`,
             name: process.env[`${prefix}_NAME`] || `LLM #${index + 1}`,
-            baseUrl,
+            baseUrl: normalizeBaseUrl(baseUrl),
             model: process.env[`${prefix}_MODEL`] || 'gpt-4',
             apiKey: process.env[`${prefix}_API_KEY`] || '',
         });
@@ -34,7 +44,7 @@ function loadLlmConfigs(): LlmConfig[] {
             configs.push({
                 id: 'default',
                 name: 'Default LLM',
-                baseUrl: singleBaseUrl,
+                baseUrl: normalizeBaseUrl(singleBaseUrl),
                 model: process.env.SIMPLE_TAVERN_MODEL || 'gpt-4',
                 apiKey: process.env.SIMPLE_TAVERN_API_KEY || '',
             });

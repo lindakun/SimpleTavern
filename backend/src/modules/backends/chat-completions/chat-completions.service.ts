@@ -92,20 +92,30 @@ async function callLlmApi(
 
     logger.debug(`LLM 请求: ${url}, model=${config.model}, temp=${opts.temperature}, max_tokens=${opts.max_tokens}`);
 
-    const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${config.apiKey}`,
-        },
-        body: JSON.stringify({
-            model: config.model,
-            messages,
-            temperature: opts.temperature,
-            max_tokens: opts.max_tokens,
-        }),
-        signal: AbortSignal.timeout(60_000),
-    });
+    let response: Response;
+    try {
+        response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${config.apiKey}`,
+            },
+            body: JSON.stringify({
+                model: config.model,
+                messages,
+                temperature: opts.temperature,
+                max_tokens: opts.max_tokens,
+            }),
+            signal: AbortSignal.timeout(60_000),
+        });
+    } catch (err: any) {
+        const cause = err?.cause?.message || err?.cause?.code || err?.cause || '';
+        throw new Error(
+            `无法连接模型「${config.name}」(${config.baseUrl}): ${err?.message || 'fetch failed'}` +
+            (cause ? ` — ${cause}` : '') +
+            '。请切换可用模型或检查网络/出网配置。',
+        );
+    }
 
     if (!response.ok) {
         const errorText = await response.text().catch(() => 'Unknown error');
@@ -146,21 +156,32 @@ async function callLlmApiStream(
     );
     const startTime = Date.now();
 
-    const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${config.apiKey}`,
-        },
-        body: JSON.stringify({
-            model: config.model,
-            messages,
-            temperature: opts.temperature,
-            max_tokens: opts.max_tokens,
-            stream: true,
-        }),
-        signal: AbortSignal.timeout(120_000),
-    });
+    let response: Response;
+    try {
+        response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${config.apiKey}`,
+            },
+            body: JSON.stringify({
+                model: config.model,
+                messages,
+                temperature: opts.temperature,
+                max_tokens: opts.max_tokens,
+                stream: true,
+            }),
+            signal: AbortSignal.timeout(120_000),
+        });
+    } catch (err: any) {
+        const cause = err?.cause?.message || err?.cause?.code || err?.cause || '';
+        logger.error(`LLM 流式连接失败 [${config.id}] ${url}:`, err?.message, cause);
+        throw new Error(
+            `无法连接模型「${config.name}」(${config.baseUrl}): ${err?.message || 'fetch failed'}` +
+            (cause ? ` — ${cause}` : '') +
+            '。请在聊天页切换到本地可用模型，或修复服务器 Docker 出网。',
+        );
+    }
 
     if (!response.ok) {
         const errorText = await response.text().catch(() => 'Unknown error');

@@ -14,7 +14,8 @@ export interface ChatSettings {
   userName: string;
 }
 
-const STORAGE_KEY = 'simpletavern_chat_settings';
+// v2：清除 v1 中错误自动写入的云端模型偏好（Docker 出网不可达时导致 fetch failed）
+const STORAGE_KEY = 'simpletavern_chat_settings_v2';
 
 const DEFAULTS: ChatSettings = {
   providerId: null,

@@ -53,17 +53,6 @@ export default function SettingsScreen({ onNavigate }: SettingsScreenProps) {
         const list: ProviderItem[] = Array.isArray(data?.providers) ? data.providers : [];
         setProviders(list);
         setServerActive(data?.active ?? null);
-        // 无本地偏好且服务端默认是本地模型时，自动切到首个云端
-        const saved = loadChatSettings();
-        if (!saved.providerId) {
-          const serverDefault = list.find((p) => p.id === data?.active);
-          if (serverDefault?.isLocal) {
-            const cloud = list.find((p) => !p.isLocal);
-            if (cloud) {
-              setChatSettings(saveChatSettings({ providerId: cloud.id }));
-            }
-          }
-        }
       })
       .catch(() => {});
   }, []);

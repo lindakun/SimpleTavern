@@ -97,18 +97,10 @@ export default function ChatScreen({
         const list: Array<{ id: string; name: string; model?: string; isLocal?: boolean }> =
           Array.isArray(data?.providers) ? data.providers : [];
         setProviders(list);
-        // 无本地偏好时：优先云端模型，避免默认落到慢速本地推理
-        if (!loadChatSettings().providerId) {
-          const cloud = list.find((p) => !p.isLocal);
-          const preferred = cloud?.id || data?.active || list[0]?.id || null;
-          if (preferred) {
-            setActiveProvider(preferred);
-            // 不强制写入 localStorage，仅会话内使用；用户手动选后才持久化
-            if (cloud && data?.active && list.find((p) => p.id === data.active)?.isLocal) {
-              saveChatSettings({ providerId: cloud.id });
-              setActiveProvider(cloud.id);
-            }
-          }
+        // 无用户偏好时跟随服务端 active，不自动强切云端
+        // （生产 Docker 可能无法出网，云端模型会直接 fetch failed）
+        if (!loadChatSettings().providerId && data?.active) {
+          setActiveProvider(data.active);
         }
       })
       .catch(() => {});
