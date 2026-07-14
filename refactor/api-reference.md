@@ -1225,7 +1225,7 @@ Content-Type: application/json
 {
   "text": "*靠在霓虹灯闪烁的天台上*\n哼，既然你问了...",
   "provider": "llm_0",
-  "model": "LongCat-2.0-Preview"
+  "model": "LongCat-2.0"
 }
 ```
 
@@ -1244,7 +1244,7 @@ GET /api/chat/providers
 ```json
 {
   "providers": [
-    { "id": "llm_0", "name": "LongCat", "model": "LongCat-2.0-Preview" }
+    { "id": "llm_0", "name": "LongCat", "model": "LongCat-2.0" }
   ],
   "active": "llm_0"
 }

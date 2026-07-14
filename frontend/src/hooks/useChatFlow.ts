@@ -105,6 +105,16 @@ export function useChatFlow(currentScreen: ScreenId | null) {
     );
     let streamedText = '';
 
+    // 发送前清洗污染消息（失败/中断占位不进模型上下文）
+    const cleanHistory = opts.historyMessages
+      .filter((m) => {
+        const t = m.text || '';
+        if (!t.trim()) return false;
+        if (/发生连接断裂|发送失败|\[已中断\]/.test(t)) return false;
+        return true;
+      })
+      .map((m) => ({ role: m.role, text: m.text }));
+
     const abortController = new AbortController();
     abortControllerRef.current = abortController;
 
@@ -113,7 +123,7 @@ export function useChatFlow(currentScreen: ScreenId | null) {
         chatApi.sendMessageStream(
           {
             message: opts.messageText,
-            history: opts.historyMessages.map((m) => ({ role: m.role, text: m.text })),
+            history: cleanHistory,
             characterName: chatCharacter.name,
             characterDescription: chatCharacter.description,
             personality: chatCharacter.personality,
@@ -127,9 +137,10 @@ export function useChatFlow(currentScreen: ScreenId | null) {
             character_book: chatCharacter.character_book,
             provider: settings.providerId || undefined,
             userName,
-            includeFirstMes: true,
+            // 不强制每轮注入 first_mes；由后端在 history 为空时自动注入
             temperature: settings.temperature,
             responseLength: settings.responseLength,
+            frequency_penalty: 0.3,
           },
           (chunk: string) => {
             if (!streamedText) {
@@ -148,7 +159,7 @@ export function useChatFlow(currentScreen: ScreenId | null) {
               ...baseMessages,
               { ...aiPlaceholder, text: streamedText || '……发生连接断裂。' },
             ];
-            chatApi.saveChat(characterId, toStoredChatMessages(chatCharacter, finalMessages)).catch(() => {});
+            chatApi.saveChat(characterId, toStoredChatMessages(chatCharacter, finalMessages, userName)).catch(() => {});
             cacheMessages(characterId, finalMessages);
             useChatStore.getState().setSendState(characterId, 'idle');
             resolve();
@@ -179,7 +190,7 @@ export function useChatFlow(currentScreen: ScreenId | null) {
               },
             });
             if (streamedText) {
-              chatApi.saveChat(characterId, toStoredChatMessages(chatCharacter, finalMessages)).catch(() => {});
+              chatApi.saveChat(characterId, toStoredChatMessages(chatCharacter, finalMessages, userName)).catch(() => {});
               cacheMessages(characterId, finalMessages);
             }
             useChatStore.getState().setSendState(characterId, 'error');

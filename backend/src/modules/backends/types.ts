@@ -42,17 +42,22 @@ export interface ChatRequest {
     provider?: string;
     /** 用户称呼 {{user}} */
     userName?: string;
-    /** 是否注入 first_mes（默认 true） */
+    /** 是否注入 first_mes（默认：仅历史为空时） */
     includeFirstMes?: boolean;
     /** 生成参数 */
     temperature?: number;
+    frequency_penalty?: number;
+    presence_penalty?: number;
     /** short | medium | long 或具体 token 数 */
     responseLength?: string | number;
     max_tokens?: number;
+    /** 返回 prompt debug 信息（非流式 / 或日志） */
+    debug?: boolean;
 }
 
 export interface ChatResponse {
     text: string;
     provider: string;
     model: string;
+    debug?: unknown;
 }

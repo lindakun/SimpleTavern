@@ -24,14 +24,16 @@ function extractChatRequest(body: any): ChatRequest {
         userName: body.userName,
         includeFirstMes: body.includeFirstMes,
         temperature: body.temperature,
+        frequency_penalty: body.frequency_penalty,
+        presence_penalty: body.presence_penalty,
         responseLength: body.responseLength,
         max_tokens: body.max_tokens,
+        debug: body.debug === true,
     };
 }
 
 /**
  * POST /api/chat/stream
- * 流式聊天接口 — SSE 逐 token 推送 AI 回复
  */
 export async function chatStream(req: Request, res: Response, _next: NextFunction): Promise<void> {
     try {
@@ -48,7 +50,26 @@ export async function chatStream(req: Request, res: Response, _next: NextFunctio
         res.setHeader('X-Accel-Buffering', 'no');
         res.flushHeaders();
 
-        const llmStream = await chatService.processChatStream(chatReq);
+        const { stream: llmStream, debug, provider, model } = await chatService.processChatStream(chatReq);
+
+        // 首包附带 meta，便于前端/调试（不破坏只读 text 的旧客户端：忽略未知字段即可）
+        res.write(`data: ${JSON.stringify({
+            meta: {
+                provider,
+                model,
+                prompt: {
+                    thinCard: debug.thinCard,
+                    roleSequence: debug.roleSequence,
+                    totalMessages: debug.totalMessages,
+                    historyIn: debug.historyIn,
+                    historyOut: debug.historyOut,
+                    summarized: debug.summarized,
+                    loreCount: debug.loreCount,
+                    firstMesInjected: debug.firstMesInjected,
+                    systemChars: debug.systemChars,
+                },
+            },
+        })}\n\n`);
 
         logger.info('SSE 流已建立，开始读取...');
         let chunkCount = 0;
@@ -91,7 +112,7 @@ export async function chatStream(req: Request, res: Response, _next: NextFunctio
                                 res.write(`data: ${JSON.stringify({ text: delta })}\n\n`);
                             }
                         } catch {
-                            // 跳过无法解析的行
+                            // skip
                         }
                     }
                 }
@@ -103,7 +124,8 @@ export async function chatStream(req: Request, res: Response, _next: NextFunctio
         res.write('data: [DONE]\n\n');
         logger.info(
             `SSE 流结束, 共发送 ${chunkCount} 个 token, 总耗时 ${Date.now() - streamStart}ms` +
-            (firstTokenAt ? `, 首 token ${firstTokenAt - streamStart}ms` : ''),
+            (firstTokenAt ? `, 首 token ${firstTokenAt - streamStart}ms` : '') +
+            `, prompt_seq=${debug.roleSequence}`,
         );
         res.end();
     } catch (err: any) {
@@ -119,7 +141,6 @@ export async function chatStream(req: Request, res: Response, _next: NextFunctio
 
 /**
  * POST /api/chat
- * 通用聊天接口 — 接收用户消息 + 角色信息，返回 AI 回复
  */
 export async function chat(req: Request, res: Response, _next: NextFunction): Promise<void> {
     try {
@@ -131,7 +152,12 @@ export async function chat(req: Request, res: Response, _next: NextFunction): Pr
         }
 
         const result = await chatService.processChat(chatReq);
-        res.json({ text: result.text, provider: result.provider, model: result.model });
+        res.json({
+            text: result.text,
+            provider: result.provider,
+            model: result.model,
+            ...(result.debug ? { debug: result.debug } : {}),
+        });
     } catch (err: any) {
         logger.error('Chat API 错误:', err);
         res.status(500).json({ code: 'INTERNAL_ERROR', message: err.message || '聊天接口调用失败' });
@@ -139,8 +165,26 @@ export async function chat(req: Request, res: Response, _next: NextFunction): Pr
 }
 
 /**
+ * POST /api/chat/debug-prompt
+ * 仅构建 prompt，不调用 LLM（便于审阅上下文质量）
+ */
+export async function debugPrompt(req: Request, res: Response, _next: NextFunction): Promise<void> {
+    try {
+        const chatReq = extractChatRequest(req.body);
+        if (!chatReq.message && !(chatReq.history?.length)) {
+            // 允许只审卡片
+            chatReq.message = chatReq.message || '（预览）';
+        }
+        const { messages, debug } = chatService.debugBuildPrompt(chatReq);
+        res.json({ messages, debug });
+    } catch (err: any) {
+        logger.error('debug-prompt 错误:', err);
+        res.status(500).json({ code: 'INTERNAL_ERROR', message: err.message || 'debug 失败' });
+    }
+}
+
+/**
  * GET /api/chat/providers
- * 获取可用 LLM 列表
  */
 export async function getProviders(_req: Request, res: Response): Promise<void> {
     const providers = chatService.getProviders();

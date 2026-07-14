@@ -45,10 +45,15 @@ export function fromStoredChatMessages(input: unknown): ChatMessage[] {
   });
 }
 
-export function toStoredChatMessages(character: Character, messages: ChatMessage[]) {
+export function toStoredChatMessages(
+  character: Character,
+  messages: ChatMessage[],
+  userName = 'You',
+) {
   const now = new Date().toISOString();
+  const displayUser = userName.trim() || 'You';
   const meta = {
-    user_name: 'You',
+    user_name: displayUser,
     character_name: character.name,
     create_date: now,
     chat_metadata: {},
@@ -59,7 +64,7 @@ export function toStoredChatMessages(character: Character, messages: ChatMessage
     ...messages.map((message) => {
       const isUser = message.role === 'user';
       return {
-        name: isUser ? 'You' : character.name,
+        name: isUser ? displayUser : character.name,
         is_user: isUser,
         mes: message.text,
         send_date: message.timestamp || now,

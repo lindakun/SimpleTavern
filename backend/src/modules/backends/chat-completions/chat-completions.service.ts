@@ -4,37 +4,59 @@ import { logger } from '../../../common/logger.js';
 import { getConfig } from '../../../config/index.js';
 import * as worldsService from '../../worlds/worlds.service.js';
 import {
-    buildMessages,
+    buildMessagesWithDebug,
     normalizeCharacterBook,
     resolveMaxTokens,
     resolveTemperature,
+    resolveFrequencyPenalty,
+    resolvePresencePenalty,
+    formatPromptDebugLog,
     type LoreEntry,
+    type PromptDebugInfo,
 } from './prompt-builder.js';
 
-export { buildMessages, normalizeCharacterBook, parseMesExample, applyMacros, selectLoreEntries } from './prompt-builder.js';
+export {
+    buildMessages,
+    buildMessagesWithDebug,
+    normalizeCharacterBook,
+    parseMesExample,
+    applyMacros,
+    selectLoreEntries,
+    cleanHistory,
+    summarizeHistoryHeuristic,
+    formatExampleForSystem,
+    resolveMaxTokens,
+    resolveTemperature,
+} from './prompt-builder.js';
 
 /**
  * 解析世界书文件条目（worldBook 为 file_id 时）
  */
 function loadWorldLoreEntries(worldBook?: string): LoreEntry[] {
     if (!worldBook?.trim()) return [];
-    // 过长文本视为已内联 lore，不当作文件名
+    // 过长文本 / 含换行视为已内联 lore
     if (worldBook.length > 80 || worldBook.includes('\n')) return [];
 
     try {
         const config = getConfig();
-        const world = worldsService.getWorld(config.dataRoot, worldBook);
-        if (!world?.entries) return [];
-        return normalizeCharacterBook({ entries: world.entries });
+        // 尝试原名与去掉后缀
+        const candidates = [worldBook, worldBook.replace(/\.json$/i, '')];
+        for (const name of candidates) {
+            const world = worldsService.getWorld(config.dataRoot, name);
+            if (world?.entries) {
+                const lore = normalizeCharacterBook({ entries: world.entries });
+                if (lore.length > 0) {
+                    logger.debug(`世界书已加载: ${name}, entries=${lore.length}`);
+                    return lore;
+                }
+            }
+        }
     } catch (err) {
         logger.debug(`加载世界书失败: ${worldBook}`, (err as Error).message);
-        return [];
     }
+    return [];
 }
 
-/**
- * 合并请求中的 lore 来源
- */
 function collectLoreEntries(req: ChatRequest): LoreEntry[] {
     const fromBook = normalizeCharacterBook(req.character_book);
     const fromExplicit = (req.loreEntries || []).map((e) => ({
@@ -59,10 +81,14 @@ function resolveProvider(req: ChatRequest): LlmConfig | undefined {
     return getActiveLlm();
 }
 
-function buildPromptMessages(req: ChatRequest): ChatMessage[] {
+export interface BuiltPrompt {
+    messages: ChatMessage[];
+    debug: PromptDebugInfo;
+}
+
+export function buildPromptMessages(req: ChatRequest): BuiltPrompt {
     const loreEntries = collectLoreEntries(req);
-    // 有历史时仍注入 first_mes 作为角色开场记忆（与 ST 类似）；前端可关
-    return buildMessages({
+    const { messages, debug } = buildMessagesWithDebug({
         message: req.message,
         history: req.history || [],
         characterName: req.characterName,
@@ -78,19 +104,36 @@ function buildPromptMessages(req: ChatRequest): ChatMessage[] {
         userName: req.userName,
         includeFirstMes: req.includeFirstMes,
     });
+
+    logger.info(formatPromptDebugLog(debug));
+    if (debug.thinCard) {
+        logger.warn(`角色卡信息偏少: ${debug.charName}，已启用兜底人设`);
+    }
+    return { messages, debug };
 }
 
-/**
- * 通过 OpenAI-compatible API 发送聊天补全请求（非流式）
- */
+function resolveGenOpts(req: ChatRequest) {
+    const max_tokens = req.max_tokens
+        ? resolveMaxTokens(req.max_tokens)
+        : resolveMaxTokens(req.responseLength);
+    return {
+        max_tokens,
+        temperature: resolveTemperature(req.temperature),
+        frequency_penalty: resolveFrequencyPenalty(req.frequency_penalty),
+        presence_penalty: resolvePresencePenalty(req.presence_penalty),
+    };
+}
+
 async function callLlmApi(
     config: LlmConfig,
     messages: ChatMessage[],
-    opts: { temperature: number; max_tokens: number },
+    opts: { temperature: number; max_tokens: number; frequency_penalty: number; presence_penalty: number },
 ): Promise<string> {
     const url = `${config.baseUrl.replace(/\/+$/, '')}/chat/completions`;
 
-    logger.debug(`LLM 请求: ${url}, model=${config.model}, temp=${opts.temperature}, max_tokens=${opts.max_tokens}`);
+    logger.debug(
+        `LLM 请求: ${url}, model=${config.model}, temp=${opts.temperature}, max_tokens=${opts.max_tokens}, fp=${opts.frequency_penalty}`,
+    );
 
     let response: Response;
     try {
@@ -105,6 +148,8 @@ async function callLlmApi(
                 messages,
                 temperature: opts.temperature,
                 max_tokens: opts.max_tokens,
+                frequency_penalty: opts.frequency_penalty,
+                presence_penalty: opts.presence_penalty,
             }),
             signal: AbortSignal.timeout(60_000),
         });
@@ -123,9 +168,6 @@ async function callLlmApi(
     }
 
     const data = await response.json() as any;
-
-    logger.debug(`LLM 原始响应: ${JSON.stringify(data)}`);
-
     if (!data.choices || data.choices.length === 0) {
         throw new Error(`LLM API 返回空响应, 原始数据: ${JSON.stringify(data)}`);
     }
@@ -135,24 +177,21 @@ async function callLlmApi(
     const content = firstChoice.message?.content ?? firstChoice.delta?.content ?? '';
 
     if (finishReason && finishReason !== 'stop') {
-        logger.warn(`LLM 非正常结束, finish_reason=${finishReason}, content=${JSON.stringify(content)}`);
+        logger.warn(`LLM 非正常结束, finish_reason=${finishReason}`);
     }
 
     return content || '';
 }
 
-/**
- * 通过 OpenAI-compatible API 流式发送聊天补全请求
- */
 async function callLlmApiStream(
     config: LlmConfig,
     messages: ChatMessage[],
-    opts: { temperature: number; max_tokens: number },
+    opts: { temperature: number; max_tokens: number; frequency_penalty: number; presence_penalty: number },
 ): Promise<ReadableStream<Uint8Array>> {
     const url = `${config.baseUrl.replace(/\/+$/, '')}/chat/completions`;
 
     logger.info(
-        `LLM 流式请求: ${url}, model=${config.model}, messages=${messages.length}, temp=${opts.temperature}, max_tokens=${opts.max_tokens}`,
+        `LLM 流式请求: ${url}, model=${config.model}, messages=${messages.length}, temp=${opts.temperature}, max_tokens=${opts.max_tokens}, fp=${opts.frequency_penalty}`,
     );
     const startTime = Date.now();
 
@@ -169,6 +208,8 @@ async function callLlmApiStream(
                 messages,
                 temperature: opts.temperature,
                 max_tokens: opts.max_tokens,
+                frequency_penalty: opts.frequency_penalty,
+                presence_penalty: opts.presence_penalty,
                 stream: true,
             }),
             signal: AbortSignal.timeout(120_000),
@@ -196,30 +237,30 @@ async function callLlmApiStream(
     return response.body;
 }
 
-function resolveGenOpts(req: ChatRequest) {
-    const max_tokens = req.max_tokens
-        ? resolveMaxTokens(req.max_tokens)
-        : resolveMaxTokens(req.responseLength);
-    const temperature = resolveTemperature(req.temperature);
-    return { max_tokens, temperature };
-}
-
 /**
- * 流式处理聊天请求 — 返回 SSE ReadableStream
+ * 流式处理 — 返回 stream + debug 元信息
  */
-export async function processChatStream(req: ChatRequest): Promise<ReadableStream<Uint8Array>> {
+export async function processChatStream(req: ChatRequest): Promise<{
+    stream: ReadableStream<Uint8Array>;
+    debug: PromptDebugInfo;
+    provider: string;
+    model: string;
+}> {
     const activeConfig = resolveProvider(req);
     if (!activeConfig) {
         throw new Error('未配置 LLM，无法使用流式聊天');
     }
 
-    const messages = buildPromptMessages(req);
-    return callLlmApiStream(activeConfig, messages, resolveGenOpts(req));
+    const { messages, debug } = buildPromptMessages(req);
+    const stream = await callLlmApiStream(activeConfig, messages, resolveGenOpts(req));
+    return {
+        stream,
+        debug,
+        provider: activeConfig.id,
+        model: activeConfig.model,
+    };
 }
 
-/**
- * 处理聊天请求 — 非流式
- */
 export async function processChat(req: ChatRequest): Promise<ChatResponse> {
     const activeConfig = resolveProvider(req);
 
@@ -232,11 +273,17 @@ export async function processChat(req: ChatRequest): Promise<ChatResponse> {
         };
     }
 
-    const messages = buildPromptMessages(req);
+    const { messages, debug } = buildPromptMessages(req);
 
     try {
         const reply = await callLlmApi(activeConfig, messages, resolveGenOpts(req));
-        return { text: reply || '……（未收到回复）', provider: activeConfig.id, model: activeConfig.model };
+        const result: ChatResponse = {
+            text: reply || '……（未收到回复）',
+            provider: activeConfig.id,
+            model: activeConfig.model,
+        };
+        if (req.debug) result.debug = debug;
+        return result;
     } catch (err: any) {
         logger.error('LLM 调用失败:', err);
         throw err;
@@ -244,8 +291,12 @@ export async function processChat(req: ChatRequest): Promise<ChatResponse> {
 }
 
 /**
- * 获取可用 LLM 列表
+ * 仅构建 prompt（调试用，不调用 LLM）
  */
+export function debugBuildPrompt(req: ChatRequest): { messages: ChatMessage[]; debug: PromptDebugInfo } {
+    return buildPromptMessages(req);
+}
+
 export function getProviders() {
     const active = getActiveLlm();
     return getLlmConfigs().map((c) => ({
@@ -253,37 +304,10 @@ export function getProviders() {
         name: c.name,
         model: c.model,
         active: active?.id === c.id,
-        // 粗略标记本地模型（host.docker.internal / localhost / 11434 / 8081）
         isLocal: /localhost|127\.0\.0\.1|host\.docker\.internal|11434|8081/.test(c.baseUrl),
     }));
 }
 
 function getSimulatedReply(characterName: string): string {
-    const name = characterName.toLowerCase();
-    if (name.includes('yuki') || name.includes('柚姬')) {
-        const r = [
-            '哼，你又在入侵我的个人终端？好大的胆子。下不为例……听懂了吗？',
-            '啧，一上来就问这个……你脑袋里的网络驱动器需要重置了吧？',
-            '真是服了你了……算了，跟你讲讲新京贫民区的极光也是可以的，不过不许告诉本区的主脑！',
-            '傲娇？谁是傲娇啊！我只是懒得理你……哼！',
-        ];
-        return r[Math.floor(Math.random() * r.length)];
-    }
-    if (name.includes('yuzu') || name.includes('柚子')) {
-        const r = [
-            '喵呜！网络信号连接成功！今天有什么烦恼喵？',
-            '太棒了喵！让元气的声波扫清你的大脑高频劳损吧！',
-            '（猫耳欢快地扑棱两下）今天的心率很稳定哦，奖励你一个特制的数码治愈音符~',
-        ];
-        return r[Math.floor(Math.random() * r.length)];
-    }
-    if (name.includes('samurai') || name.includes('武士') || name.includes('sam')) {
-        const r = [
-            '（握紧了刀柄）多说无益。在这片霓虹荒废的街道，唯有刀刃下的真相不会骗人。',
-            '你还年轻。别把命丢在大公司的佣兵手里。',
-            '哼。只要你给得齐源晶，我的刀刃，就是你的影子。',
-        ];
-        return r[Math.floor(Math.random() * r.length)];
-    }
     return `【${characterName}】："信号收到了。在新京2099的雨夜，你找我有什么事？"`;
 }

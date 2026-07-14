@@ -1,14 +1,20 @@
 /**
- * 角色扮演 Prompt 构建器
- * - 宏替换 {{char}} / {{user}}
- * - mes_example 示例对话注入
- * - Character Book / 世界书关键词触发
- * - 历史窗口截断
+ * 角色扮演 Prompt 上下文编译器
+ *
+ * 管线：
+ * 1. 宏替换 / 卡片归一化（空卡兜底）
+ * 2. 历史清洗 + 摘要
+ * 3. 世界书选择（预算）
+ * 4. 按固定 slot 组装 messages
+ * 5. 产出 debug 统计
  */
 
 import type { ChatMessage } from '../types.js';
 
-/** 角色书 / 世界书条目（简化统一格式） */
+// ─────────────────────────────────────────────
+// Types
+// ─────────────────────────────────────────────
+
 export interface LoreEntry {
     keys: string[];
     secondary_keys?: string[];
@@ -31,19 +37,52 @@ export interface PromptBuildRequest {
     system_prompt?: string;
     post_history_instructions?: string;
     worldBook?: string;
-    /** 角色内嵌 character_book / 解析后的世界书条目 */
     loreEntries?: LoreEntry[];
-    /** 用户称呼，用于 {{user}} */
     userName?: string;
-    /** 是否将 first_mes 注入为初始 assistant（默认 true；历史已含开场时可关） */
+    /** 显式控制；默认仅在 history 为空时注入 first_mes */
     includeFirstMes?: boolean;
-    /** 历史消息上限（条） */
     maxHistoryMessages?: number;
+    /** lore 总字符预算 */
+    loreBudgetChars?: number;
+    /** 摘要触发：历史条数超过此值则压缩早期消息 */
+    summarizeAfterMessages?: number;
+    /** 摘要后保留的近期原文条数 */
+    keepRecentMessages?: number;
 }
 
-/**
- * 清理易被 tokenizer 误解析的特殊 Unicode 字符
- */
+export interface PromptBuildResult {
+    messages: ChatMessage[];
+    debug: PromptDebugInfo;
+}
+
+export interface PromptDebugInfo {
+    charName: string;
+    userName: string;
+    thinCard: boolean;
+    firstMesInjected: boolean;
+    exampleInSystem: boolean;
+    loreCount: number;
+    loreChars: number;
+    historyIn: number;
+    historyOut: number;
+    historyCleaned: number;
+    summarized: boolean;
+    summaryChars: number;
+    systemChars: number;
+    totalMessages: number;
+    roleSequence: string;
+    slots: {
+        system: number;
+        postSystem: number;
+        history: number;
+        user: number;
+    };
+}
+
+// ─────────────────────────────────────────────
+// Sanitize & macros
+// ─────────────────────────────────────────────
+
 export function sanitizeText(text: string): string {
     return text
         .replace(/⟨/g, '<')
@@ -54,9 +93,6 @@ export function sanitizeText(text: string): string {
         .replace(/⟧/g, ']');
 }
 
-/**
- * 替换 {{char}} / {{user}} 等宏
- */
 export function applyMacros(text: string, charName: string, userName: string): string {
     if (!text) return text;
     return text
@@ -66,12 +102,16 @@ export function applyMacros(text: string, charName: string, userName: string): s
         .replace(/<USER>/gi, userName);
 }
 
+function escapeRegExp(s: string): string {
+    return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// ─────────────────────────────────────────────
+// mes_example
+// ─────────────────────────────────────────────
+
 /**
- * 解析 mes_example 为对话对
- * 支持 SillyTavern 常见格式：
- * - <START> 分段
- * - {{user}}: / {{char}}: 行
- * - User: / Character: 行
+ * 解析 mes_example 为对话对（供测试 / 可选 few-shot）
  */
 export function parseMesExample(
     mesExample: string,
@@ -81,14 +121,12 @@ export function parseMesExample(
     if (!mesExample?.trim()) return [];
 
     const expanded = applyMacros(mesExample, charName, userName);
-    // 按 <START> 分段，去掉空段
     const blocks = expanded
         .split(/<START>/i)
         .map((b) => b.trim())
         .filter(Boolean);
 
     const result: ChatMessage[] = [];
-    // 宏已展开后，用实际名字匹配；同时兼容未展开的 {{user}}/{{char}}
     const lineRe = new RegExp(
         `^(?:\\{\\{user\\}\\}|User|USER|你|${escapeRegExp(userName)})\\s*[:：]\\s*(.+)$`,
         'i',
@@ -114,10 +152,8 @@ export function parseMesExample(
         for (const rawLine of lines) {
             const line = rawLine.trim();
             if (!line) continue;
-
             const userMatch = line.match(lineRe);
             const charMatch = line.match(charRe);
-
             if (userMatch) {
                 flush();
                 currentRole = 'user';
@@ -133,30 +169,46 @@ export function parseMesExample(
         flush();
     }
 
-    // 若无法按行解析，整段作为 system 旁注
     if (result.length === 0 && expanded.trim()) {
         return [{
             role: 'system',
-            content: `Example dialogue style:\n${expanded.trim()}`,
+            content: `文风示例:\n${expanded.trim()}`,
         }];
     }
-
     return result;
 }
 
-function escapeRegExp(s: string): string {
-    return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+/**
+ * 取 mes_example 中第一段有效示例，作为 system 内文风块（避免伪造成历史）
+ */
+export function formatExampleForSystem(
+    mesExample: string,
+    charName: string,
+    userName: string,
+    maxChars = 1200,
+): string {
+    if (!mesExample?.trim()) return '';
+    const expanded = applyMacros(mesExample, charName, userName);
+    const blocks = expanded
+        .split(/<START>/i)
+        .map((b) => b.trim())
+        .filter(Boolean);
+    let block = blocks[0] || expanded.trim();
+    if (block.length > maxChars) {
+        block = block.slice(0, maxChars) + '\n…';
+    }
+    return block;
 }
 
-/**
- * 根据近期文本匹配 lore 条目
- * - constant=true 且 enabled 的条目始终注入
- * - 其它条目：任一 key 出现在扫描文本中则注入
- */
+// ─────────────────────────────────────────────
+// Lore
+// ─────────────────────────────────────────────
+
 export function selectLoreEntries(
     entries: LoreEntry[],
     scanText: string,
     maxEntries = 12,
+    budgetChars = 2500,
 ): string[] {
     if (!entries?.length) return [];
 
@@ -166,36 +218,39 @@ export function selectLoreEntries(
         .sort((a, b) => (a.insertion_order ?? 0) - (b.insertion_order ?? 0));
 
     const selected: string[] = [];
+    let used = 0;
+
+    const tryPush = (content: string) => {
+        const c = content.trim();
+        if (!c) return false;
+        if (selected.length >= maxEntries) return false;
+        if (used + c.length > budgetChars && selected.length > 0) return false;
+        selected.push(c);
+        used += c.length;
+        return true;
+    };
+
+    // constant 优先
+    for (const entry of sorted) {
+        if (entry.constant) tryPush(entry.content);
+    }
 
     for (const entry of sorted) {
-        if (selected.length >= maxEntries) break;
-
-        if (entry.constant) {
-            selected.push(entry.content.trim());
-            continue;
-        }
-
+        if (entry.constant) continue;
         const keys = (entry.keys || []).filter(Boolean);
         if (keys.length === 0) continue;
-
         const matched = keys.some((k) => text.includes(k.toLowerCase()));
         if (!matched) continue;
-
-        // selective：若有 secondary_keys，至少命中一个 secondary
         if (entry.selective && entry.secondary_keys?.length) {
             const secOk = entry.secondary_keys.some((k) => text.includes(k.toLowerCase()));
             if (!secOk) continue;
         }
-
-        selected.push(entry.content.trim());
+        tryPush(entry.content);
     }
 
     return selected;
 }
 
-/**
- * 从 character_book 原始结构归一化为 LoreEntry[]
- */
 export function normalizeCharacterBook(book: unknown): LoreEntry[] {
     if (!book || typeof book !== 'object') return [];
     const raw = book as { entries?: unknown };
@@ -232,122 +287,414 @@ export function normalizeCharacterBook(book: unknown): LoreEntry[] {
     });
 }
 
+// ─────────────────────────────────────────────
+// History policy
+// ─────────────────────────────────────────────
+
+const POLLUTION_PATTERNS = [
+    /发生连接断裂/,
+    /发送失败/,
+    /\[已中断\]/,
+    /（发送失败[：:].+）/,
+    /^\s*$/,
+];
+
+export function isPollutedMessage(text: string): boolean {
+    const t = text || '';
+    return POLLUTION_PATTERNS.some((re) => re.test(t));
+}
+
+export function cleanHistory(
+    history: Array<{ role: string; text: string }>,
+): Array<{ role: string; text: string }> {
+    const cleaned: Array<{ role: string; text: string }> = [];
+    for (const msg of history || []) {
+        const text = (msg.text || '').trim();
+        if (!text || isPollutedMessage(text)) continue;
+        // 合并连续同角色重复（完全相同）
+        const prev = cleaned[cleaned.length - 1];
+        if (prev && prev.role === msg.role && prev.text === text) continue;
+        cleaned.push({ role: msg.role, text });
+    }
+    return cleaned;
+}
+
 /**
- * 构建发给 LLM 的消息列表
+ * 将早期历史压成摘要文本（启发式，无额外 LLM 调用）
  */
-export function buildMessages(req: PromptBuildRequest): ChatMessage[] {
-    const messages: ChatMessage[] = [];
-    const charName = req.characterName || 'Character';
-    const userName = req.userName || 'User';
-    const macro = (t: string) => applyMacros(t, charName, userName);
+export function summarizeHistoryHeuristic(
+    early: Array<{ role: string; text: string }>,
+    charName: string,
+    userName: string,
+    maxChars = 900,
+): string {
+    if (early.length === 0) return '';
+    const lines: string[] = [];
+    for (const m of early) {
+        const who = m.role === 'user' ? userName : charName;
+        const t = (m.text || '').replace(/\s+/g, ' ').trim();
+        if (!t) continue;
+        const snippet = t.length > 120 ? t.slice(0, 120) + '…' : t;
+        lines.push(`- ${who}: ${snippet}`);
+    }
+    let body = lines.join('\n');
+    if (body.length > maxChars) {
+        body = body.slice(0, maxChars) + '\n…';
+    }
+    return `【前情摘要】（早期对话压缩，细节以近期原文为准）\n${body}`;
+}
 
-    // ── System prompt ──
-    let systemPrompt: string;
-    if (req.system_prompt?.trim()) {
-        systemPrompt = macro(req.system_prompt);
-    } else {
-        systemPrompt = `You are roleplaying as a fictional character named "${charName}".`;
+export interface HistoryWindowResult {
+    history: Array<{ role: string; text: string }>;
+    summary: string;
+    summarized: boolean;
+    cleanedCount: number;
+    inputCount: number;
+}
+
+export function applyHistoryWindow(
+    history: Array<{ role: string; text: string }>,
+    opts: {
+        maxHistoryMessages?: number;
+        summarizeAfterMessages?: number;
+        keepRecentMessages?: number;
+        charName: string;
+        userName: string;
+    },
+): HistoryWindowResult {
+    const inputCount = history?.length || 0;
+    const cleaned = cleanHistory(history || []);
+    const cleanedCount = inputCount - cleaned.length;
+
+    const maxHist = opts.maxHistoryMessages ?? 40;
+    const summarizeAfter = opts.summarizeAfterMessages ?? 18;
+    const keepRecent = opts.keepRecentMessages ?? 12;
+
+    if (cleaned.length <= summarizeAfter) {
+        const trimmed = cleaned.length > maxHist ? cleaned.slice(-maxHist) : cleaned;
+        return {
+            history: trimmed,
+            summary: '',
+            summarized: false,
+            cleanedCount,
+            inputCount,
+        };
     }
 
-    if (req.characterDescription?.trim()) {
-        systemPrompt += `\n\nCharacter Description:\n${macro(req.characterDescription)}`;
-    }
-    if (req.personality?.trim()) {
-        systemPrompt += `\n\nPersonality:\n${macro(req.personality)}`;
-    }
-    if (req.scenario?.trim()) {
-        systemPrompt += `\n\nScenario:\n${macro(req.scenario)}`;
-    }
+    // 超过阈值：早期摘要 + 保留近期
+    const recent = cleaned.slice(-keepRecent);
+    const early = cleaned.slice(0, Math.max(0, cleaned.length - keepRecent));
+    const summary = summarizeHistoryHeuristic(early, opts.charName, opts.userName);
 
-    // 静态 worldBook 文本（兼容旧字段：可能是 lore 正文，也可能只是名称）
-    if (req.worldBook?.trim() && req.worldBook.length > 40) {
-        systemPrompt += `\n\nWorldbook / Lore:\n${macro(req.worldBook)}`;
-    }
+    return {
+        history: recent,
+        summary,
+        summarized: true,
+        cleanedCount,
+        inputCount,
+    };
+}
 
-    // 扫描文本：近期历史 + 当前消息
-    const historyTexts = (req.history || []).map((m) => m.text || '').join('\n');
-    const scanText = `${historyTexts}\n${req.message || ''}`;
+// ─────────────────────────────────────────────
+// Card normalizer
+// ─────────────────────────────────────────────
 
-    const loreSnippets = selectLoreEntries(req.loreEntries || [], scanText);
-    if (loreSnippets.length > 0) {
-        systemPrompt += `\n\nRelevant Lore (World Info):\n${loreSnippets.map((s, i) => `[${i + 1}] ${macro(s)}`).join('\n\n')}`;
-    }
+export interface NormalizedCard {
+    charName: string;
+    userName: string;
+    description: string;
+    personality: string;
+    scenario: string;
+    systemPrompt: string;
+    firstMes: string;
+    mesExample: string;
+    postHistory: string;
+    thinCard: boolean;
+}
 
-    // 通用规则：始终附加简短约束（有自定义 system_prompt 时也加，避免出戏）
-    systemPrompt += `\n\nCRITICAL RULES:
-1. Always stay in character as ${charName}. Never speak as an AI assistant or break character.
-2. Speak primarily in Chinese unless the character description specifies otherwise.
-3. Keep responses natural and conversational; avoid walls of text unless the scene needs it.
-4. Show the character's personality in tone, word choice, and actions.
-5. Do not invent contradicting lore that conflicts with provided Character Description / Lore.`;
+export function normalizeCard(req: PromptBuildRequest): NormalizedCard {
+    const charName = (req.characterName || '角色').trim() || '角色';
+    const userName = (req.userName || '你').trim() || '你';
+    const macro = (t: string) => applyMacros(t || '', charName, userName);
 
-    messages.push({ role: 'system', content: sanitizeText(systemPrompt) });
+    let description = macro(req.characterDescription || '');
+    let personality = macro(req.personality || '');
+    let scenario = macro(req.scenario || '');
+    const systemPrompt = macro(req.system_prompt || '');
+    const firstMes = macro(req.first_mes || '');
+    const mesExample = req.mes_example || '';
+    const postHistory = macro(req.post_history_instructions || '');
 
-    // ── mes_example few-shot ──
-    if (req.mes_example?.trim()) {
-        const examples = parseMesExample(req.mes_example, charName, userName);
-        for (const ex of examples) {
-            messages.push({ role: ex.role, content: sanitizeText(ex.content) });
+    const coreLen = description.length + personality.length + scenario.length + systemPrompt.length;
+    const thinCard = coreLen < 80;
+
+    if (thinCard) {
+        const bits: string[] = [];
+        if (description) bits.push(description);
+        if (firstMes) bits.push(`开场气质参考：${firstMes.slice(0, 200)}`);
+        if (!bits.length) {
+            bits.push(`${charName} 是对话中的角色。请根据名字与上下文自行保持一致、有魅力的人格，避免出戏。`);
+        }
+        description = bits.join('\n');
+        if (!personality) {
+            personality = '语气自然、有个性；对白优先，动作适度；不要机械复读。';
         }
     }
 
-    // ── first_mes 作为开场 assistant（仅在需要时）──
-    const includeFirst = req.includeFirstMes !== false;
-    if (includeFirst && req.first_mes?.trim()) {
+    return {
+        charName,
+        userName,
+        description,
+        personality,
+        scenario,
+        systemPrompt,
+        firstMes,
+        mesExample,
+        postHistory,
+        thinCard,
+    };
+}
+
+// ─────────────────────────────────────────────
+// System template
+// ─────────────────────────────────────────────
+
+function buildMainSystem(card: NormalizedCard, exampleBlock: string, worldStatic: string): string {
+    const parts: string[] = [];
+
+    if (card.systemPrompt.trim()) {
+        parts.push(card.systemPrompt.trim());
+    } else {
+        parts.push(
+            `你正在进行沉浸式角色扮演。你就是「${card.charName}」，不是 AI 助手，不要以助手口吻说话。`,
+        );
+    }
+
+    parts.push('');
+    parts.push('## 角色设定');
+    if (card.description) {
+        parts.push(`### 简介\n${card.description}`);
+    }
+    if (card.personality) {
+        parts.push(`### 性格\n${card.personality}`);
+    }
+    if (card.scenario) {
+        parts.push(`### 场景\n${card.scenario}`);
+    }
+
+    if (worldStatic.trim()) {
+        parts.push(`### 世界设定\n${worldStatic.trim()}`);
+    }
+
+    if (exampleBlock.trim()) {
+        parts.push('## 文风示例（仅学习语气与格式，不是已经发生的剧情）');
+        parts.push(exampleBlock.trim());
+    }
+
+    parts.push('## 输出要求');
+    parts.push(
+        [
+            `1. 始终保持「${card.charName}」的身份与性格，禁止出戏解释「我是AI」。`,
+            '2. 默认使用中文；角色设定另有要求时从其设定。',
+            '3. 对白自然；动作/神态/心理可用（）或 *...*，与角色卡风格一致时优先跟卡。',
+            '4. 主动推进情境与情绪，避免无信息复读上一句。',
+            '5. 篇幅：通常 80–350 字；冲突/告白/关键剧情可更长。不要无故只回几个字，也不要无意义注水。',
+            `6. 用「${card.userName}」指代对话中的用户（若文中出现该称呼）。`,
+            '7. 不要编造与上方设定明显冲突的世界观事实。',
+        ].join('\n'),
+    );
+
+    if (card.thinCard) {
+        parts.push('');
+        parts.push('（提示：角色卡信息较少，请自行补足一致的细节，但不要前后矛盾。）');
+    }
+
+    return parts.join('\n');
+}
+
+// ─────────────────────────────────────────────
+// Main assembler
+// ─────────────────────────────────────────────
+
+/**
+ * 构建发给 LLM 的消息列表（带 debug 信息）
+ */
+export function buildMessagesWithDebug(req: PromptBuildRequest): PromptBuildResult {
+    const card = normalizeCard(req);
+    const macro = (t: string) => applyMacros(t || '', card.charName, card.userName);
+
+    // 历史窗口
+    const histWin = applyHistoryWindow(req.history || [], {
+        maxHistoryMessages: req.maxHistoryMessages,
+        summarizeAfterMessages: req.summarizeAfterMessages,
+        keepRecentMessages: req.keepRecentMessages,
+        charName: card.charName,
+        userName: card.userName,
+    });
+
+    // lore 扫描：摘要 + 近期历史 + 当前消息
+    const scanText = [
+        histWin.summary,
+        ...histWin.history.map((m) => m.text),
+        req.message || '',
+        card.description,
+    ].join('\n');
+
+    const loreBudget = req.loreBudgetChars ?? 2500;
+    const loreSnippets = selectLoreEntries(
+        req.loreEntries || [],
+        scanText,
+        12,
+        loreBudget,
+    );
+    const loreChars = loreSnippets.reduce((n, s) => n + s.length, 0);
+
+    // 静态 worldBook 正文（长文本）
+    let worldStatic = '';
+    if (req.worldBook?.trim() && (req.worldBook.length > 40 || req.worldBook.includes('\n'))) {
+        worldStatic = macro(req.worldBook);
+    }
+
+    const exampleBlock = formatExampleForSystem(card.mesExample, card.charName, card.userName);
+    const mainSystem = buildMainSystem(card, exampleBlock, worldStatic);
+
+    const messages: ChatMessage[] = [];
+
+    messages.push({ role: 'system', content: sanitizeText(mainSystem) });
+
+    // 前情摘要
+    if (histWin.summary) {
+        messages.push({ role: 'system', content: sanitizeText(histWin.summary) });
+    }
+
+    // first_mes：仅新会话（历史清洗后为空）或显式要求
+    const historyEmpty = histWin.history.length === 0 && !histWin.summarized;
+    const wantFirstMes = req.includeFirstMes === true
+        || (req.includeFirstMes !== false && historyEmpty);
+    let firstMesInjected = false;
+    if (wantFirstMes && card.firstMes.trim() && historyEmpty) {
         messages.push({
             role: 'assistant',
-            content: sanitizeText(macro(req.first_mes)),
+            content: sanitizeText(card.firstMes),
+        });
+        firstMesInjected = true;
+    }
+
+    // 对话历史
+    for (const msg of histWin.history) {
+        messages.push({
+            role: msg.role === 'user' ? 'user' : 'assistant',
+            content: sanitizeText(macro(msg.text)),
         });
     }
 
-    // ── 历史 ──
-    const maxHist = req.maxHistoryMessages ?? 30;
-    if (req.history && req.history.length > 0) {
-        const recent = req.history.length > maxHist
-            ? req.history.slice(-maxHist)
-            : req.history;
-
-        for (const msg of recent) {
-            const role = msg.role === 'user' ? 'user' : 'assistant';
-            messages.push({
-                role,
-                content: sanitizeText(macro(msg.text || '')),
-            });
-        }
+    // 贴近生成点的指令：本轮 lore + post_history
+    const postParts: string[] = [];
+    if (loreSnippets.length > 0) {
+        postParts.push(
+            '【本轮相关设定 / 世界书】（写作时请自然融入，不要逐条复读标题）\n' +
+            loreSnippets.map((s, i) => `(${i + 1}) ${macro(s)}`).join('\n'),
+        );
     }
-
-    // ── post_history_instructions ──
-    if (req.post_history_instructions?.trim()) {
+    if (card.postHistory.trim()) {
+        postParts.push(card.postHistory.trim());
+    }
+    if (postParts.length > 0) {
         messages.push({
             role: 'system',
-            content: sanitizeText(macro(req.post_history_instructions)),
+            content: sanitizeText(postParts.join('\n\n')),
         });
     }
 
-    // ── 当前用户消息 ──
+    // 当前用户消息
     messages.push({
         role: 'user',
         content: sanitizeText(macro(req.message || '')),
     });
 
-    return messages;
+    const roleSequence = messages.map((m) => m.role[0].toUpperCase()).join('');
+    const systemChars = messages
+        .filter((m) => m.role === 'system')
+        .reduce((n, m) => n + m.content.length, 0);
+
+    const debug: PromptDebugInfo = {
+        charName: card.charName,
+        userName: card.userName,
+        thinCard: card.thinCard,
+        firstMesInjected,
+        exampleInSystem: Boolean(exampleBlock),
+        loreCount: loreSnippets.length,
+        loreChars,
+        historyIn: histWin.inputCount,
+        historyOut: histWin.history.length,
+        historyCleaned: histWin.cleanedCount,
+        summarized: histWin.summarized,
+        summaryChars: histWin.summary.length,
+        systemChars,
+        totalMessages: messages.length,
+        roleSequence,
+        slots: {
+            system: messages.filter((m) => m.role === 'system').length,
+            postSystem: postParts.length > 0 ? 1 : 0,
+            history: histWin.history.length,
+            user: 1,
+        },
+    };
+
+    return { messages, debug };
 }
 
-/** 回复长度档位 → max_tokens */
+/**
+ * 兼容旧接口：仅返回 messages
+ */
+export function buildMessages(req: PromptBuildRequest): ChatMessage[] {
+    return buildMessagesWithDebug(req).messages;
+}
+
+// ─────────────────────────────────────────────
+// Gen params
+// ─────────────────────────────────────────────
+
 export function resolveMaxTokens(length?: string | number): number {
     if (typeof length === 'number' && length > 0) return Math.min(length, 8192);
     switch (String(length || 'medium').toLowerCase()) {
         case 'short':
-            return 256;
+            return 400;
         case 'long':
             return 2048;
         case 'medium':
         default:
-            return 768;
+            return 1400;
     }
 }
 
 export function resolveTemperature(temp?: number): number {
     if (typeof temp === 'number' && temp >= 0 && temp <= 2) return temp;
-    return 0.9;
+    return 0.92;
+}
+
+export function resolveFrequencyPenalty(p?: number): number {
+    if (typeof p === 'number' && p >= 0 && p <= 2) return p;
+    return 0.3;
+}
+
+export function resolvePresencePenalty(p?: number): number {
+    if (typeof p === 'number' && p >= 0 && p <= 2) return p;
+    return 0.15;
+}
+
+/** 格式化 debug 一行日志 */
+export function formatPromptDebugLog(debug: PromptDebugInfo): string {
+    return [
+        `prompt char=${debug.charName}`,
+        `thin=${debug.thinCard}`,
+        `seq=${debug.roleSequence}`,
+        `msgs=${debug.totalMessages}`,
+        `sys=${debug.systemChars}c`,
+        `hist=${debug.historyIn}→${debug.historyOut} clean=${debug.historyCleaned}`,
+        `sum=${debug.summarized ? debug.summaryChars + 'c' : 'no'}`,
+        `lore=${debug.loreCount}/${debug.loreChars}c`,
+        `ex=${debug.exampleInSystem}`,
+        `fm=${debug.firstMesInjected}`,
+    ].join(' ');
 }

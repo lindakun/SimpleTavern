@@ -20,7 +20,7 @@ const STORAGE_KEY = 'simpletavern_chat_settings_v2';
 const DEFAULTS: ChatSettings = {
   providerId: null,
   responseLength: 'medium',
-  temperature: 0.9,
+  temperature: 0.92,
   userName: '',
 };
 

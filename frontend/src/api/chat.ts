@@ -25,6 +25,8 @@ interface SendMessageParams {
   userName?: string;
   includeFirstMes?: boolean;
   temperature?: number;
+  frequency_penalty?: number;
+  presence_penalty?: number;
   responseLength?: string | number;
   max_tokens?: number;
 }
