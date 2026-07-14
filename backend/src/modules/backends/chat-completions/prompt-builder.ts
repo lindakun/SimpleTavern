@@ -740,7 +740,7 @@ export function buildMessagesWithDebug(req: PromptBuildRequest): PromptBuildResu
         });
     }
 
-    // 贴近生成点的指令：本轮 lore + post_history + 人称再钉一次
+    // 本轮 lore + post_history + 人称提醒
     const postParts: string[] = [];
     if (loreSnippets.length > 0) {
         postParts.push(
@@ -752,20 +752,33 @@ export function buildMessagesWithDebug(req: PromptBuildRequest): PromptBuildResu
         postParts.push(card.postHistory.trim());
     }
     postParts.push(
-        `【人称提醒】用户是「${card.userName}」。回复中称呼一致，勿改名，勿把用户写成旁观的「他/她」。`,
+        `【人称提醒】用户是「${card.userName}」。回复中称呼一致，勿改名，勿把用户写成旁观的「他/她」。请完整写完本轮回复，不要在句子中间停止。`,
     );
-    if (postParts.length > 0) {
-        messages.push({
-            role: 'system',
-            content: sanitizeText(postParts.join('\n\n')),
-        });
-    }
 
-    // 当前用户消息
-    messages.push({
-        role: 'user',
-        content: sanitizeText(macro(req.message || '')),
-    });
+    /**
+     * 本地小模型（compact）的 chat template 往往只接受「开头一条 system」，
+     * 在 history 之后再插 system 容易触发提前 EOS，表现为只输出几个字就断。
+     * 因此 compact 时把后置指令并入当前 user 消息，保持 SUAUA…U 交替。
+     */
+    const userContent = sanitizeText(macro(req.message || ''));
+    if (compact) {
+        if (postParts.length > 0) {
+            // 追加进主 system 末尾（改写 messages[0]）
+            messages[0] = {
+                role: 'system',
+                content: messages[0].content + '\n\n' + sanitizeText(postParts.join('\n\n')),
+            };
+        }
+        messages.push({ role: 'user', content: userContent });
+    } else {
+        if (postParts.length > 0) {
+            messages.push({
+                role: 'system',
+                content: sanitizeText(postParts.join('\n\n')),
+            });
+        }
+        messages.push({ role: 'user', content: userContent });
+    }
 
     const roleSequence = messages.map((m) => m.role[0].toUpperCase()).join('');
     const systemChars = messages
@@ -792,7 +805,8 @@ export function buildMessagesWithDebug(req: PromptBuildRequest): PromptBuildResu
         compact,
         slots: {
             system: messages.filter((m) => m.role === 'system').length,
-            postSystem: postParts.length > 0 ? 1 : 0,
+            // compact 时后置指令并入主 system，不再单独占一条
+            postSystem: compact ? 0 : (postParts.length > 0 ? 1 : 0),
             history: histWin.history.length,
             user: 1,
         },
@@ -815,14 +829,15 @@ export function buildMessages(req: PromptBuildRequest): ChatMessage[] {
 export function resolveMaxTokens(length?: string | number, compact = false): number {
     if (typeof length === 'number' && length > 0) return Math.min(length, 8192);
     if (compact) {
+        // 本地模型：过小会导致中文长回复被截断；仍低于云端以控制延迟
         switch (String(length || 'medium').toLowerCase()) {
             case 'short':
-                return 256;
+                return 400;
             case 'long':
-                return 768;
+                return 1536;
             case 'medium':
             default:
-                return 512;
+                return 1024;
         }
     }
     switch (String(length || 'medium').toLowerCase()) {

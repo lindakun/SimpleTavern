@@ -345,9 +345,9 @@ describe('resolveMaxTokens / resolveTemperature', () => {
         expect(resolveMaxTokens(100)).toBe(100);
     });
 
-    it('compact 本地更短', () => {
-        expect(resolveMaxTokens('medium', true)).toBe(512);
-        expect(resolveMaxTokens('long', true)).toBe(768);
+    it('compact 本地 max_tokens 合理', () => {
+        expect(resolveMaxTokens('medium', true)).toBe(1024);
+        expect(resolveMaxTokens('long', true)).toBe(1536);
     });
 
     it('温度默认', () => {
@@ -395,5 +395,27 @@ describe('compact mode', () => {
         });
         expect(compact.debug.compact).toBe(true);
         expect(compact.debug.systemChars).toBeLessThanOrEqual(full.debug.systemChars);
+    });
+
+    it('compact 有历史时 role 序列不应在中间再插 S', () => {
+        const { debug, messages } = buildMessagesWithDebug({
+            message: '继续',
+            history: [
+                { role: 'user', text: '第一句' },
+                { role: 'model', text: '第一回' },
+                { role: 'user', text: '第二句' },
+                { role: 'model', text: '第二回' },
+            ],
+            characterName: 'A',
+            characterDescription: '详细角色描述超过八十字以确保不是 thin card 的简单兜底路径测试内容填充足够长的一段话',
+            userName: 'U',
+            compact: true,
+            loreEntries: [{ keys: ['源晶'], content: '源晶设定', constant: false }],
+        });
+        // 允许 S + (UA)* + U，不允许 …A S U（history 后 system）
+        expect(debug.roleSequence).toMatch(/^S(UA)*U$/);
+        expect(debug.compact).toBe(true);
+        // 人称提醒应并入主 system
+        expect(messages[0].content).toContain('人称提醒');
     });
 });

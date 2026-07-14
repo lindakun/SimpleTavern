@@ -84,55 +84,85 @@ export async function chatStream(req: Request, res: Response, _next: NextFunctio
         const decoder = new TextDecoder();
         let buffer = '';
         let firstTokenAt: number | null = null;
+        let finishReason: string | null = null;
+        let clientClosed = false;
 
+        // 仅在客户端真正断开时取消上游；避免误伤正常结束
         req.on('close', () => {
-            reader.cancel().catch(() => {});
+            if (!res.writableEnded) {
+                clientClosed = true;
+                reader.cancel().catch(() => {});
+            }
         });
+
+        const processSseLine = (line: string) => {
+            if (!line.startsWith('data: ')) return;
+            const data = line.slice(6).trim();
+            if (!data) return;
+            if (data === '[DONE]') {
+                return;
+            }
+            try {
+                const parsed = JSON.parse(data);
+                const choice = parsed.choices?.[0];
+                if (choice?.finish_reason) {
+                    finishReason = String(choice.finish_reason);
+                }
+                // 兼容 content 为 string 或极少见的数组片段
+                let delta = choice?.delta?.content ?? choice?.message?.content ?? '';
+                if (Array.isArray(delta)) {
+                    delta = delta.map((p: any) => (typeof p === 'string' ? p : p?.text || '')).join('');
+                }
+                if (delta) {
+                    if (firstTokenAt === null) {
+                        firstTokenAt = Date.now();
+                        logger.info(`首 token 耗时: ${firstTokenAt - streamStart}ms`);
+                    }
+                    chunkCount++;
+                    res.write(`data: ${JSON.stringify({ text: delta })}\n\n`);
+                }
+            } catch {
+                // skip malformed SSE lines
+            }
+        };
 
         try {
             while (true) {
                 const { done, value } = await reader.read();
                 if (done) break;
+                if (clientClosed) break;
 
                 buffer += decoder.decode(value, { stream: true });
                 const lines = buffer.split('\n');
                 buffer = lines.pop() || '';
-
                 for (const line of lines) {
-                    if (line.startsWith('data: ')) {
-                        const data = line.slice(6).trim();
-                        if (data === '[DONE]') {
-                            res.write('data: [DONE]\n\n');
-                            continue;
-                        }
-                        try {
-                            const parsed = JSON.parse(data);
-                            const delta = parsed.choices?.[0]?.delta?.content;
-                            if (delta) {
-                                if (firstTokenAt === null) {
-                                    firstTokenAt = Date.now();
-                                    logger.info(`首 token 耗时: ${firstTokenAt - streamStart}ms`);
-                                }
-                                chunkCount++;
-                                res.write(`data: ${JSON.stringify({ text: delta })}\n\n`);
-                            }
-                        } catch {
-                            // skip
-                        }
-                    }
+                    processSseLine(line);
                 }
+            }
+            // 刷尽 TextDecoder 与最后半行（上游结束时常见无尾部 \n）
+            buffer += decoder.decode();
+            if (buffer.trim()) {
+                for (const line of buffer.split('\n')) {
+                    processSseLine(line);
+                }
+                buffer = '';
             }
         } finally {
             reader.releaseLock();
         }
 
-        res.write('data: [DONE]\n\n');
-        logger.info(
-            `SSE 流结束, 共发送 ${chunkCount} 个 token, 总耗时 ${Date.now() - streamStart}ms` +
-            (firstTokenAt ? `, 首 token ${firstTokenAt - streamStart}ms` : '') +
-            `, prompt_seq=${debug.roleSequence}`,
-        );
-        res.end();
+        if (!clientClosed) {
+            res.write('data: [DONE]\n\n');
+            logger.info(
+                `SSE 流结束, 共发送 ${chunkCount} 个 chunk, 总耗时 ${Date.now() - streamStart}ms` +
+                (firstTokenAt ? `, 首 token ${firstTokenAt - streamStart}ms` : '') +
+                (finishReason ? `, finish=${finishReason}` : '') +
+                `, prompt_seq=${debug.roleSequence}`,
+            );
+            res.end();
+        } else {
+            logger.warn(`SSE 客户端提前断开, 已转发 ${chunkCount} chunk, prompt_seq=${debug.roleSequence}`);
+        }
     } catch (err: any) {
         logger.error('Chat Stream API 错误:', err);
         if (!res.headersSent) {

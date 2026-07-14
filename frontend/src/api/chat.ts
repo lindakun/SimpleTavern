@@ -98,6 +98,30 @@ export function useChatApi() {
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let buffer = '';
+        let finished = false;
+
+        const handleLine = (line: string): 'done' | 'error' | 'ok' => {
+          if (!line.startsWith('data: ')) return 'ok';
+          const data = line.slice(6).trim();
+          if (!data) return 'ok';
+          if (data === '[DONE]') {
+            return 'done';
+          }
+          try {
+            const parsed = JSON.parse(data);
+            if (parsed.error) {
+              onError(new Error(parsed.error));
+              return 'error';
+            }
+            if (parsed.text) {
+              onChunk(parsed.text);
+            }
+            // meta 包忽略
+          } catch {
+            // 跳过无法解析的行
+          }
+          return 'ok';
+        };
 
         while (true) {
           const { done, value } = await reader.read();
@@ -108,28 +132,29 @@ export function useChatApi() {
           buffer = lines.pop() || '';
 
           for (const line of lines) {
-            if (line.startsWith('data: ')) {
-              const data = line.slice(6).trim();
-              if (data === '[DONE]') {
-                onDone();
-                return;
-              }
-              try {
-                const parsed = JSON.parse(data);
-                if (parsed.error) {
-                  onError(new Error(parsed.error));
-                  return;
-                }
-                if (parsed.text) {
-                  onChunk(parsed.text);
-                }
-              } catch {
-                // 跳过无法解析的行
-              }
+            const r = handleLine(line);
+            if (r === 'done') {
+              finished = true;
+              onDone();
+              return;
             }
+            if (r === 'error') return;
           }
         }
-        onDone();
+        // 流结束时刷尽半包，避免丢最后几个字
+        buffer += decoder.decode();
+        if (buffer.trim()) {
+          for (const line of buffer.split('\n')) {
+            const r = handleLine(line);
+            if (r === 'done') {
+              finished = true;
+              onDone();
+              return;
+            }
+            if (r === 'error') return;
+          }
+        }
+        if (!finished) onDone();
       } catch (err: unknown) {
         onError(err instanceof Error ? err : new Error('流式请求失败'));
       } finally {

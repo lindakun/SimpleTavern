@@ -139,9 +139,9 @@ export function useChatFlow(currentScreen: ScreenId | null) {
             provider: settings.providerId || undefined,
             userName,
             // 不强制每轮注入 first_mes；由后端在 history 为空时自动注入
+            // frequency_penalty 交由后端按本地/云端默认，避免本地过早收束
             temperature: settings.temperature,
             responseLength: settings.responseLength,
-            frequency_penalty: 0.3,
           },
           (chunk: string) => {
             if (!streamedText) {
