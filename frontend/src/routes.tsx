@@ -88,6 +88,8 @@ export interface AppRoutesProps {
   handleDeleteMessage: (characterId: string, msgId: string) => void;
   handleStopGeneration: (characterId: string) => void;
   handleEditMessage: (characterId: string, messageId: string, newText: string) => void;
+  handleRegenerateMessage: (characterId: string, messageId: string) => void;
+  handleNewChat: (characterId: string, greetingIndex?: number) => void;
   deleteChatThreads: (characterIds: string[]) => void;
   updateChatThread: (characterId: string, updater: (thread: ChatThread) => ChatThread) => void;
   clearUnreadCount: (characterId: string) => void;
@@ -109,6 +111,7 @@ export default function AppRoutes(props: AppRoutesProps) {
     chatThreads, sendingStates,
     activeCharacterId, setActiveCharacterId,
     handleSendMessage, handleDeleteMessage, handleStopGeneration, handleEditMessage,
+    handleRegenerateMessage, handleNewChat,
     deleteChatThreads, updateChatThread,
     clearUnreadCount,
     locationPathname, myCharactersCount, characterApiRefresh,
@@ -195,6 +198,8 @@ export default function AppRoutes(props: AppRoutesProps) {
             userHandle={user?.username}
             onStopGeneration={() => handleStopGeneration(activeCharacterId)}
             onEditMessage={handleEditMessage}
+            onRegenerateMessage={handleRegenerateMessage}
+            onNewChat={handleNewChat}
           />
         ) : <Navigate to="/discover" replace />
       } />

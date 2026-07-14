@@ -1,118 +1,96 @@
 import { ChatRequest, ChatResponse, LlmConfig, ChatMessage } from '../types.js';
 import { getLlmConfigs, getActiveLlm } from '../llm-config.js';
 import { logger } from '../../../common/logger.js';
+import { getConfig } from '../../../config/index.js';
+import * as worldsService from '../../worlds/worlds.service.js';
+import {
+    buildMessages,
+    normalizeCharacterBook,
+    resolveMaxTokens,
+    resolveTemperature,
+    type LoreEntry,
+} from './prompt-builder.js';
+
+export { buildMessages, normalizeCharacterBook, parseMesExample, applyMacros, selectLoreEntries } from './prompt-builder.js';
 
 /**
- * 清理 prompt 中的特殊 Unicode 字符，避免 Ollama/llama-server tokenizer 解析失败
- * 主要处理：数学尖括号 ⟨⟩ 等会被误解析为 chat template token 的字符
+ * 解析世界书文件条目（worldBook 为 file_id 时）
  */
-function sanitizeText(text: string): string {
-    return text
-        .replace(/⟨/g, '<')  // ⟨ → <  (数学左尖括号)
-        .replace(/⟩/g, '>')  // ⟩ → >  (数学右尖括号)
-        .replace(/⟪/g, '<<') // ⟪ → <<
-        .replace(/⟫/g, '>>') // ⟫ → >>
-        .replace(/⟦/g, '[')  // ⟦ → [
-        .replace(/⟧/g, ']'); // ⟧ → ]
+function loadWorldLoreEntries(worldBook?: string): LoreEntry[] {
+    if (!worldBook?.trim()) return [];
+    // 过长文本视为已内联 lore，不当作文件名
+    if (worldBook.length > 80 || worldBook.includes('\n')) return [];
+
+    try {
+        const config = getConfig();
+        const world = worldsService.getWorld(config.dataRoot, worldBook);
+        if (!world?.entries) return [];
+        return normalizeCharacterBook({ entries: world.entries });
+    } catch (err) {
+        logger.debug(`加载世界书失败: ${worldBook}`, (err as Error).message);
+        return [];
+    }
 }
 
 /**
- * 构建角色扮演的消息列表
- * 将用户请求 + 角色 V3 卡信息转换为 LLM 消息格式
+ * 合并请求中的 lore 来源
  */
-function buildMessages(req: ChatRequest): ChatMessage[] {
-    const messages: ChatMessage[] = [];
+function collectLoreEntries(req: ChatRequest): LoreEntry[] {
+    const fromBook = normalizeCharacterBook(req.character_book);
+    const fromExplicit = (req.loreEntries || []).map((e) => ({
+        keys: e.keys || [],
+        secondary_keys: e.secondary_keys,
+        content: e.content || '',
+        constant: e.constant,
+        enabled: e.enabled,
+        selective: e.selective,
+        insertion_order: e.insertion_order,
+    }));
+    const fromWorldFile = loadWorldLoreEntries(req.worldBook);
+    return [...fromBook, ...fromExplicit, ...fromWorldFile];
+}
 
-    // 系统指令 — 使用 system_prompt 或自动构建
-    let systemPrompt: string;
-
-    if (req.system_prompt) {
-        // 使用角色卡自带的 system_prompt
-        systemPrompt = req.system_prompt;
-    } else {
-        // 自动构建系统提示词
-        systemPrompt = `You are roleplaying as a fictional character named "${req.characterName}".`;
+function resolveProvider(req: ChatRequest): LlmConfig | undefined {
+    const configs = getLlmConfigs();
+    if (req.provider) {
+        const found = configs.find((c) => c.id === req.provider || c.name === req.provider);
+        if (found) return found;
     }
+    return getActiveLlm();
+}
 
-    // 追加角色描述
-    if (req.characterDescription) {
-        systemPrompt += `\n\nCharacter Description:\n${req.characterDescription}`;
-    }
-
-    // 追加性格
-    if (req.personality) {
-        systemPrompt += `\n\nPersonality:\n${req.personality}`;
-    }
-
-    // 追加场景
-    if (req.scenario) {
-        systemPrompt += `\n\nScenario:\n${req.scenario}`;
-    }
-
-    // 追加世界书
-    if (req.worldBook) {
-        systemPrompt += `\n\nWorldbook / Lore & Speaking Guidelines:\n${req.worldBook}`;
-    }
-
-    // 通用规则（仅在无 system_prompt 时添加）
-    if (!req.system_prompt) {
-        systemPrompt += `\n\nCRITICAL RULES:
-1. Always stay in character. Never speak as an AI assistant.
-2. Speak primarily in Chinese unless the character's description specifies otherwise.
-3. Keep responses conversational and relatively short.
-4. Show your character's personality traits in your responses.`;
-    }
-
-    messages.push({ role: 'system', content: sanitizeText(systemPrompt) });
-
-    // 如果有 first_mes，作为 assistant 的初始消息
-    if (req.first_mes) {
-        const charName = req.characterName || 'Character';
-        messages.push({
-            role: 'assistant',
-            content: sanitizeText(req.first_mes
-                .replace(/\{\{char\}\}/gi, charName)
-                .replace(/\{\{user\}\}/gi, 'User')),
-        });
-    }
-
-    // 历史消息 — 只保留最近 N 轮对话，防止上下文窗口溢出
-    const MAX_HISTORY_MESSAGES = 30; // 约 15 轮对话（user + assistant）
-    if (req.history && req.history.length > 0) {
-        const recentHistory = req.history.length > MAX_HISTORY_MESSAGES
-            ? req.history.slice(-MAX_HISTORY_MESSAGES)
-            : req.history;
-
-        if (req.history.length > MAX_HISTORY_MESSAGES) {
-            logger.debug(`历史消息已截断: ${req.history.length} → ${MAX_HISTORY_MESSAGES} 条`);
-        }
-
-        for (const msg of recentHistory) {
-            messages.push({
-                role: msg.role === 'user' ? 'user' : 'assistant',
-                content: sanitizeText(msg.text),
-            });
-        }
-    }
-
-    // 历史记录后指令
-    if (req.post_history_instructions) {
-        messages.push({ role: 'system', content: sanitizeText(req.post_history_instructions) });
-    }
-
-    // 当前消息
-    messages.push({ role: 'user', content: sanitizeText(req.message) });
-
-    return messages;
+function buildPromptMessages(req: ChatRequest): ChatMessage[] {
+    const loreEntries = collectLoreEntries(req);
+    // 有历史时仍注入 first_mes 作为角色开场记忆（与 ST 类似）；前端可关
+    return buildMessages({
+        message: req.message,
+        history: req.history || [],
+        characterName: req.characterName,
+        characterDescription: req.characterDescription,
+        personality: req.personality,
+        scenario: req.scenario,
+        first_mes: req.first_mes,
+        mes_example: req.mes_example,
+        system_prompt: req.system_prompt,
+        post_history_instructions: req.post_history_instructions,
+        worldBook: req.worldBook,
+        loreEntries,
+        userName: req.userName,
+        includeFirstMes: req.includeFirstMes,
+    });
 }
 
 /**
  * 通过 OpenAI-compatible API 发送聊天补全请求（非流式）
  */
-async function callLlmApi(config: LlmConfig, messages: ChatMessage[]): Promise<string> {
+async function callLlmApi(
+    config: LlmConfig,
+    messages: ChatMessage[],
+    opts: { temperature: number; max_tokens: number },
+): Promise<string> {
     const url = `${config.baseUrl.replace(/\/+$/, '')}/chat/completions`;
 
-    logger.debug(`LLM 请求: ${url}, model=${config.model}`);
+    logger.debug(`LLM 请求: ${url}, model=${config.model}, temp=${opts.temperature}, max_tokens=${opts.max_tokens}`);
 
     const response = await fetch(url, {
         method: 'POST',
@@ -123,10 +101,10 @@ async function callLlmApi(config: LlmConfig, messages: ChatMessage[]): Promise<s
         body: JSON.stringify({
             model: config.model,
             messages,
-            temperature: 0.9,
-            max_tokens: 8192,
+            temperature: opts.temperature,
+            max_tokens: opts.max_tokens,
         }),
-        signal: AbortSignal.timeout(60_000), // 60 秒超时
+        signal: AbortSignal.timeout(60_000),
     });
 
     if (!response.ok) {
@@ -155,12 +133,17 @@ async function callLlmApi(config: LlmConfig, messages: ChatMessage[]): Promise<s
 
 /**
  * 通过 OpenAI-compatible API 流式发送聊天补全请求
- * 返回 ReadableStream<Uint8Array>，逐 token 产出 SSE 数据
  */
-async function callLlmApiStream(config: LlmConfig, messages: ChatMessage[]): Promise<ReadableStream<Uint8Array>> {
+async function callLlmApiStream(
+    config: LlmConfig,
+    messages: ChatMessage[],
+    opts: { temperature: number; max_tokens: number },
+): Promise<ReadableStream<Uint8Array>> {
     const url = `${config.baseUrl.replace(/\/+$/, '')}/chat/completions`;
 
-    logger.info(`LLM 流式请求: ${url}, model=${config.model}, messages=${messages.length}`);
+    logger.info(
+        `LLM 流式请求: ${url}, model=${config.model}, messages=${messages.length}, temp=${opts.temperature}, max_tokens=${opts.max_tokens}`,
+    );
     const startTime = Date.now();
 
     const response = await fetch(url, {
@@ -172,11 +155,11 @@ async function callLlmApiStream(config: LlmConfig, messages: ChatMessage[]): Pro
         body: JSON.stringify({
             model: config.model,
             messages,
-            temperature: 0.9,
-            max_tokens: 8192,
+            temperature: opts.temperature,
+            max_tokens: opts.max_tokens,
             stream: true,
         }),
-        signal: AbortSignal.timeout(120_000), // 流式请求 120 秒超时
+        signal: AbortSignal.timeout(120_000),
     });
 
     if (!response.ok) {
@@ -192,45 +175,34 @@ async function callLlmApiStream(config: LlmConfig, messages: ChatMessage[]): Pro
     return response.body;
 }
 
+function resolveGenOpts(req: ChatRequest) {
+    const max_tokens = req.max_tokens
+        ? resolveMaxTokens(req.max_tokens)
+        : resolveMaxTokens(req.responseLength);
+    const temperature = resolveTemperature(req.temperature);
+    return { max_tokens, temperature };
+}
+
 /**
  * 流式处理聊天请求 — 返回 SSE ReadableStream
  */
 export async function processChatStream(req: ChatRequest): Promise<ReadableStream<Uint8Array>> {
-    const configs = getLlmConfigs();
-
-    let activeConfig: LlmConfig | undefined;
-    if (req.provider) {
-        activeConfig = configs.find(c => c.id === req.provider || c.name === req.provider);
-    }
-    if (!activeConfig) {
-        activeConfig = getActiveLlm();
-    }
-
+    const activeConfig = resolveProvider(req);
     if (!activeConfig) {
         throw new Error('未配置 LLM，无法使用流式聊天');
     }
 
-    const messages = buildMessages(req);
-    return callLlmApiStream(activeConfig, messages);
+    const messages = buildPromptMessages(req);
+    return callLlmApiStream(activeConfig, messages, resolveGenOpts(req));
 }
 
 /**
- * 处理聊天请求 — 前端主入口
+ * 处理聊天请求 — 非流式
  */
 export async function processChat(req: ChatRequest): Promise<ChatResponse> {
-    const configs = getLlmConfigs();
-
-    // 选择 LLM
-    let activeConfig: LlmConfig | undefined;
-    if (req.provider) {
-        activeConfig = configs.find(c => c.id === req.provider || c.name === req.provider);
-    }
-    if (!activeConfig) {
-        activeConfig = getActiveLlm();
-    }
+    const activeConfig = resolveProvider(req);
 
     if (!activeConfig) {
-        // 无配置时返回模拟回复
         logger.warn('未配置 LLM，使用模拟回复');
         return {
             text: getSimulatedReply(req.characterName),
@@ -239,10 +211,10 @@ export async function processChat(req: ChatRequest): Promise<ChatResponse> {
         };
     }
 
-    const messages = buildMessages(req);
+    const messages = buildPromptMessages(req);
 
     try {
-        const reply = await callLlmApi(activeConfig, messages);
+        const reply = await callLlmApi(activeConfig, messages, resolveGenOpts(req));
         return { text: reply || '……（未收到回复）', provider: activeConfig.id, model: activeConfig.model };
     } catch (err: any) {
         logger.error('LLM 调用失败:', err);
@@ -254,16 +226,17 @@ export async function processChat(req: ChatRequest): Promise<ChatResponse> {
  * 获取可用 LLM 列表
  */
 export function getProviders() {
-    return getLlmConfigs().map(c => ({
+    const active = getActiveLlm();
+    return getLlmConfigs().map((c) => ({
         id: c.id,
         name: c.name,
         model: c.model,
+        active: active?.id === c.id,
+        // 粗略标记本地模型（host.docker.internal / localhost / 11434 / 8081）
+        isLocal: /localhost|127\.0\.0\.1|host\.docker\.internal|11434|8081/.test(c.baseUrl),
     }));
 }
 
-/**
- * 无 LLM 配置时的模拟回复
- */
 function getSimulatedReply(characterName: string): string {
     const name = characterName.toLowerCase();
     if (name.includes('yuki') || name.includes('柚姬')) {

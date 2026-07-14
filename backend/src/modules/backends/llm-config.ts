@@ -59,11 +59,25 @@ export function getLlmConfigs(): LlmConfig[] {
     return llmConfigs;
 }
 
+function isLocalBaseUrl(baseUrl: string): boolean {
+    return /localhost|127\.0\.0\.1|host\.docker\.internal|:11434|:8081|:8080/.test(baseUrl);
+}
+
+/**
+ * 获取当前活跃 LLM
+ * - 优先 SIMPLE_TAVERN_ACTIVE_LLM
+ * - 未指定时优先选择非本地（云端）模型，避免默认落到慢速本地推理
+ */
 export function getActiveLlm(): LlmConfig | undefined {
     const configs = getLlmConfigs();
+    if (configs.length === 0) return undefined;
+
     const activeId = process.env.SIMPLE_TAVERN_ACTIVE_LLM;
     if (activeId) {
-        return configs.find(c => c.id === activeId);
+        const found = configs.find(c => c.id === activeId);
+        if (found) return found;
     }
-    return configs[0];
+
+    const cloud = configs.find(c => !isLocalBaseUrl(c.baseUrl));
+    return cloud || configs[0];
 }

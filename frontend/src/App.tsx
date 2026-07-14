@@ -33,6 +33,7 @@ export default function App() {
     clearUnreadCount,
     handleSendMessage, handleStopGeneration,
     handleEditMessage, handleDeleteMessage,
+    handleRegenerateMessage, handleNewChat,
   } = useChatFlow(currentScreen);
 
   // ── Computed values ──
@@ -119,6 +120,8 @@ export default function App() {
               handleDeleteMessage={handleDeleteMessage}
               handleStopGeneration={handleStopGeneration}
               handleEditMessage={handleEditMessage}
+              handleRegenerateMessage={handleRegenerateMessage}
+              handleNewChat={handleNewChat}
               deleteChatThreads={deleteChatThreads}
               updateChatThread={updateChatThread}
               clearUnreadCount={clearUnreadCount}

@@ -49,6 +49,18 @@ export interface Character {
   post_history_instructions?: string;
   alternate_greetings?: string[];
   character_version?: string;
+  character_book?: {
+    name?: string;
+    entries?: Array<{
+      keys?: string[];
+      secondary_keys?: string[];
+      content?: string;
+      constant?: boolean;
+      enabled?: boolean;
+      selective?: boolean;
+      insertion_order?: number;
+    }> | Record<string, unknown>;
+  };
   extensions?: Record<string, unknown>;
 
   // 兼容旧字段

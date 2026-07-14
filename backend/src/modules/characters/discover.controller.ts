@@ -10,21 +10,50 @@ import { BadRequestError } from '../../common/errors.js';
 import { getConfig } from '../../config/index.js';
 import { logger } from '../../common/logger.js';
 
+/** 导入角色列表内存缓存（按目录 mtime 失效） */
+let importedCache: { mtimeMs: number; data: any[] } | null = null;
+const DISCOVER_CACHE_TTL_MS = 30_000;
+let discoverListCache: { expiresAt: number; data: any[] } | null = null;
+
+function getDirMtimeMs(dir: string): number {
+    try {
+        if (!fs.existsSync(dir)) return 0;
+        let max = fs.statSync(dir).mtimeMs;
+        for (const f of fs.readdirSync(dir)) {
+            if (!f.endsWith('.png')) continue;
+            try {
+                const st = fs.statSync(path.join(dir, f));
+                if (st.mtimeMs > max) max = st.mtimeMs;
+            } catch { /* skip */ }
+        }
+        return max;
+    } catch {
+        return 0;
+    }
+}
+
 /**
  * 扫描用户目录，获取导入的 PNG 角色卡
- * 附带持久化的评价数据
+ * 附带持久化的评价数据；带 mtime 缓存
  */
 function getImportedCharacters(): any[] {
     const config = getConfig();
     const charactersDir = path.join(config.dataRoot, 'default-user', 'characters');
+
+    if (!fs.existsSync(charactersDir)) {
+        importedCache = null;
+        return [];
+    }
+
+    const mtimeMs = getDirMtimeMs(charactersDir);
+    if (importedCache && importedCache.mtimeMs === mtimeMs) {
+        return importedCache.data;
+    }
+
     const result: any[] = [];
-
-    if (!fs.existsSync(charactersDir)) return result;
-
-    // 加载导入角色的评价数据
     const importedReviews = getAllImportedReviews();
-
     const files = fs.readdirSync(charactersDir).filter(f => f.endsWith('.png'));
+
     for (const file of files) {
         try {
             const filePath = path.join(charactersDir, file);
@@ -35,12 +64,14 @@ function getImportedCharacters(): any[] {
             const charData = jsonData.data || jsonData;
             const name = charData?.name || jsonData.name || path.parse(file).name;
 
-            // 合并持久化评价
             const reviews = importedReviews[file] || [];
             const totalRating = reviews.reduce((sum: number, r: any) => sum + r.rating, 0);
             const avgRating = reviews.length > 0
                 ? parseFloat((totalRating / reviews.length).toFixed(1))
                 : 0;
+
+            const description = charData?.description || jsonData.description || '';
+            const tagline = (charData?.creator_notes || description || '').slice(0, 80);
 
             result.push({
                 id: `imported_${path.parse(file).name}`,
@@ -50,7 +81,7 @@ function getImportedCharacters(): any[] {
                 rating: avgRating,
                 reviewCount: reviews.length,
                 tags: Array.isArray(charData?.tags) ? charData.tags : [],
-                description: charData?.description || jsonData.description || '',
+                description,
                 personality: charData?.personality || '',
                 scenario: charData?.scenario || '',
                 first_mes: charData?.first_mes || '',
@@ -60,8 +91,9 @@ function getImportedCharacters(): any[] {
                 post_history_instructions: charData?.post_history_instructions || '',
                 alternate_greetings: Array.isArray(charData?.alternate_greetings) ? charData.alternate_greetings : [],
                 character_version: charData?.character_version || '1.0',
+                character_book: charData?.character_book || undefined,
                 extensions: charData?.extensions || {},
-                tagline: '',
+                tagline,
                 worldBook: charData?.extensions?.world || '',
                 voiceType: 'sweet',
                 status: 'online',
@@ -71,24 +103,39 @@ function getImportedCharacters(): any[] {
                 _imported: true,
                 _fileName: file,
             });
-        } catch (err) {
+        } catch {
             logger.debug(`跳过无法解析的角色文件: ${file}`);
         }
     }
 
+    importedCache = { mtimeMs, data: result };
     return result;
 }
 
 /**
  * GET /api/discover
- * 返回种子角色 + 导入的角色 + 用户公开角色
+ * 返回种子角色 + 导入的角色 + 用户公开角色（短时缓存）
  */
 export async function getDiscoverCharacters(_req: Request, res: Response): Promise<void> {
+    const now = Date.now();
+    if (discoverListCache && discoverListCache.expiresAt > now) {
+        res.json(discoverListCache.data);
+        return;
+    }
+
     const seedChars = seedService.getSeedCharacters();
     const importedChars = getImportedCharacters();
     const publicChars = await userCharacterService.getAllPublicCharacters();
     const combined = [...seedChars, ...importedChars, ...publicChars];
+
+    discoverListCache = { expiresAt: now + DISCOVER_CACHE_TTL_MS, data: combined };
     res.json(combined);
+}
+
+/** 清除 discover 列表缓存（评价/导入后可调用） */
+export function invalidateDiscoverCache(): void {
+    discoverListCache = null;
+    importedCache = null;
 }
 
 /**
@@ -148,6 +195,7 @@ export function addReview(req: Request, res: Response, next: NextFunction): void
         // 1. 先查种子角色
         const seedUpdated = seedService.addReviewToCharacter(id, review);
         if (seedUpdated) {
+            invalidateDiscoverCache();
             res.json(seedUpdated);
             return;
         }
@@ -196,6 +244,7 @@ export function addReview(req: Request, res: Response, next: NextFunction): void
                         _imported: true,
                         _fileName: matchedFile,
                     });
+                    invalidateDiscoverCache();
                     return;
                 }
             }

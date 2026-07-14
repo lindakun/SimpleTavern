@@ -2,13 +2,14 @@ import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { motion, AnimatePresence } from 'motion/react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { ScreenId, Character, ChatMessage, SendState } from '../types';
-import { Volume2, Send, AlertCircle, ChevronLeft, Copy, Trash2, RefreshCw, Check, Search, X, ChevronUp, ChevronDown, Square, Pencil } from 'lucide-react';
+import { Volume2, Send, AlertCircle, ChevronLeft, Copy, Trash2, RefreshCw, Check, Search, X, ChevronUp, ChevronDown, Square, Pencil, Plus, Cpu } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import BottomNav from './BottomNav';
 import LazyImage from './LazyImage';
 import { track } from '../utils/analytics';
 import { formatChatDate } from '../utils/formatDate';
+import { loadChatSettings, saveChatSettings } from '../utils/chatSettings';
 
 interface ChatScreenProps {
   character: Character;
@@ -21,6 +22,8 @@ interface ChatScreenProps {
   userHandle?: string;
   onStopGeneration?: () => void;
   onEditMessage?: (characterId: string, messageId: string, newText: string) => void;
+  onRegenerateMessage?: (characterId: string, messageId: string) => void;
+  onNewChat?: (characterId: string, greetingIndex?: number) => void;
 }
 
 export default function ChatScreen({
@@ -34,6 +37,8 @@ export default function ChatScreen({
   userHandle,
   onStopGeneration,
   onEditMessage,
+  onRegenerateMessage,
+  onNewChat,
 }: ChatScreenProps) {
   const [inputText, setInputText] = useState('');
   const [lastError, setLastError] = useState<string | null>(null);
@@ -59,27 +64,74 @@ export default function ChatScreen({
   const [editText, setEditText] = useState('');
   const editInputRef = useRef<HTMLTextAreaElement>(null);
 
-  // 判断 AI 是否正在流式回复：最后一条是 AI 消息但内容为空 或 sendState 为 streaming/sending
+  // 判断 AI 是否正在流式回复
   const lastMsg = messages[messages.length - 1];
   const isStreaming = sendState === 'streaming' || (lastMsg?.role === 'model' && lastMsg?.text === '');
   const isSending = sendState === 'sending';
+  // 有真实对话记录时不再单独叠一层 first_mes 开场白（避免重复）
+  const showGreeting = messages.length === 0;
 
-  // ── 虚拟滚动：组合所有条目（Greeting + Messages + StreamingIndicator）──
+  // 首 token 等待提示：sending 超过 3s 仍无内容
+  const [waitHint, setWaitHint] = useState<string | null>(null);
+  useEffect(() => {
+    if (sendState !== 'sending') {
+      setWaitHint(null);
+      return;
+    }
+    const t1 = setTimeout(() => setWaitHint('模型思考中…'), 3000);
+    const t2 = setTimeout(() => setWaitHint('首字较慢，可在设置中切换更快模型'), 12000);
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+    };
+  }, [sendState]);
+
+  // 模型选择（轻量，本地持久化）
+  const [providers, setProviders] = useState<Array<{ id: string; name: string; model?: string; isLocal?: boolean }>>([]);
+  const [activeProvider, setActiveProvider] = useState<string | null>(loadChatSettings().providerId);
+  const [showModelMenu, setShowModelMenu] = useState(false);
+  useEffect(() => {
+    fetch('/api/chat/providers', { credentials: 'include' })
+      .then((r) => r.json())
+      .then((data) => {
+        const list: Array<{ id: string; name: string; model?: string; isLocal?: boolean }> =
+          Array.isArray(data?.providers) ? data.providers : [];
+        setProviders(list);
+        // 无本地偏好时：优先云端模型，避免默认落到慢速本地推理
+        if (!loadChatSettings().providerId) {
+          const cloud = list.find((p) => !p.isLocal);
+          const preferred = cloud?.id || data?.active || list[0]?.id || null;
+          if (preferred) {
+            setActiveProvider(preferred);
+            // 不强制写入 localStorage，仅会话内使用；用户手动选后才持久化
+            if (cloud && data?.active && list.find((p) => p.id === data.active)?.isLocal) {
+              saveChatSettings({ providerId: cloud.id });
+              setActiveProvider(cloud.id);
+            }
+          }
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  // ── 虚拟滚动：Greeting（仅空会话）+ Messages + StreamingIndicator ──
   const allItems = useMemo(() => {
-    const items: Array<{ type: 'greeting' } | { type: 'message'; msg: ChatMessage; idx: number } | { type: 'streaming' }> = [
-      { type: 'greeting' as const },
-    ];
+    const items: Array<{ type: 'greeting' } | { type: 'message'; msg: ChatMessage; idx: number } | { type: 'streaming' }> = [];
+    if (showGreeting) {
+      items.push({ type: 'greeting' as const });
+    }
     messages.forEach((msg, idx) => {
       const isLastEmptyAi = idx === messages.length - 1 && msg.role === 'model' && !msg.text;
       if (!isLastEmptyAi) {
         items.push({ type: 'message' as const, msg, idx });
       }
     });
-    if (isStreaming) {
+    // 仅在尚未出字时显示 typing；已有流式文本时只更新气泡，避免双指示器
+    if (isSending || (isStreaming && (!lastMsg?.text || lastMsg.role !== 'model'))) {
       items.push({ type: 'streaming' as const });
     }
     return items;
-  }, [messages, isStreaming]);
+  }, [messages, isStreaming, isSending, showGreeting, lastMsg?.text, lastMsg?.role]);
 
   // ── 虚拟滚动实例 ──
   const virtualizer = useVirtualizer({
@@ -143,16 +195,17 @@ export default function ChatScreen({
   // ── 搜索：匹配索引 Set（O(1) 查找，替代 includes(idx)） ──
   const matchSet = React.useMemo(() => new Set(searchMatchIndices), [searchMatchIndices]);
 
-  // ── 搜索：滚动到当前匹配消息（+1 因为 0 是 greeting）──
+  // ── 搜索：滚动到当前匹配消息 ──
   useEffect(() => {
     if (!showSearch || searchMatchIndices.length === 0) return;
     const msgIdx = searchMatchIndices[currentMatchIndex];
     if (msgIdx === undefined) return;
-    const virtualIndex = msgIdx + 1; // +1 for greeting at index 0
+    // greeting 仅在空会话时占 index 0
+    const virtualIndex = showGreeting ? msgIdx + 1 : msgIdx;
     if (virtualIndex < allItems.length) {
       virtualizer.scrollToIndex(virtualIndex, { align: 'center', behavior: 'smooth' });
     }
-  }, [currentMatchIndex, showSearch]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [currentMatchIndex, showSearch, showGreeting]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── 键盘快捷键：Ctrl+F 打开搜索 ──
   useEffect(() => {
@@ -247,19 +300,23 @@ export default function ChatScreen({
     setActiveMenuId(null);
   }, []);
 
-  // ── 消息操作：重新生成 ──
+  // ── 消息操作：重新生成（走专用 API，不污染历史）──
   const handleRegenerateMessage = useCallback((msgId: string) => {
+    setActiveMenuId(null);
+    if (onRegenerateMessage) {
+      onRegenerateMessage(character.id, msgId);
+      return;
+    }
+    // 降级：旧行为（不推荐）
     const idx = messages.findIndex(m => m.id === msgId);
-    if (idx <= 0) { setActiveMenuId(null); return; }
+    if (idx <= 0) return;
     for (let i = idx - 1; i >= 0; i--) {
       if (messages[i].role === 'user') {
-        setActiveMenuId(null);
         setTimeout(() => handleSend(undefined, messages[i].text), 50);
         return;
       }
     }
-    setActiveMenuId(null);
-  }, [messages]);
+  }, [messages, onRegenerateMessage, character.id]);
 
   // ── 消息操作：编辑 ──
   const handleStartEdit = useCallback((msgId: string, text: string) => {
@@ -358,7 +415,30 @@ export default function ChatScreen({
           </div>
         </button>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 relative">
+          {onNewChat && (
+            <button
+              onClick={() => {
+                if (messages.length > 0 && !window.confirm('开始新对话将清空当前会话记录，确定吗？')) return;
+                // 若有 alternate_greetings，随机选一个开场写入消息
+                const greets = [character.first_mes, ...(character.alternate_greetings || [])].filter(Boolean);
+                const idx = greets.length > 1 ? Math.floor(Math.random() * greets.length) : 0;
+                onNewChat(character.id, greets.length ? idx : undefined);
+              }}
+              className="p-1.5 rounded-full hover:bg-white/5 text-on-surface-variant/60 hover:text-accent-pink transition-colors"
+              title="新对话"
+              disabled={isStreaming || isSending}
+            >
+              <Plus className="w-3.5 h-3.5" />
+            </button>
+          )}
+          <button
+            onClick={() => setShowModelMenu((v) => !v)}
+            className="p-1.5 rounded-full hover:bg-white/5 text-on-surface-variant/60 hover:text-cyan-400 transition-colors"
+            title="切换模型"
+          >
+            <Cpu className="w-3.5 h-3.5" />
+          </button>
           <button
             onClick={() => { setShowSearch(true); setTimeout(() => searchInputRef.current?.focus(), 50); }}
             className="p-1.5 rounded-full hover:bg-white/5 text-on-surface-variant/60 hover:text-accent-pink transition-colors"
@@ -366,8 +446,37 @@ export default function ChatScreen({
           >
             <Search className="w-3.5 h-3.5" />
           </button>
-          <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-ping" />
-          <span className="text-[10px] font-mono font-bold text-green-400 tracking-widest">在线</span>
+          {showModelMenu && providers.length > 0 && (
+            <div className="absolute right-0 top-9 z-50 w-56 max-h-64 overflow-y-auto bg-[#1A1625] border border-outline-variant/40 rounded-xl shadow-2xl p-1.5">
+              {providers.map((p) => (
+                <button
+                  key={p.id}
+                  onClick={() => {
+                    setActiveProvider(p.id);
+                    saveChatSettings({ providerId: p.id });
+                    setShowModelMenu(false);
+                    track('select_provider', { provider_id: p.id });
+                  }}
+                  className={`w-full text-left px-2.5 py-2 rounded-lg text-[11px] transition-colors ${
+                    activeProvider === p.id
+                      ? 'bg-accent-pink/15 text-accent-pink'
+                      : 'text-on-surface-variant hover:bg-white/5 hover:text-white'
+                  }`}
+                >
+                  <div className="font-semibold truncate">{p.name}</div>
+                  <div className="text-[9px] opacity-70 truncate font-mono">
+                    {p.isLocal ? '本地 · ' : '云端 · '}{p.model || p.id}
+                  </div>
+                </button>
+              ))}
+              <button
+                onClick={() => onNavigate(ScreenId.SETTINGS)}
+                className="w-full text-left px-2.5 py-2 mt-1 rounded-lg text-[10px] text-on-surface-variant/70 hover:text-white border-t border-white/5"
+              >
+                更多生成设置 →
+              </button>
+            </div>
+          )}
         </div>
       </header>
 
@@ -511,12 +620,15 @@ export default function ChatScreen({
                     className="flex items-start gap-2.5"
                   >
                     <LazyImage alt={character.name} src={character.avatar} className="w-8 h-8 rounded-full object-cover border border-outline-variant/40" />
-                    <div className="bg-surface-container/60 border border-outline-variant/20 px-4 py-3 rounded-2xl rounded-tl-none">
+                    <div className="bg-surface-container/60 border border-outline-variant/20 px-4 py-3 rounded-2xl rounded-tl-none space-y-1.5">
                       <div className="flex gap-1">
                         <span className="w-1.5 h-1.5 rounded-full bg-accent-pink animate-bounce" style={{ animationDelay: '0ms' }} />
                         <span className="w-1.5 h-1.5 rounded-full bg-accent-pink animate-bounce" style={{ animationDelay: '150ms' }} />
                         <span className="w-1.5 h-1.5 rounded-full bg-accent-pink animate-bounce" style={{ animationDelay: '300ms' }} />
                       </div>
+                      {waitHint && (
+                        <p className="text-[10px] text-on-surface-variant/60 font-mono">{waitHint}</p>
+                      )}
                     </div>
                   </motion.div>
                 </div>
@@ -699,6 +811,19 @@ export default function ChatScreen({
                     </AnimatePresence>
                   </div>
                 </motion.div>
+                {/* 最新 AI 消息快捷重新生成 */}
+                {!isUser && idx === messages.length - 1 && !isStreaming && !isSending && onRegenerateMessage && (
+                  <div className="flex justify-start pl-10 mt-1">
+                    <button
+                      onClick={() => handleRegenerateMessage(msg.id)}
+                      className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] text-on-surface-variant/60 hover:text-amber-300 hover:bg-amber-400/10 border border-transparent hover:border-amber-400/20 transition-colors"
+                      title="重新生成"
+                    >
+                      <RefreshCw className="w-3 h-3" />
+                      重新生成
+                    </button>
+                  </div>
+                )}
               </div>
             );
           })}

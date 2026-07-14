@@ -18,7 +18,6 @@ interface DiscoverScreenProps {
 
 /** 估算每张角色卡片高度（含 gap） */
 const ESTIMATED_CARD_HEIGHT = 400;
-const DOUBLE_TAP_DELAY = 350;
 
 export default function DiscoverScreen({
   characters,
@@ -40,9 +39,6 @@ export default function DiscoverScreen({
   const isPulling = useRef(false);
   const PULL_THRESHOLD = 80;
   const MAX_PULL = 150;
-
-  // 双击检测：存储待处理的单击定时器
-  const doubleTapTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
   // Unique tags across characters (plus ALL)
   const allTags = useMemo(() => ['ALL', ...Array.from(new Set(characters.flatMap((c) => c.tags)))], [characters]);
@@ -102,42 +98,12 @@ export default function DiscoverScreen({
 
   const pullProgress = Math.min(pullDistance / PULL_THRESHOLD, 1);
 
-  // ─── 双击收藏（延时单击模式：单击立即导航，双击取消导航 + 收藏）───
+  // ─── 单击立即进详情（收藏用卡片上的心形按钮，不再用双击延迟阻塞主路径）───
   const handleCardClick = useCallback((characterId: string) => {
-    // 如果存在待处理的单击定时器 → 这是双击
-    if (doubleTapTimers.current[characterId]) {
-      clearTimeout(doubleTapTimers.current[characterId]);
-      delete doubleTapTimers.current[characterId];
-      toggleFavorite(characterId);
-      return;
-    }
-
-    // 首次点击 → 等待 DOUBLE_TAP_DELAY 后再导航
-    doubleTapTimers.current[characterId] = setTimeout(() => {
-      delete doubleTapTimers.current[characterId];
-      onSelectCharacter(characterId);
-      onNavigate(ScreenId.CHARACTER_DETAIL);
-    }, DOUBLE_TAP_DELAY);
-  }, [onSelectCharacter, onNavigate, toggleFavorite]);
-
-  // 清理定时器
-  const cleanupDoubleTapTimer = useCallback((characterId: string) => {
-    if (doubleTapTimers.current[characterId]) {
-      clearTimeout(doubleTapTimers.current[characterId]);
-      delete doubleTapTimers.current[characterId];
-    }
-  }, []);
-
-  // 当筛选结果变化时，清理不在当前列表中的 stale 定时器
-  const currentIds = useMemo(() => new Set(filteredCharacters.map(c => c.id)), [filteredCharacters]);
-  useEffect(() => {
-    Object.keys(doubleTapTimers.current).forEach((id) => {
-      if (!currentIds.has(id)) {
-        clearTimeout(doubleTapTimers.current[id]);
-        delete doubleTapTimers.current[id];
-      }
-    });
-  }, [currentIds]);
+    onSelectCharacter(characterId);
+    onNavigate(ScreenId.CHARACTER_DETAIL);
+    track('open_character', { character_id: characterId, source: 'discover' });
+  }, [onSelectCharacter, onNavigate]);
 
   // 搜索埋点（防抖 800ms）
   useEffect(() => {
@@ -308,8 +274,6 @@ export default function DiscoverScreen({
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          // 点击收藏按钮前清理可能的双击定时器
-                          cleanupDoubleTapTimer(c.id);
                           toggleFavorite(c.id);
                         }}
                         className="absolute top-3 right-3 p-2 rounded-full backdrop-blur-md bg-background-deep/60 border border-white/10 hover:border-accent-pink focus:outline-none transition-all cursor-pointer"
@@ -355,7 +319,6 @@ export default function DiscoverScreen({
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            cleanupDoubleTapTimer(c.id);
                             onSelectCharacter(c.id);
                             onNavigate(ScreenId.CHARACTER_DETAIL);
                           }}
@@ -367,7 +330,6 @@ export default function DiscoverScreen({
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            cleanupDoubleTapTimer(c.id);
                             onSelectCharacter(c.id);
                             onNavigate(ScreenId.CHAT);
                           }}

@@ -1,9 +1,23 @@
 import { useState, useEffect, useCallback } from 'react';
 import { ScreenId } from '../types';
 import { ChevronLeft, BookOpen, ChevronRight, Wifi, Check, X } from 'lucide-react';
+import {
+  loadChatSettings,
+  saveChatSettings,
+  type ChatSettings,
+  type ResponseLength,
+} from '../utils/chatSettings';
 
 interface SettingsScreenProps {
   onNavigate: (screen: ScreenId) => void;
+}
+
+interface ProviderItem {
+  id: string;
+  name: string;
+  model?: string;
+  isLocal?: boolean;
+  active?: boolean;
 }
 
 export default function SettingsScreen({ onNavigate }: SettingsScreenProps) {
@@ -11,16 +25,20 @@ export default function SettingsScreen({ onNavigate }: SettingsScreenProps) {
   const [ambientAudio, setAmbientAudio] = useState(false);
   const [renderQuality, setRenderQuality] = useState<'high' | 'medium' | 'low'>('high');
 
+  // 聊天生成设置
+  const [chatSettings, setChatSettings] = useState<ChatSettings>(() => loadChatSettings());
+  const [providers, setProviders] = useState<ProviderItem[]>([]);
+  const [serverActive, setServerActive] = useState<string | null>(null);
+
   // 连接测试状态
   const [testState, setTestState] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
   const [testError, setTestError] = useState('');
   const [testResult, setTestResult] = useState('');
 
-  // 从后端加载设置
   useEffect(() => {
-    fetch('/api/users/settings')
-      .then(res => res.json())
-      .then(data => {
+    fetch('/api/users/settings', { credentials: 'include' })
+      .then((res) => res.json())
+      .then((data) => {
         if (data?.settings) {
           if (data.settings.cloudBackup !== undefined) setSyncedCloud(data.settings.cloudBackup);
           if (data.settings.autoPlayAudio !== undefined) setAmbientAudio(data.settings.autoPlayAudio);
@@ -28,18 +46,41 @@ export default function SettingsScreen({ onNavigate }: SettingsScreenProps) {
         }
       })
       .catch(() => {});
+
+    fetch('/api/chat/providers', { credentials: 'include' })
+      .then((r) => r.json())
+      .then((data) => {
+        const list: ProviderItem[] = Array.isArray(data?.providers) ? data.providers : [];
+        setProviders(list);
+        setServerActive(data?.active ?? null);
+        // 无本地偏好且服务端默认是本地模型时，自动切到首个云端
+        const saved = loadChatSettings();
+        if (!saved.providerId) {
+          const serverDefault = list.find((p) => p.id === data?.active);
+          if (serverDefault?.isLocal) {
+            const cloud = list.find((p) => !p.isLocal);
+            if (cloud) {
+              setChatSettings(saveChatSettings({ providerId: cloud.id }));
+            }
+          }
+        }
+      })
+      .catch(() => {});
   }, []);
 
-  // 保存设置到后端
-  const saveSettings = (updates: Record<string, unknown>) => {
+  const saveServerSettings = (updates: Record<string, unknown>) => {
     fetch('/api/users/settings', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
       body: JSON.stringify({ settings: updates }),
     }).catch(() => {});
   };
 
-  // 连接测试
+  const updateChat = useCallback((partial: Partial<ChatSettings>) => {
+    setChatSettings(saveChatSettings(partial));
+  }, []);
+
   const testConnection = useCallback(async () => {
     setTestState('testing');
     setTestError('');
@@ -49,7 +90,10 @@ export default function SettingsScreen({ onNavigate }: SettingsScreenProps) {
       if (resp.ok) {
         const data = await resp.json();
         setTestState('success');
-        setTestResult(data?.providers?.length ? `已连接，${data.providers.length} 个模型可用` : '已连接');
+        const list = data?.providers || [];
+        setProviders(list);
+        setServerActive(data?.active ?? null);
+        setTestResult(list.length ? `已连接，${list.length} 个模型可用` : '已连接');
       } else {
         setTestState('error');
         setTestError(`服务器返回 ${resp.status}`);
@@ -60,13 +104,13 @@ export default function SettingsScreen({ onNavigate }: SettingsScreenProps) {
     }
   }, []);
 
+  const selectedProvider = chatSettings.providerId || serverActive;
+
   return (
     <div className="relative flex-1 overflow-y-auto bg-[#090A0F] text-[#E0E0E6] safe-content-bottom animate-subtle-fadeIn">
-      {/* Background neon style decoration */}
       <div className="absolute top-1/4 -left-10 w-48 h-48 bg-accent-pink opacity-5 blur-[100px] pointer-events-none" />
       <div className="absolute bottom-1/4 -right-10 w-48 h-48 bg-accent-purple opacity-5 blur-[100px] pointer-events-none" />
 
-      {/* Top Header matching xpath: //button[.//span[text()='chevron_left']] in screen specifications */}
       <header className="sticky top-0 z-40 bg-[#0F111A]/90 backdrop-blur-md px-6 h-16 flex items-center justify-between border-b border-white/5">
         <button
           onClick={() => onNavigate(ScreenId.PROFILE)}
@@ -87,16 +131,128 @@ export default function SettingsScreen({ onNavigate }: SettingsScreenProps) {
         <div className="w-10" />
       </header>
 
-      {/* Settings Options container */}
       <main className="max-w-xl mx-auto px-6 py-6 space-y-6 relative z-10 select-none">
-        
-        {/* Section 1 */}
+
+        {/* 模型与生成 — 影响聊天质量的核心设置 */}
+        <div className="space-y-4">
+          <h3 className="text-xs font-bold text-on-surface-variant uppercase tracking-widest font-mono">
+            模型与生成 (LLM)
+          </h3>
+
+          <div className="bg-surface-container/60 border border-outline-variant/20 p-4 rounded-xl space-y-3">
+            <div className="space-y-1">
+              <h4 className="text-xs font-semibold text-white">对话模型</h4>
+              <p className="text-[10px] text-on-surface-variant leading-relaxed">
+                本地模型可能较慢；优先选择云端以获得更快首字与更好回复。
+              </p>
+            </div>
+            <div className="space-y-1.5 max-h-52 overflow-y-auto">
+              {providers.length === 0 && (
+                <p className="text-[10px] text-on-surface-variant/60">暂无可用模型，请检查后端配置</p>
+              )}
+              {providers.map((p) => {
+                const isSelected = selectedProvider === p.id;
+                return (
+                  <button
+                    key={p.id}
+                    onClick={() => updateChat({ providerId: p.id })}
+                    className={`w-full text-left px-3 py-2.5 rounded-lg border transition-colors cursor-pointer ${
+                      isSelected
+                        ? 'border-accent-pink/50 bg-accent-pink/10'
+                        : 'border-outline-variant/20 bg-surface-elevated/40 hover:border-white/20'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className={`text-xs font-semibold ${isSelected ? 'text-accent-pink' : 'text-white'}`}>
+                        {p.name}
+                      </span>
+                      <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded ${
+                        p.isLocal ? 'bg-amber-500/15 text-amber-300' : 'bg-emerald-500/15 text-emerald-300'
+                      }`}>
+                        {p.isLocal ? '本地' : '云端'}
+                      </span>
+                    </div>
+                    <p className="text-[9px] text-on-surface-variant/70 font-mono mt-0.5 truncate">
+                      {p.model || p.id}
+                      {p.active || serverActive === p.id ? ' · 服务端默认' : ''}
+                    </p>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="bg-surface-container/60 border border-outline-variant/20 p-4 rounded-xl space-y-3">
+            <div className="space-y-1">
+              <h4 className="text-xs font-semibold text-white">回复长度</h4>
+              <p className="text-[10px] text-on-surface-variant leading-relaxed">
+                控制单次生成的大致篇幅（映射 max_tokens）。
+              </p>
+            </div>
+            <div className="grid grid-cols-3 gap-2 text-xs text-center font-mono font-bold">
+              {([
+                ['short', '短'],
+                ['medium', '中'],
+                ['long', '长'],
+              ] as [ResponseLength, string][]).map(([key, label]) => (
+                <button
+                  key={key}
+                  onClick={() => updateChat({ responseLength: key })}
+                  className={`py-2 px-3 rounded-lg border text-[10px] cursor-pointer transition-colors ${
+                    chatSettings.responseLength === key
+                      ? 'border-accent-pink text-accent-pink bg-accent-pink/5'
+                      : 'border-outline-variant/20 text-on-surface-variant bg-surface-elevated/40'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="bg-surface-container/60 border border-outline-variant/20 p-4 rounded-xl space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="space-y-1">
+                <h4 className="text-xs font-semibold text-white">温度 (Temperature)</h4>
+                <p className="text-[10px] text-on-surface-variant leading-relaxed">
+                  越高越发散，越低越稳。当前 {chatSettings.temperature.toFixed(1)}
+                </p>
+              </div>
+            </div>
+            <input
+              type="range"
+              min={0}
+              max={1.5}
+              step={0.1}
+              value={chatSettings.temperature}
+              onChange={(e) => updateChat({ temperature: Number(e.target.value) })}
+              className="w-full accent-pink-400"
+            />
+          </div>
+
+          <div className="bg-surface-container/60 border border-outline-variant/20 p-4 rounded-xl space-y-2">
+            <div className="space-y-1">
+              <h4 className="text-xs font-semibold text-white">你的称呼 ({'{{user}}'})</h4>
+              <p className="text-[10px] text-on-surface-variant leading-relaxed">
+                角色卡中的 {'{{user}}'} 会替换为该名称。
+              </p>
+            </div>
+            <input
+              type="text"
+              value={chatSettings.userName}
+              onChange={(e) => updateChat({ userName: e.target.value })}
+              placeholder="默认使用登录名或「你」"
+              className="w-full bg-surface-elevated/60 border border-outline-variant/30 rounded-lg px-3 py-2 text-xs text-white placeholder:text-on-surface-variant/40 outline-none focus:border-accent-pink/50"
+            />
+          </div>
+        </div>
+
+        {/* 会话偏好 */}
         <div className="space-y-4">
           <h3 className="text-xs font-bold text-on-surface-variant uppercase tracking-widest font-mono">
             会话偏好配置 (DIALOGS SEEDS)
           </h3>
 
-          {/* Setting Cell 1: Sync to cloud */}
           <div className="bg-surface-container/60 border border-outline-variant/20 p-4 rounded-xl flex items-center justify-between">
             <div className="space-y-1">
               <h4 className="text-xs font-semibold text-white">云端神经元备份</h4>
@@ -105,7 +261,7 @@ export default function SettingsScreen({ onNavigate }: SettingsScreenProps) {
               </p>
             </div>
             <button
-              onClick={() => { const next = !syncedCloud; setSyncedCloud(next); saveSettings({ cloudBackup: next }); }}
+              onClick={() => { const next = !syncedCloud; setSyncedCloud(next); saveServerSettings({ cloudBackup: next }); }}
               className={`w-11 h-6 rounded-full relative transition-colors ${
                 syncedCloud ? 'bg-accent-pink' : 'bg-gray-700'
               } cursor-pointer`}
@@ -118,7 +274,6 @@ export default function SettingsScreen({ onNavigate }: SettingsScreenProps) {
             </button>
           </div>
 
-          {/* Setting Cell 2: Audio playback defaults */}
           <div className="bg-surface-container/60 border border-outline-variant/20 p-4 rounded-xl flex items-center justify-between">
             <div className="space-y-1">
               <h4 className="text-xs font-semibold text-white">进站自动播放朗读机制</h4>
@@ -127,7 +282,7 @@ export default function SettingsScreen({ onNavigate }: SettingsScreenProps) {
               </p>
             </div>
             <button
-              onClick={() => { const next = !ambientAudio; setAmbientAudio(next); saveSettings({ autoPlayAudio: next }); }}
+              onClick={() => { const next = !ambientAudio; setAmbientAudio(next); saveServerSettings({ autoPlayAudio: next }); }}
               className={`w-11 h-6 rounded-full relative transition-colors ${
                 ambientAudio ? 'bg-accent-pink' : 'bg-gray-700'
               } cursor-pointer`}
@@ -141,7 +296,6 @@ export default function SettingsScreen({ onNavigate }: SettingsScreenProps) {
           </div>
         </div>
 
-        {/* Section 2 */}
         <div className="space-y-4">
           <h3 className="text-xs font-bold text-on-surface-variant uppercase tracking-widest font-mono">
             系统级参数 (CORE ENVIRONMENT)
@@ -159,7 +313,7 @@ export default function SettingsScreen({ onNavigate }: SettingsScreenProps) {
               {['high', 'medium', 'low'].map((q) => (
                 <button
                   key={q}
-                  onClick={() => { setRenderQuality(q as any); saveSettings({ renderQuality: q }); }}
+                  onClick={() => { setRenderQuality(q as 'high' | 'medium' | 'low'); saveServerSettings({ renderQuality: q }); }}
                   className={`py-2 px-3 rounded-lg border text-[10px] whitespace-nowrap cursor-pointer transition-colors ${
                     renderQuality === q
                       ? 'border-accent-pink text-accent-pink bg-accent-pink/5'
@@ -173,7 +327,6 @@ export default function SettingsScreen({ onNavigate }: SettingsScreenProps) {
           </div>
         </div>
 
-        {/* 世界书管理 */}
         <div className="space-y-4">
           <h3 className="text-xs font-bold text-on-surface-variant uppercase tracking-widest font-mono">
             世界书管理 (WORLDBOOK)
@@ -197,7 +350,6 @@ export default function SettingsScreen({ onNavigate }: SettingsScreenProps) {
           </button>
         </div>
 
-        {/* 连接测试 */}
         <div className="space-y-4">
           <h3 className="text-xs font-bold text-on-surface-variant uppercase tracking-widest font-mono">
             后端连接 (BACKEND LINK)
@@ -232,7 +384,6 @@ export default function SettingsScreen({ onNavigate }: SettingsScreenProps) {
           </div>
         </div>
 
-        {/* Clean details banner */}
         <div className="bg-surface-elevated/30 border border-outline-variant/10 p-4 rounded-xl space-y-2 text-[10px] text-on-surface-variant leading-relaxed text-center font-mono">
           <p>柚姬AI 部署单元: 霓虹客户端 V2.0</p>
           <p>授权入口: 正常-2099</p>

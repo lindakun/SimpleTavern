@@ -20,6 +20,13 @@ interface SendMessageParams {
   alternate_greetings?: string[];
   // 兼容旧字段
   worldBook?: string;
+  character_book?: unknown;
+  provider?: string;
+  userName?: string;
+  includeFirstMes?: boolean;
+  temperature?: number;
+  responseLength?: string | number;
+  max_tokens?: number;
 }
 
 interface SendMessageResponse {
@@ -28,7 +35,7 @@ interface SendMessageResponse {
 }
 
 interface ProvidersResponse {
-  providers: Array<{ id: string; name: string; model?: string }>;
+  providers: Array<{ id: string; name: string; model?: string; isLocal?: boolean; active?: boolean }>;
   active: string | null;
 }
 

@@ -27,6 +27,8 @@ export type AnalyticsEventType =
   | 'view_character_detail'
   | 'submit_review'
   | 'copy_character'
+  | 'open_character'
+  | 'select_provider'
   | 'web_vital';
 
 export interface AnalyticsEvent {
