@@ -79,7 +79,7 @@ export default function ChatScreen({
       return;
     }
     const t1 = setTimeout(() => setWaitHint('模型思考中…'), 3000);
-    const t2 = setTimeout(() => setWaitHint('首字较慢，可在设置中切换更快模型'), 12000);
+    const t2 = setTimeout(() => setWaitHint('首字较慢：若选了「本地」模型，建议切换到「推荐·云端」'), 10000);
     return () => {
       clearTimeout(t1);
       clearTimeout(t2);
@@ -96,9 +96,10 @@ export default function ChatScreen({
       .then((data) => {
         const list: Array<{ id: string; name: string; model?: string; isLocal?: boolean }> =
           Array.isArray(data?.providers) ? data.providers : [];
+        // 云端排前，便于发现「推荐」模型
+        list.sort((a, b) => Number(a.isLocal) - Number(b.isLocal));
         setProviders(list);
-        // 无用户偏好时跟随服务端 active，不自动强切云端
-        // （生产 Docker 可能无法出网，云端模型会直接 fetch failed）
+        // 无用户偏好时跟随服务端 active（默认可为本地 llm_4）
         if (!loadChatSettings().providerId && data?.active) {
           setActiveProvider(data.active);
         }
@@ -457,7 +458,7 @@ export default function ChatScreen({
                 >
                   <div className="font-semibold truncate">{p.name}</div>
                   <div className="text-[9px] opacity-70 truncate font-mono">
-                    {p.isLocal ? '本地 · ' : '云端 · '}{p.model || p.id}
+                    {p.isLocal ? '较慢·本地 · ' : '推荐·云端 · '}{p.model || p.id}
                   </div>
                 </button>
               ))}

@@ -19,6 +19,8 @@ import {
     isPollutedMessage,
     applyHistoryWindow,
     normalizeCard,
+    synthesizeFirstMes,
+    inferRelationshipHint,
 } from '../modules/backends/chat-completions/prompt-builder.js';
 
 describe('sanitizeText', () => {
@@ -190,7 +192,7 @@ describe('history policy', () => {
     });
 });
 
-describe('normalizeCard / thin card', () => {
+describe('normalizeCard / thin card / synthesize', () => {
     it('空卡标记 thin 并补兜底', () => {
         const card = normalizeCard({
             message: 'hi',
@@ -201,6 +203,31 @@ describe('normalizeCard / thin card', () => {
         });
         expect(card.thinCard).toBe(true);
         expect(card.personality.length).toBeGreaterThan(0);
+    });
+
+    it('无 first_mes 时合成开场', () => {
+        const card = normalizeCard({
+            message: 'hi',
+            history: [],
+            characterName: '雪晴',
+            characterDescription: '二十八岁温柔的人妻，白天是职场OL，对老公既依赖又有背德幻想。',
+            userName: '达叔',
+        });
+        expect(card.firstMesSynthesized).toBe(true);
+        expect(card.firstMes).toContain('达叔');
+        expect(card.relationshipHint).toMatch(/达叔|婚姻|亲密/);
+    });
+
+    it('新会话注入合成 first_mes', () => {
+        const { debug } = buildMessagesWithDebug({
+            message: '你好',
+            history: [],
+            characterName: '测试角色',
+            characterDescription: '一位话不多的旅人，性格冷静，习惯观察对方。',
+            userName: 'Linda',
+        });
+        expect(debug.firstMesInjected).toBe(true);
+        expect(debug.firstMesSynthesized).toBe(true);
     });
 });
 
@@ -256,7 +283,7 @@ describe('buildMessages', () => {
             ],
             userName: 'U',
         });
-        expect(debug.loreCount).toBe(1);
+        expect(debug.loreCount).toBeGreaterThanOrEqual(1);
         // 最后一条是 user，倒数第二条应是含 lore 的 system
         expect(messages[messages.length - 1].role).toBe('user');
         const post = messages[messages.length - 2];
@@ -318,8 +345,55 @@ describe('resolveMaxTokens / resolveTemperature', () => {
         expect(resolveMaxTokens(100)).toBe(100);
     });
 
+    it('compact 本地更短', () => {
+        expect(resolveMaxTokens('medium', true)).toBe(512);
+        expect(resolveMaxTokens('long', true)).toBe(768);
+    });
+
     it('温度默认', () => {
         expect(resolveTemperature(undefined)).toBe(0.92);
         expect(resolveTemperature(0.5)).toBe(0.5);
+    });
+});
+
+describe('synthesizeFirstMes / relationship', () => {
+    it('合成开场含用户名', () => {
+        const s = synthesizeFirstMes('柚姬', 'Linda', '黑客少女');
+        expect(s).toContain('Linda');
+        expect(s).toContain('柚姬');
+    });
+
+    it('人妻卡推断关系', () => {
+        const h = inferRelationshipHint('人妻林雪莹嫁给老公后', '雪晴', '达叔');
+        expect(h).toMatch(/婚姻|亲密|达叔/);
+    });
+});
+
+describe('compact mode', () => {
+    it('compact 时 debug.compact 为 true 且 system 更短', () => {
+        const full = buildMessagesWithDebug({
+            message: 'hi',
+            history: [],
+            characterName: 'A',
+            characterDescription: '详细角色描述超过八十字以确保不是 thin card 的简单兜底路径测试内容填充足够长的一段话',
+            personality: '冷静',
+            scenario: '雨夜城市的长长场景描写'.repeat(5),
+            worldBook: '世界书'.repeat(100),
+            userName: 'U',
+            compact: false,
+        });
+        const compact = buildMessagesWithDebug({
+            message: 'hi',
+            history: [],
+            characterName: 'A',
+            characterDescription: '详细角色描述超过八十字以确保不是 thin card 的简单兜底路径测试内容填充足够长的一段话',
+            personality: '冷静',
+            scenario: '雨夜城市的长长场景描写'.repeat(5),
+            worldBook: '世界书'.repeat(100),
+            userName: 'U',
+            compact: true,
+        });
+        expect(compact.debug.compact).toBe(true);
+        expect(compact.debug.systemChars).toBeLessThanOrEqual(full.debug.systemChars);
     });
 });

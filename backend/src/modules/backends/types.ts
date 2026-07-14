@@ -36,6 +36,7 @@ export interface ChatRequest {
     alternate_greetings?: string[];
     // 兼容旧字段
     worldBook?: string;
+    tagline?: string;
     /** 角色内嵌世界书 / 已解析 lore 条目 */
     character_book?: unknown;
     loreEntries?: LoreEntryInput[];

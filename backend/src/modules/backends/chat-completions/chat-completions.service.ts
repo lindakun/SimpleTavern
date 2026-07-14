@@ -72,6 +72,10 @@ function collectLoreEntries(req: ChatRequest): LoreEntry[] {
     return [...fromBook, ...fromExplicit, ...fromWorldFile];
 }
 
+function isLocalConfig(config: LlmConfig): boolean {
+    return /localhost|127\.0\.0\.1|host\.docker\.internal|:11434|:8081|:8080/.test(config.baseUrl);
+}
+
 function resolveProvider(req: ChatRequest): LlmConfig | undefined {
     const configs = getLlmConfigs();
     if (req.provider) {
@@ -86,7 +90,7 @@ export interface BuiltPrompt {
     debug: PromptDebugInfo;
 }
 
-export function buildPromptMessages(req: ChatRequest): BuiltPrompt {
+export function buildPromptMessages(req: ChatRequest, opts?: { compact?: boolean }): BuiltPrompt {
     const loreEntries = collectLoreEntries(req);
     const { messages, debug } = buildMessagesWithDebug({
         message: req.message,
@@ -100,27 +104,37 @@ export function buildPromptMessages(req: ChatRequest): BuiltPrompt {
         system_prompt: req.system_prompt,
         post_history_instructions: req.post_history_instructions,
         worldBook: req.worldBook,
+        tagline: req.tagline,
         loreEntries,
         userName: req.userName,
         includeFirstMes: req.includeFirstMes,
+        compact: opts?.compact,
     });
 
     logger.info(formatPromptDebugLog(debug));
     if (debug.thinCard) {
         logger.warn(`角色卡信息偏少: ${debug.charName}，已启用兜底人设`);
     }
+    if (debug.firstMesSynthesized) {
+        logger.info(`已为 ${debug.charName} 合成开场 first_mes`);
+    }
     return { messages, debug };
 }
 
-function resolveGenOpts(req: ChatRequest) {
+function resolveGenOpts(req: ChatRequest, compact = false) {
     const max_tokens = req.max_tokens
-        ? resolveMaxTokens(req.max_tokens)
-        : resolveMaxTokens(req.responseLength);
+        ? resolveMaxTokens(req.max_tokens, compact)
+        : resolveMaxTokens(req.responseLength, compact);
     return {
         max_tokens,
         temperature: resolveTemperature(req.temperature),
-        frequency_penalty: resolveFrequencyPenalty(req.frequency_penalty),
-        presence_penalty: resolvePresencePenalty(req.presence_penalty),
+        // 本地模型略降 penalty，减少怪异收敛
+        frequency_penalty: resolveFrequencyPenalty(
+            req.frequency_penalty ?? (compact ? 0.15 : undefined),
+        ),
+        presence_penalty: resolvePresencePenalty(
+            req.presence_penalty ?? (compact ? 0.1 : undefined),
+        ),
     };
 }
 
@@ -245,19 +259,22 @@ export async function processChatStream(req: ChatRequest): Promise<{
     debug: PromptDebugInfo;
     provider: string;
     model: string;
+    isLocal: boolean;
 }> {
     const activeConfig = resolveProvider(req);
     if (!activeConfig) {
         throw new Error('未配置 LLM，无法使用流式聊天');
     }
 
-    const { messages, debug } = buildPromptMessages(req);
-    const stream = await callLlmApiStream(activeConfig, messages, resolveGenOpts(req));
+    const compact = isLocalConfig(activeConfig);
+    const { messages, debug } = buildPromptMessages(req, { compact });
+    const stream = await callLlmApiStream(activeConfig, messages, resolveGenOpts(req, compact));
     return {
         stream,
         debug,
         provider: activeConfig.id,
         model: activeConfig.model,
+        isLocal: compact,
     };
 }
 
@@ -273,10 +290,11 @@ export async function processChat(req: ChatRequest): Promise<ChatResponse> {
         };
     }
 
-    const { messages, debug } = buildPromptMessages(req);
+    const compact = isLocalConfig(activeConfig);
+    const { messages, debug } = buildPromptMessages(req, { compact });
 
     try {
-        const reply = await callLlmApi(activeConfig, messages, resolveGenOpts(req));
+        const reply = await callLlmApi(activeConfig, messages, resolveGenOpts(req, compact));
         const result: ChatResponse = {
             text: reply || '……（未收到回复）',
             provider: activeConfig.id,
@@ -294,7 +312,9 @@ export async function processChat(req: ChatRequest): Promise<ChatResponse> {
  * 仅构建 prompt（调试用，不调用 LLM）
  */
 export function debugBuildPrompt(req: ChatRequest): { messages: ChatMessage[]; debug: PromptDebugInfo } {
-    return buildPromptMessages(req);
+    const activeConfig = resolveProvider(req);
+    const compact = activeConfig ? isLocalConfig(activeConfig) : false;
+    return buildPromptMessages(req, { compact });
 }
 
 export function getProviders() {

@@ -18,6 +18,7 @@ function extractChatRequest(body: any): ChatRequest {
         post_history_instructions: body.post_history_instructions,
         alternate_greetings: body.alternate_greetings,
         worldBook: body.worldBook,
+        tagline: body.tagline,
         character_book: body.character_book,
         loreEntries: body.loreEntries,
         provider: body.provider,
@@ -50,15 +51,18 @@ export async function chatStream(req: Request, res: Response, _next: NextFunctio
         res.setHeader('X-Accel-Buffering', 'no');
         res.flushHeaders();
 
-        const { stream: llmStream, debug, provider, model } = await chatService.processChatStream(chatReq);
+        const { stream: llmStream, debug, provider, model, isLocal } =
+            await chatService.processChatStream(chatReq);
 
         // 首包附带 meta，便于前端/调试（不破坏只读 text 的旧客户端：忽略未知字段即可）
         res.write(`data: ${JSON.stringify({
             meta: {
                 provider,
                 model,
+                isLocal,
                 prompt: {
                     thinCard: debug.thinCard,
+                    compact: debug.compact,
                     roleSequence: debug.roleSequence,
                     totalMessages: debug.totalMessages,
                     historyIn: debug.historyIn,
@@ -66,6 +70,7 @@ export async function chatStream(req: Request, res: Response, _next: NextFunctio
                     summarized: debug.summarized,
                     loreCount: debug.loreCount,
                     firstMesInjected: debug.firstMesInjected,
+                    firstMesSynthesized: debug.firstMesSynthesized,
                     systemChars: debug.systemChars,
                 },
             },

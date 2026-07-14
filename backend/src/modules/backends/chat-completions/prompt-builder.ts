@@ -37,6 +37,8 @@ export interface PromptBuildRequest {
     system_prompt?: string;
     post_history_instructions?: string;
     worldBook?: string;
+    /** 可选 tagline，用于合成开场 */
+    tagline?: string;
     loreEntries?: LoreEntry[];
     userName?: string;
     /** 显式控制；默认仅在 history 为空时注入 first_mes */
@@ -48,6 +50,10 @@ export interface PromptBuildRequest {
     summarizeAfterMessages?: number;
     /** 摘要后保留的近期原文条数 */
     keepRecentMessages?: number;
+    /**
+     * 紧凑模式（本地小模型）：缩短 system、略减 max 相关文案，降低延迟与跑偏
+     */
+    compact?: boolean;
 }
 
 export interface PromptBuildResult {
@@ -60,6 +66,7 @@ export interface PromptDebugInfo {
     userName: string;
     thinCard: boolean;
     firstMesInjected: boolean;
+    firstMesSynthesized: boolean;
     exampleInSystem: boolean;
     loreCount: number;
     loreChars: number;
@@ -71,6 +78,7 @@ export interface PromptDebugInfo {
     systemChars: number;
     totalMessages: number;
     roleSequence: string;
+    compact: boolean;
     slots: {
         system: number;
         postSystem: number;
@@ -396,7 +404,7 @@ export function applyHistoryWindow(
 }
 
 // ─────────────────────────────────────────────
-// Card normalizer
+// Card normalizer + synthetic first_mes
 // ─────────────────────────────────────────────
 
 export interface NormalizedCard {
@@ -410,6 +418,82 @@ export interface NormalizedCard {
     mesExample: string;
     postHistory: string;
     thinCard: boolean;
+    firstMesSynthesized: boolean;
+    relationshipHint: string;
+    /** 从简介抽的常驻设定（导入空卡补强） */
+    inferredLore: string[];
+}
+
+/**
+ * 无 first_mes 时合成开场，避免冷启动
+ */
+export function synthesizeFirstMes(
+    charName: string,
+    userName: string,
+    description: string,
+    tagline?: string,
+): string {
+    const hookSrc = (description || tagline || '').replace(/\s+/g, ' ').trim();
+    const hook = hookSrc.length > 60 ? hookSrc.slice(0, 60) + '…' : hookSrc;
+    if (hook) {
+        return (
+            `（${charName}注意到了${userName}）\n\n` +
+            `……${hook}\n\n` +
+            `「……是你啊，${userName}。有话就说。」`
+        );
+    }
+    return `「……${userName}？找我有事？」`;
+}
+
+/**
+ * 从简介推断关系 / 人称约束
+ */
+export function inferRelationshipHint(
+    description: string,
+    charName: string,
+    userName: string,
+): string {
+    const d = description || '';
+    const lines: string[] = [
+        `对话对象固定为「${userName}」。称呼用户时只用「${userName}」或卡中已定义的爱称，禁止擅自改名、起外号替换本名。`,
+        `保持第二人称互动视角：你对${userName}说话，不要突然改成旁白讲「他/她（指用户）」的第三人称故事。`,
+    ];
+    if (/老公|丈夫|人妻|妻子|老婆|配偶|结婚/.test(d)) {
+        lines.push(
+            `${userName} 与 ${charName} 在设定中存在亲密/婚姻关系；互动需符合该关系，不要把用户写成无关路人。`,
+        );
+    } else if (/兄|弟|姐|妹|青梅|竹马/.test(d)) {
+        lines.push(`注意亲缘/青梅竹马等关系设定，称呼与态度前后一致。`);
+    } else if (/主奴|奴隶|主人|调教/.test(d)) {
+        lines.push(`注意权力关系设定，称呼与态度与卡一致。`);
+    } else {
+        lines.push(
+            `若卡未写明关系，默认${userName}是与${charName}相识不深的对话者，信任需通过互动建立。`,
+        );
+    }
+    return lines.join('\n');
+}
+
+/**
+ * 空卡：从 description 抽 1–2 条常驻 lore
+ */
+export function inferLoreFromDescription(description: string, maxItems = 2): string[] {
+    const text = (description || '').trim();
+    if (!text) return [];
+    // 按句号/叹号/分号切
+    const parts = text
+        .split(/[。！？；\n]+/)
+        .map((s) => s.trim())
+        .filter((s) => s.length >= 8);
+    const out: string[] = [];
+    for (const p of parts) {
+        if (out.length >= maxItems) break;
+        out.push(p.length > 120 ? p.slice(0, 120) + '…' : p);
+    }
+    if (out.length === 0 && text.length >= 8) {
+        out.push(text.length > 120 ? text.slice(0, 120) + '…' : text);
+    }
+    return out;
 }
 
 export function normalizeCard(req: PromptBuildRequest): NormalizedCard {
@@ -421,24 +505,43 @@ export function normalizeCard(req: PromptBuildRequest): NormalizedCard {
     let personality = macro(req.personality || '');
     let scenario = macro(req.scenario || '');
     const systemPrompt = macro(req.system_prompt || '');
-    const firstMes = macro(req.first_mes || '');
-    const mesExample = req.mes_example || '';
+    let firstMes = macro(req.first_mes || '');
+    let mesExample = req.mes_example || '';
     const postHistory = macro(req.post_history_instructions || '');
+    const tagline = macro(req.tagline || '');
 
     const coreLen = description.length + personality.length + scenario.length + systemPrompt.length;
-    const thinCard = coreLen < 80;
+    // 缺开场或缺示例也视为偏瘦（质量风险）
+    const missingStructural = !firstMes.trim() || !mesExample.trim();
+    const thinCard = coreLen < 80 || (coreLen < 160 && missingStructural);
+
+    let firstMesSynthesized = false;
+    if (!firstMes.trim()) {
+        firstMes = synthesizeFirstMes(charName, userName, description || tagline, tagline);
+        firstMesSynthesized = true;
+    }
+
+    const relationshipHint = inferRelationshipHint(description + ' ' + personality, charName, userName);
+    const inferredLore = thinCard || !mesExample.trim()
+        ? inferLoreFromDescription(description)
+        : [];
 
     if (thinCard) {
         const bits: string[] = [];
         if (description) bits.push(description);
-        if (firstMes) bits.push(`开场气质参考：${firstMes.slice(0, 200)}`);
+        if (tagline && !description.includes(tagline)) bits.push(tagline);
         if (!bits.length) {
             bits.push(`${charName} 是对话中的角色。请根据名字与上下文自行保持一致、有魅力的人格，避免出戏。`);
         }
         description = bits.join('\n');
         if (!personality) {
-            personality = '语气自然、有个性；对白优先，动作适度；不要机械复读。';
+            personality = '语气自然、有个性；对白优先，动作适度；不要机械复读；情绪前后一致。';
         }
+    }
+
+    // 无 mes_example 时用极短伪示例钉住格式（仅 thin 或完全缺失时）
+    if (!mesExample.trim() && thinCard) {
+        mesExample = `<START>\n{{user}}: ……\n{{char}}: （看向{{user}}）……有话就说。\n`;
     }
 
     return {
@@ -452,6 +555,9 @@ export function normalizeCard(req: PromptBuildRequest): NormalizedCard {
         mesExample,
         postHistory,
         thinCard,
+        firstMesSynthesized,
+        relationshipHint,
+        inferredLore,
     };
 }
 
@@ -459,7 +565,12 @@ export function normalizeCard(req: PromptBuildRequest): NormalizedCard {
 // System template
 // ─────────────────────────────────────────────
 
-function buildMainSystem(card: NormalizedCard, exampleBlock: string, worldStatic: string): string {
+function buildMainSystem(
+    card: NormalizedCard,
+    exampleBlock: string,
+    worldStatic: string,
+    compact: boolean,
+): string {
     const parts: string[] = [];
 
     if (card.systemPrompt.trim()) {
@@ -473,40 +584,68 @@ function buildMainSystem(card: NormalizedCard, exampleBlock: string, worldStatic
     parts.push('');
     parts.push('## 角色设定');
     if (card.description) {
-        parts.push(`### 简介\n${card.description}`);
+        const desc = compact && card.description.length > 280
+            ? card.description.slice(0, 280) + '…'
+            : card.description;
+        parts.push(`### 简介\n${desc}`);
     }
     if (card.personality) {
         parts.push(`### 性格\n${card.personality}`);
     }
-    if (card.scenario) {
+    if (card.scenario && !compact) {
         parts.push(`### 场景\n${card.scenario}`);
+    } else if (card.scenario && compact) {
+        parts.push(`### 场景\n${card.scenario.slice(0, 160)}${card.scenario.length > 160 ? '…' : ''}`);
     }
 
     if (worldStatic.trim()) {
-        parts.push(`### 世界设定\n${worldStatic.trim()}`);
+        const w = compact && worldStatic.length > 400
+            ? worldStatic.slice(0, 400) + '…'
+            : worldStatic.trim();
+        parts.push(`### 世界设定\n${w}`);
     }
 
+    parts.push('## 人称与关系（必须遵守）');
+    parts.push(card.relationshipHint);
+
     if (exampleBlock.trim()) {
+        const ex = compact && exampleBlock.length > 500
+            ? exampleBlock.slice(0, 500) + '…'
+            : exampleBlock.trim();
         parts.push('## 文风示例（仅学习语气与格式，不是已经发生的剧情）');
-        parts.push(exampleBlock.trim());
+        parts.push(ex);
     }
 
     parts.push('## 输出要求');
-    parts.push(
-        [
-            `1. 始终保持「${card.charName}」的身份与性格，禁止出戏解释「我是AI」。`,
-            '2. 默认使用中文；角色设定另有要求时从其设定。',
-            '3. 对白自然；动作/神态/心理可用（）或 *...*，与角色卡风格一致时优先跟卡。',
-            '4. 主动推进情境与情绪，避免无信息复读上一句。',
-            '5. 篇幅：通常 80–350 字；冲突/告白/关键剧情可更长。不要无故只回几个字，也不要无意义注水。',
-            `6. 用「${card.userName}」指代对话中的用户（若文中出现该称呼）。`,
-            '7. 不要编造与上方设定明显冲突的世界观事实。',
-        ].join('\n'),
-    );
+    if (compact) {
+        // 本地小模型：更短、更硬的约束
+        parts.push(
+            [
+                `1. 你是「${card.charName}」，禁止说自己是 AI。`,
+                '2. 使用中文。每轮包含：简短动作/神态 + 至少 1–2 句对白。',
+                '3. 篇幅约 60–200 字，推进对话，不要复读。',
+                `4. 称呼用户为「${card.userName}」，不要改名，不要用错误的第三人称指用户。`,
+                '5. 设定矛盾时以角色简介为准。',
+            ].join('\n'),
+        );
+    } else {
+        parts.push(
+            [
+                `1. 始终保持「${card.charName}」的身份与性格，禁止出戏解释「我是AI」。`,
+                '2. 默认使用中文；角色设定另有要求时从其设定。',
+                '3. 对白自然；动作/神态/心理可用（）或 *...*，与角色卡风格一致时优先跟卡。',
+                '4. 主动推进情境与情绪，避免无信息复读上一句。',
+                '5. 篇幅：通常 80–350 字；冲突/告白/关键剧情可更长。不要无故只回几个字，也不要无意义注水。',
+                `6. 称呼用户固定为「${card.userName}」；不要擅自改名；不要把用户写成无关的「他/她」旁观叙事。`,
+                '7. 本轮至少包含：环境或动作描写 1 句 + 对白 2 句以上（极简寒暄除外）。',
+                '8. 不要编造与上方设定明显冲突的世界观事实。',
+            ].join('\n'),
+        );
+    }
 
     if (card.thinCard) {
         parts.push('');
-        parts.push('（提示：角色卡信息较少，请自行补足一致的细节，但不要前后矛盾。）');
+        parts.push('（提示：角色卡信息较少，请自行补足一致的细节，但不要前后矛盾，不要引入无关角色名。）');
     }
 
     return parts.join('\n');
@@ -521,13 +660,14 @@ function buildMainSystem(card: NormalizedCard, exampleBlock: string, worldStatic
  */
 export function buildMessagesWithDebug(req: PromptBuildRequest): PromptBuildResult {
     const card = normalizeCard(req);
+    const compact = Boolean(req.compact);
     const macro = (t: string) => applyMacros(t || '', card.charName, card.userName);
 
-    // 历史窗口
+    // 历史窗口（本地模型更狠地截断）
     const histWin = applyHistoryWindow(req.history || [], {
-        maxHistoryMessages: req.maxHistoryMessages,
-        summarizeAfterMessages: req.summarizeAfterMessages,
-        keepRecentMessages: req.keepRecentMessages,
+        maxHistoryMessages: req.maxHistoryMessages ?? (compact ? 20 : 40),
+        summarizeAfterMessages: req.summarizeAfterMessages ?? (compact ? 12 : 18),
+        keepRecentMessages: req.keepRecentMessages ?? (compact ? 8 : 12),
         charName: card.charName,
         userName: card.userName,
     });
@@ -540,13 +680,20 @@ export function buildMessagesWithDebug(req: PromptBuildRequest): PromptBuildResu
         card.description,
     ].join('\n');
 
-    const loreBudget = req.loreBudgetChars ?? 2500;
-    const loreSnippets = selectLoreEntries(
-        req.loreEntries || [],
-        scanText,
-        12,
-        loreBudget,
-    );
+    // 合并：显式 lore + 空卡推断 constant lore
+    const mergedLore: LoreEntry[] = [
+        ...(req.loreEntries || []),
+        ...card.inferredLore.map((content, i) => ({
+            keys: [] as string[],
+            content,
+            constant: true,
+            enabled: true,
+            insertion_order: -100 + i,
+        })),
+    ];
+
+    const loreBudget = req.loreBudgetChars ?? (compact ? 1200 : 2500);
+    const loreSnippets = selectLoreEntries(mergedLore, scanText, compact ? 6 : 12, loreBudget);
     const loreChars = loreSnippets.reduce((n, s) => n + s.length, 0);
 
     // 静态 worldBook 正文（长文本）
@@ -555,8 +702,13 @@ export function buildMessagesWithDebug(req: PromptBuildRequest): PromptBuildResu
         worldStatic = macro(req.worldBook);
     }
 
-    const exampleBlock = formatExampleForSystem(card.mesExample, card.charName, card.userName);
-    const mainSystem = buildMainSystem(card, exampleBlock, worldStatic);
+    const exampleBlock = formatExampleForSystem(
+        card.mesExample,
+        card.charName,
+        card.userName,
+        compact ? 500 : 1200,
+    );
+    const mainSystem = buildMainSystem(card, exampleBlock, worldStatic, compact);
 
     const messages: ChatMessage[] = [];
 
@@ -567,7 +719,7 @@ export function buildMessagesWithDebug(req: PromptBuildRequest): PromptBuildResu
         messages.push({ role: 'system', content: sanitizeText(histWin.summary) });
     }
 
-    // first_mes：仅新会话（历史清洗后为空）或显式要求
+    // first_mes：仅新会话；卡无开场时用合成开场
     const historyEmpty = histWin.history.length === 0 && !histWin.summarized;
     const wantFirstMes = req.includeFirstMes === true
         || (req.includeFirstMes !== false && historyEmpty);
@@ -588,7 +740,7 @@ export function buildMessagesWithDebug(req: PromptBuildRequest): PromptBuildResu
         });
     }
 
-    // 贴近生成点的指令：本轮 lore + post_history
+    // 贴近生成点的指令：本轮 lore + post_history + 人称再钉一次
     const postParts: string[] = [];
     if (loreSnippets.length > 0) {
         postParts.push(
@@ -599,6 +751,9 @@ export function buildMessagesWithDebug(req: PromptBuildRequest): PromptBuildResu
     if (card.postHistory.trim()) {
         postParts.push(card.postHistory.trim());
     }
+    postParts.push(
+        `【人称提醒】用户是「${card.userName}」。回复中称呼一致，勿改名，勿把用户写成旁观的「他/她」。`,
+    );
     if (postParts.length > 0) {
         messages.push({
             role: 'system',
@@ -622,6 +777,7 @@ export function buildMessagesWithDebug(req: PromptBuildRequest): PromptBuildResu
         userName: card.userName,
         thinCard: card.thinCard,
         firstMesInjected,
+        firstMesSynthesized: card.firstMesSynthesized && firstMesInjected,
         exampleInSystem: Boolean(exampleBlock),
         loreCount: loreSnippets.length,
         loreChars,
@@ -633,6 +789,7 @@ export function buildMessagesWithDebug(req: PromptBuildRequest): PromptBuildResu
         systemChars,
         totalMessages: messages.length,
         roleSequence,
+        compact,
         slots: {
             system: messages.filter((m) => m.role === 'system').length,
             postSystem: postParts.length > 0 ? 1 : 0,
@@ -655,8 +812,19 @@ export function buildMessages(req: PromptBuildRequest): ChatMessage[] {
 // Gen params
 // ─────────────────────────────────────────────
 
-export function resolveMaxTokens(length?: string | number): number {
+export function resolveMaxTokens(length?: string | number, compact = false): number {
     if (typeof length === 'number' && length > 0) return Math.min(length, 8192);
+    if (compact) {
+        switch (String(length || 'medium').toLowerCase()) {
+            case 'short':
+                return 256;
+            case 'long':
+                return 768;
+            case 'medium':
+            default:
+                return 512;
+        }
+    }
     switch (String(length || 'medium').toLowerCase()) {
         case 'short':
             return 400;
@@ -688,6 +856,7 @@ export function formatPromptDebugLog(debug: PromptDebugInfo): string {
     return [
         `prompt char=${debug.charName}`,
         `thin=${debug.thinCard}`,
+        `compact=${debug.compact}`,
         `seq=${debug.roleSequence}`,
         `msgs=${debug.totalMessages}`,
         `sys=${debug.systemChars}c`,
@@ -695,6 +864,6 @@ export function formatPromptDebugLog(debug: PromptDebugInfo): string {
         `sum=${debug.summarized ? debug.summaryChars + 'c' : 'no'}`,
         `lore=${debug.loreCount}/${debug.loreChars}c`,
         `ex=${debug.exampleInSystem}`,
-        `fm=${debug.firstMesInjected}`,
+        `fm=${debug.firstMesInjected}${debug.firstMesSynthesized ? '(syn)' : ''}`,
     ].join(' ');
 }

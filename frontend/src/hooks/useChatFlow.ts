@@ -135,6 +135,7 @@ export function useChatFlow(currentScreen: ScreenId | null) {
             alternate_greetings: chatCharacter.alternate_greetings,
             worldBook: chatCharacter.worldBook,
             character_book: chatCharacter.character_book,
+            tagline: chatCharacter.tagline,
             provider: settings.providerId || undefined,
             userName,
             // 不强制每轮注入 first_mes；由后端在 history 为空时自动注入

@@ -132,14 +132,14 @@ export default function SettingsScreen({ onNavigate }: SettingsScreenProps) {
             <div className="space-y-1">
               <h4 className="text-xs font-semibold text-white">对话模型</h4>
               <p className="text-[10px] text-on-surface-variant leading-relaxed">
-                本地模型可能较慢；优先选择云端以获得更快首字与更好回复。
+                追求质量与速度请选「推荐·云端」；「较慢·本地」首字可能要等 20–40 秒，适合离线轻聊。服务端默认可仍为本地。
               </p>
             </div>
             <div className="space-y-1.5 max-h-52 overflow-y-auto">
               {providers.length === 0 && (
                 <p className="text-[10px] text-on-surface-variant/60">暂无可用模型，请检查后端配置</p>
               )}
-              {providers.map((p) => {
+              {[...providers].sort((a, b) => Number(a.isLocal) - Number(b.isLocal)).map((p) => {
                 const isSelected = selectedProvider === p.id;
                 return (
                   <button
@@ -158,12 +158,13 @@ export default function SettingsScreen({ onNavigate }: SettingsScreenProps) {
                       <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded ${
                         p.isLocal ? 'bg-amber-500/15 text-amber-300' : 'bg-emerald-500/15 text-emerald-300'
                       }`}>
-                        {p.isLocal ? '本地' : '云端'}
+                        {p.isLocal ? '较慢·本地' : '推荐·云端'}
                       </span>
                     </div>
                     <p className="text-[9px] text-on-surface-variant/70 font-mono mt-0.5 truncate">
                       {p.model || p.id}
                       {p.active || serverActive === p.id ? ' · 服务端默认' : ''}
+                      {!p.isLocal ? ' · 质量/速度更佳' : ' · 首字可能 20s+'}
                     </p>
                   </button>
                 );

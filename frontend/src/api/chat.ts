@@ -21,6 +21,7 @@ interface SendMessageParams {
   // 兼容旧字段
   worldBook?: string;
   character_book?: unknown;
+  tagline?: string;
   provider?: string;
   userName?: string;
   includeFirstMes?: boolean;
