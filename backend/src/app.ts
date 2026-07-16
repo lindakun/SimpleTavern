@@ -23,6 +23,7 @@ import { createPublicCharacterRoutes } from './modules/characters/characters.pub
 import { createPublicImportRoutes } from './modules/characters/characters.public.import.routes.js';
 import { createPublicChatRoutes } from './modules/chats/chats.public.routes.js';
 import { createFavoritesRoutes } from './modules/users/favorites.routes.js';
+import { createAdminRoutes } from './modules/admin/admin.routes.js';
 import { ServerConfig } from './types/config.types.js';
 
 function getCookieSecret(dataRoot: string): string {
@@ -174,6 +175,9 @@ export function createApp(config: ServerConfig): express.Express {
 
     // ---- 世界书管理路由（需 Admin 权限） ----
     app.use('/api/worlds', requireAdmin, createAdminWorldRoutes());
+
+    // ---- 管理端聚合（stats / llm / reviews）----
+    app.use('/api/admin', requireAdmin, createAdminRoutes());
 
     // ---- 静态文件（通过环境变量可选配置） ----
     const staticDir = process.env.SIMPLE_TAVERN_STATIC_DIR;

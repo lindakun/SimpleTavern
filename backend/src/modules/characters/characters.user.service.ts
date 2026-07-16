@@ -179,6 +179,8 @@ export async function updateUserCharacter(
             tagline: data.tagline ?? existing.tagline,
             worldBook: data.worldBook ?? existing.worldBook,
             voiceType: data.voiceType ?? existing.voiceType,
+
+            reviews: data.reviews ?? existing.reviews,
         };
 
         await storage.setItem(key, updated);

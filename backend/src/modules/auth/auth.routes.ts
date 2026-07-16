@@ -40,6 +40,7 @@ export function createPrivateAuthRoutes(config: ServerConfig): Router {
     router.post('/users/enable', requireAdmin, authController.adminToggleUser);
     router.post('/users/promote', requireAdmin, authController.adminToggleUser);
     router.post('/users/demote', requireAdmin, authController.adminToggleUser);
+    router.post('/users/admin-reset-password', requireAdmin, authController.adminResetPassword);
 
     return router;
 }

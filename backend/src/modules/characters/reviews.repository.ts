@@ -166,3 +166,46 @@ export function addPngReview(key: string, review: ReviewData): ReviewData[] {
     saveReviewStore(PNG_REVIEWS_FILE, store);
     return store[key];
 }
+
+// ============================================================
+// 评价删除（管理端）
+// ============================================================
+
+export type ReviewStoreKind = 'seed' | 'imported' | 'png';
+
+function storeFileName(kind: ReviewStoreKind): string {
+    switch (kind) {
+        case 'seed':
+            return SEED_REVIEWS_FILE;
+        case 'imported':
+            return IMPORTED_REVIEWS_FILE;
+        case 'png':
+            return PNG_REVIEWS_FILE;
+    }
+}
+
+/**
+ * 删除指定评价
+ * @returns true 若找到并删除
+ */
+export function deleteReview(
+    kind: ReviewStoreKind,
+    characterKey: string,
+    reviewId: string,
+): boolean {
+    const fileName = storeFileName(kind);
+    const store = loadReviewStore(fileName);
+    const list = store[characterKey];
+    if (!list || list.length === 0) return false;
+
+    const next = list.filter((r) => r.id !== reviewId);
+    if (next.length === list.length) return false;
+
+    if (next.length === 0) {
+        delete store[characterKey];
+    } else {
+        store[characterKey] = next;
+    }
+    saveReviewStore(fileName, store);
+    return true;
+}

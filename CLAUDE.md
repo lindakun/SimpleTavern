@@ -104,6 +104,7 @@ backend 容器挂载的目录：
 - 角色卡：`/data/<user>/characters/`
 - 聊天记录：`/data/<user>/chats/<character>/`
 - 用户数据：`/data/default-user/`
+- `extra_hosts: host.docker.internal:host-gateway` — 便于容器访问宿主机上的本地 LLM 等服务
 
 ### 本地开发（非 Docker）
 
@@ -128,9 +129,15 @@ cd frontend && npm run dev
 cd backend
 npm install
 npm run dev                  # tsx watch 热重载
-npm run build                # tsc 编译（tsconfig: strict, NodeNext）
-npm run start                # 无 watch 启动
+npm run build                # tsc 编译（本地 package.json 脚本；严格模式 NodeNext）
+npm run start                # 无 watch 启动（tsx src/server.ts）
 npm run lint                 # 当前为占位（echo 'TODO: add eslint'）
+npm test                     # vitest run（单元测试）
+npm run test:watch           # vitest 监听模式
+npm run test:coverage        # vitest 覆盖率
+
+# Docker 构建使用 tsconfig.build.json（排除 src/__tests__）：
+#   npx tsc -p tsconfig.build.json
 
 # === 前端 ===
 cd frontend
@@ -149,13 +156,22 @@ npm run preview              # Vite 预览构建产物
 npm run lint                 # tsc --noEmit 类型检查
 ```
 
-### ⚠️ 重要说明：测试
+### 测试
 
-当前项目**没有编写单元测试**，`backend/package.json` 中的 `lint` 脚本为占位实现（`echo 'TODO: add eslint'`）。
+后端已接入 **vitest**（`backend/src/__tests__/`）：
 
-如需添加测试，建议：
-- 后端：使用 `vitest` 或 `jest` + `tsx` 运行 TypeScript 测试
-- 前端：使用 `vitest` + `@testing-library/react`
+| 测试文件 | 覆盖点 |
+|---------|--------|
+| `errors.test.ts` | 错误层次结构 |
+| `session.types.test.ts` | Session 类型 |
+| `chat.types.test.ts` / `chat-pagination.test.ts` | 聊天类型与分页 |
+| `prompt-builder.test.ts` | Prompt 上下文编译管线 |
+| `security.test.ts` | 安全相关 |
+| `logger.test.ts` / `date.test.ts` / `yaml-config.types.test.ts` | 工具与配置类型 |
+
+- `lint` 脚本仍为占位（`echo 'TODO: add eslint'`）
+- 前端目前**无**单元测试；类型检查用 `npm run lint`（`tsc --noEmit`）
+- Docker 镜像编译必须用 `tsconfig.build.json`，否则会把测试编进 `dist`
 
 ## 配置
 
@@ -193,8 +209,8 @@ config.yaml 中的 port 会自动 +1（原项目 8000 → 新后端 8001）。
 ### 调试技巧
 
 ```bash
-# 启用 debug 级别日志
-LOG_LEVEL=debug docker compose up -f backend
+# 启用 debug 级别日志（写入 backend/.env 的 LOG_LEVEL=debug 后重启更稳妥）
+LOG_LEVEL=debug docker compose up backend
 
 # 过滤特定模块日志
 docker compose logs -f backend | grep "auth\|chat\|error"
@@ -202,6 +218,9 @@ docker compose logs -f backend | grep "auth\|chat\|error"
 # 进入容器内部调试
 docker compose exec backend sh
 docker compose exec frontend sh
+
+# 后端单元测试
+cd backend && npm test
 ```
 
 ## 后端架构
@@ -226,8 +245,10 @@ server.ts ← app.ts ← modules/*/
 | **config/** | `env.ts`, `index.ts` | 环境变量加载、配置聚合 |
 | **infrastructure/storage/** | `disk-cache.ts` | `MemoryLimitedMap<V>` — 内存受限的 LRU Map，用于缓存场景 |
 | **data/** | `seed-characters.json` | 种子角色数据（内置角色，用于发现页展示） |
-| **types/** | `api.types.ts`, `config.types.ts`, `models.types.ts`, `declarations.d.ts` | 全局 TypeScript 类型定义 |
-| **shared/middleware/** | `cors.ts`, `error-handler.ts`, `auth-guard.ts`, `request-context.ts` | 共享中间件 |
+| **types/** | `api.types.ts`, `config.types.ts`, `models.types.ts`, `session.types.ts`, `admin.types.ts`, `yaml-config.types.ts`, `declarations.d.ts`, PNG 类型声明 | 全局 TypeScript 类型定义 |
+| **shared/middleware/** | `cors.ts`, `error-handler.ts`, `auth-guard.ts`, `request-id.ts`, `request-logger.ts`, `performance.ts`, `request-context.ts`, `upload.ts` | 共享中间件 |
+| **shared/utils/** | `user-dirs.ts`, `png-utils.ts`, `date.ts` | 用户目录路径、PNG 工具、日期工具 |
+| **__tests__/** | `*.test.ts` | vitest 单元测试 |
 
 ### TypeScript 配置
 
@@ -251,6 +272,8 @@ server.ts ← app.ts ← modules/*/
 }
 ```
 
+生产 Docker 构建使用 `tsconfig.build.json`（`extends` 主配置并 `exclude` `src/__tests__`）。
+
 ### 代码约定
 
 - **Controller**: try/catch 包裹，成功调用 `res.json()`，失败调用 `next(err)`，由全局 `errorHandler` 统一处理
@@ -266,13 +289,17 @@ server.ts ← app.ts ← modules/*/
 - 路由分为**公开**（注册在 `requireLogin` 之前）和**私有**（注册在之后）
 - 公开路由示例：登录、注册、角色发现、AI 聊天、收藏、用户角色列表、聊天线程、角色导入
 
-#### 前端认证防护（三层防线）
+#### 前端认证防护
 
-1. **全局 401 拦截器**（`api/client.ts`）：任意 API 返回 401 时，自动清除 React Query 缓存 + 跳转到登录页。应对 session 过期/被踢等场景。
-2. **认证状态守卫**（`App.tsx`）：`useEffect` 监听 `currentUser`，当从已登录变为 null 且当前在受保护页面时，自动跳转到 WELCOME。
-3. **退出登录处理**（`App.tsx` `handleLogout`）：按序执行 — ① `await logout()` 清除服务端 session → ② 清除 SW Cache API 缓存 → ③ `queryClient.clear()` 清除 React Query 缓存 → ④ 导航到 WELCOME。
+1. **全局 401 拦截器**（`api/client.ts`）：任意 API 返回 401 时，清除 React Query 缓存 + 跳转登录页（公开页不触发重定向，避免循环）。
+2. **导航/会话守卫**（`useAppNavigation` 等）：未登录访问受保护路由时导向欢迎/登录页。
+3. **退出登录处理**：① `await logout()` 清服务端 session → ② 清 React Query / 本地状态 → ③ 导航到欢迎页。
 
-> ⚠️ **关键**：退出登录时必须清除 SW Cache API 缓存，否则后续 `/api/users/me` 请求会被 SW 拦截并返回旧的已登录响应数据。
+> ⚠️ **历史坑**：曾因 SW 缓存 `/api/users/me` 导致退出后仍判定已登录。**当前 SW 已改为不缓存任何 API**（见 Service Worker 专节），但仍勿对认证相关 API 做客户端持久缓存。
+
+#### CSRF
+
+CSRF 中间件曾短暂接入后**已完整回滚**（`csrf-sync` 依赖已移除）。公开 POST 路由依赖 Cookie + SameSite；新增敏感写接口时需单独评估防护策略。
 
 #### Cookie Secret 持久化机制
 
@@ -331,11 +358,28 @@ interface ChatMessage {
 | **auth** | `auth.controller.ts`, `auth.service.ts`, `auth.routes.ts`, `google.service.ts` | 登录/登出/密码恢复/管理员用户管理/Google OAuth |
 | **users** | `users.repository.ts`, `users.service.ts`, `favorites.controller.ts`, `favorites.routes.ts` | 用户数据层、收藏、设置 |
 | **characters** | `characters.controller.ts`, `characters.service.ts`, `characters.repository.ts`, `characters.validator.ts`, `characters.parser.ts`, `characters.importer.ts`, `characters.ugirl-importer.ts`, `characters.user.service.ts`, `characters.public.routes.ts`, `characters.public.import.routes.ts`, `admin-characters.controller.ts`, `admin-characters.routes.ts`, `discover.controller.ts`, `discover.routes.ts`, `seed.service.ts`, `reviews.repository.ts` | 角色 CRUD、PNG 角色卡读写、导入/导出、用户发布、发现/种子角色（种子数据来自 `data/seed-characters.json`）、ugirl 批量导入、评价系统 |
-| **chats** | `chats.controller.ts`, `chats.service.ts`, `chats.repository.ts`, `chats.public.routes.ts`, `chats.types.ts` | 聊天读写、JSONL 文件操作、路径安全检查 |
-| **backends** | `chat-completions/`, `llm-config.ts`, `types.ts` | AI 聊天补全（OpenAI-compatible）、LLM 配置、多 provider 支持 |
-| **worlds** | `worlds.routes.ts`, `worlds.service.ts`, `admin-worlds.controller.ts`, `public-worlds.controller.ts` | 世界书管理（管理员CRUD/用户端列表） |
+| **chats** | `chats.controller.ts`, `chats.service.ts`, `chats.repository.ts`, `chats.routes.ts`, `chats.public.routes.ts`, `types.ts` | 聊天读写、JSONL、分页、批量删除、置顶、路径安全检查 |
+| **backends** | `chat-completions/`（含 `prompt-builder.ts`）、`llm-config.ts`, `types.ts` | AI 聊天补全（OpenAI-compatible）、Prompt 上下文编译管线、多 provider / 流式 SSE |
+| **worlds** | `worlds.routes.ts`, `worlds.service.ts`, `admin-worlds.controller.ts`, `public-worlds.controller.ts`, `types.ts` | 世界书管理（管理员 CRUD/导入；用户端 list/get） |
 | **infrastructure** | `infrastructure/storage/disk-cache.ts` | 基础设施（内存受限 Map 工具类 `MemoryLimitedMap<V>`） |
 | **data** | `data/seed-characters.json` | 种子角色数据（内置角色，随代码分发） |
+
+#### Prompt 编译管线（backends）
+
+`prompt-builder.ts` 负责角色扮演上下文组装，大致步骤：
+
+1. 宏替换 / 卡片归一化（空卡兜底）
+2. 历史清洗 + 摘要
+3. 世界书条目选择（预算 / depth / before|after 位置）
+4. 按固定 slot 组装 messages
+5. 产出 debug 统计（可用 `POST /api/chat/debug-prompt` 调试）
+
+#### 角色隐私（privacyType）
+
+- 字段：`privacyType: 'public' | 'private'`（与 `status` 独立）
+- 创建/复制默认 `private`；发现页仅展示公开角色
+- 快捷切换：`POST /api/users/characters/privacy`
+- 复制公共角色：`POST /api/characters/copy`
 
 #### ugirl 角色批量导入子系统
 
@@ -362,10 +406,15 @@ interface CharacterBookEntry {
 
 | 中间件 | 位置 | 功能 |
 |--------|------|------|
+| Helmet + CSP | `app.ts` 内联 | HTTP 安全头（允许 Google 账号脚本/frame） |
 | CORS | `shared/middleware/cors.ts` | CORS 配置 |
+| 请求 ID | `shared/middleware/request-id.ts` | 请求追踪 ID |
+| 性能监控 | `shared/middleware/performance.ts` | 慢请求等监控 |
+| 请求日志 | `shared/middleware/request-logger.ts` | 访问日志 |
 | 错误处理 | `shared/middleware/error-handler.ts` | 统一错误响应格式 `{ error, message }` |
 | 认证守卫 | `shared/middleware/auth-guard.ts` | requireLogin / requireAdmin |
-| 请求上下文 | `shared/middleware/request-context.ts` | 请求追踪 |
+| 上传 | `shared/middleware/upload.ts` | multer 封装 |
+| 请求上下文 | `shared/middleware/request-context.ts` | 请求上下文（如有使用场景） |
 
 ### 后端性能优化
 
@@ -374,13 +423,13 @@ interface CharacterBookEntry {
   - `/version` → `max-age=3600`（1 小时）
   - `/api/discover` → `max-age=300`（5 分钟）
   - `/api/chat/providers` → `max-age=600`（10 分钟）
+- **健康检查**：`GET /health` 返回 `{ status: 'ok' }`（在 `requireLogin` 之前，避免 Docker 健康检查 401）
 
 ### 后端关键依赖
 
 | 依赖 | 用途 |
 |------|------|
-| `helmet` | HTTP 安全头 |
-| `csrf-sync` | CSRF 防护 |
+| `helmet` | HTTP 安全头 + CSP |
 | `rate-limiter-flexible` | 请求限流 |
 | `archiver` | 文件压缩（角色导出） |
 | `multer` | 文件上传 |
@@ -394,7 +443,8 @@ interface CharacterBookEntry {
 | `sanitize-filename` | 文件名安全处理 |
 | `yaml` | config.yaml 解析 |
 | `chalk` | 日志着色 |
-| `@google/generative-ai` | Google Gemini API 集成 |
+| `@google/genai` | Google Gemini API 集成 |
+| `vitest`（dev） | 单元测试 |
 
 ## 前端架构
 
@@ -403,10 +453,14 @@ interface CharacterBookEntry {
 - **React 19** + TypeScript
 - **Vite 6** + `@vitejs/plugin-react`
 - **Tailwind CSS v4** + `@tailwindcss/vite`（零配置文件）
+- **react-router-dom** v7（URL 路由；`BrowserRouter` 挂在 `main.tsx`）
+- **zustand** v5（客户端状态：角色列表、聊天线程/发送态）
 - **motion** v12（动画，AnimatePresence 页面切换）
 - **lucide-react**（图标）
-- **@tanstack/react-query**（服务端状态管理）
+- **@tanstack/react-query**（服务端状态：认证/收藏等，缓存与重试）
 - **@tanstack/react-virtual**（虚拟滚动，DiscoverScreen）
+- **react-markdown** + **remark-gfm**（聊天气泡 Markdown）
+- **zod**（表单/schema 验证）
 - **idb**（IndexedDB wrapper，离线聊天缓存）
 - **web-vitals**（Web Vitals 指标采集）
 
@@ -417,87 +471,86 @@ interface CharacterBookEntry {
 - **manifest.json**：`name: "Yuzu AI — Neon Frontier"`，`short_name: "Yuzu AI"`
 - `display: "standalone"` + `display_override: ["standalone", "minimal-ui"]`
 - `orientation: "portrait"`，`lang: "zh-CN"`
-- 8 种尺寸图标（72×72 到 512×512）
+- 图标与品牌资源（见 `frontend/public/`）
 - `categories: ["entertainment", "social", "lifestyle"]`
-- **Service Worker**：`frontend/public/sw.js`（见下方专节）
+- **Service Worker**：`frontend/public/sw.js`（见下方专节；**仅缓存静态资源**）
 
 ### 路由
 
-无 react-router。手动路由，基于 `ScreenId` 枚举在 `App.tsx` 中做条件渲染，使用 `AnimatePresence` 实现页面切换动画。
+使用 **react-router-dom**。`ScreenId` 枚举与 URL 路径映射定义在 `routes.tsx`（`SCREEN_PATHS` / `pathToScreen`）。`App.tsx` 组装 hooks 后把 props 交给 `AppRoutes`；页面组件 `React.lazy` 懒加载，`AnimatePresence` 做切换动画。
 
 ```
-App.tsx ← 14 个 Screen 组件（React.lazy 懒加载）
-  ├── WelcomeScreen / LoginScreen / RegisterScreen
-  ├── ForgotPasswordScreen
-  ├── DiscoverScreen / CharacterDetailScreen
-  ├── ChatScreen（AI 对话）
-  ├── CreateChoiceScreen / CreateCharacterScreen
-  ├── MessageCenterScreen / ProfileScreen
-  ├── MyCharactersScreen / MyFavoritesScreen
-  ├── SettingsScreen / HelpFeedbackScreen
+main.tsx（BrowserRouter + QueryClient + Toast + ErrorBoundary）
+  └── App.tsx
+        ├── useAppNavigation / useCharacterManagement / useChatFlow
+        └── routes.tsx → AppRoutes（Route 表）
+              ├── /  WelcomeScreen
+              ├── /login /register /forgot-password /reset-password
+              ├── /discover /character /chat
+              ├── /create /create-character /world-book
+              ├── /messages /profile /my-characters /favorites
+              └── /settings /help
 ```
 
-> **注意**：`ScreenId.EMAIL_LOGIN` 对应的组件文件名为 `LoginScreen.tsx`（不是 `EmailLoginScreen.tsx`）。
+> **注意**：登录页组件文件名为 `LoginScreen.tsx`（`ScreenId.LOGIN` → `/login`）。不要写已废弃的 `EMAIL_LOGIN` / `EmailLoginScreen`。
 
 ### 数据流
 
-- 使用 `useState` 管理应用状态（characters, favoriteIds, chatThreads）
-- `useEffect` 在挂载时从后端加载数据，使用 `Promise.all` 并行请求
-- 对后端 API 调用使用 optimistic UI updates + rollback 模式
-- `App.tsx` 作为唯一状态管理组件，子组件通过 props 接收数据和回调
-- **React Query** (`@tanstack/react-query`) 管理服务端状态，支持缓存、重试、后台刷新
-- `useMemo` 用于避免重复计算（如 `myCharactersCount`、`allTags`、`filteredCharacters`）
-- 功能性 `setState` 避免不必要的依赖项（如 `handleToggleFavorite`）
+```
+React Query ── 服务端状态（登录用户、收藏等）
+zustand stores ── 客户端状态
+  ├── characterStore：characters / editingCharacter / discoverStatus
+  └── chatStore：chatThreads / sendingStates / historyPage / activeChatFiles
+组合 Hooks（App 层）
+  ├── useAppNavigation：当前屏、Splash、导航历史
+  ├── useCharacterManagement：登录/角色 CRUD/收藏/评价/隐私
+  └── useChatFlow：发送/流式/停止/再生/续写/多会话切换/历史分页
+App.tsx ── 计算 publicCharacters / userCharacters / currentCharacter，注入 AppRoutes
+```
+
+- 乐观更新 + 失败回滚仍用于收藏等写操作
+- **聊天线程/发送态由组件直接订阅 store**，避免 App 在 SSE 流式过程中整树重渲染
+- 同角色**多会话**：`chatStore.activeChatFiles` 记录当前 `.jsonl` 会话文件名；`handleSelectChatSession` / `handleNewChat` 切换
 
 #### 发送状态管理
 
-AI 消息发送使用专用状态类型：
-
 ```typescript
 export type SendState = 'idle' | 'sending' | 'streaming' | 'error';
-export interface CharacterSendState { state: SendState; }
+// chatStore.sendingStates: Record<characterId, SendState>
 ```
 
 ### 前端性能优化
 
-- **代码分割**：14 个 Screen 组件使用 `React.lazy` + `Suspense` 懒加载
-- **图片懒加载**：`LazyImage` 组件（Intersection Observer），所有角色头像使用 `LazyImage`
-- **虚拟滚动**：DiscoverScreen 使用 `@tanstack/react-virtual` 处理长列表
-- **IndexedDB 离线缓存**：`chatCache.ts` 使用 `idb` 缓存聊天数据（DB: `simpletavern-cache`）
-- **数据埋点**：`analytics.ts` 批量队列上报（10s 定时发送），集成 Web Vitals
-- **Service Worker 缓存**（见下方专节）
-- **动画优化**：页面切换移除 x 平移，缩短动画时长
-- **品牌启动画面**：`SplashScreen` 组件（entering/active/exiting/done 四阶段状态机）
+- **代码分割**：Screen 组件 `React.lazy` + `Suspense`
+- **图片懒加载**：`LazyImage`（Intersection Observer）
+- **虚拟滚动**：DiscoverScreen 使用 `@tanstack/react-virtual`
+- **IndexedDB 离线缓存**：`utils/chatCache.ts`（DB: `simpletavern-cache`）
+- **流式渲染隔离**：chat 状态在 zustand，减少 App 重渲染
+- **数据埋点**：`utils/analytics.ts` 批量队列 + Web Vitals
+- **Service Worker**：仅静态资源 Cache-First（**不缓存 API**）
+- **品牌启动画面**：`SplashScreen`（entering/active/exiting/done）
 
 ### 组件结构
 
 ```
 components/
-  ├── Screen 组件（14个页面，React.lazy 懒加载）
+  ├── Screen 组件（React.lazy）
   │   ├── WelcomeScreen / LoginScreen / RegisterScreen
-  │   ├── ForgotPasswordScreen
+  │   ├── ForgotPasswordScreen / ResetPasswordScreen
   │   ├── DiscoverScreen / CharacterDetailScreen
-  │   ├── ChatScreen（AI 对话）
+  │   ├── ChatScreen / MessageBubble
   │   ├── CreateChoiceScreen / CreateCharacterScreen
+  │   ├── WorldBookManageScreen
   │   ├── MessageCenterScreen / ProfileScreen
   │   ├── MyCharactersScreen / MyFavoritesScreen
   │   └── SettingsScreen / HelpFeedbackScreen
   ├── 特殊组件
-  │   ├── SplashScreen.tsx（品牌启动画面，四阶段状态机）
-  │   └── GoogleCallback.tsx（OAuth 回调弹窗）
-  ├── UI 组件
-  │   ├── BottomNav.tsx（底部导航）
-  │   ├── Toast.tsx（消息提示）
-  │   ├── LazyImage.tsx（懒加载图片）
-  │   ├── Skeleton.tsx（加载骨架屏）
-  │   ├── SwipeableRow.tsx（左滑操作通用组件，含 chatSwipeActions 工厂函数）
-  │   └── ErrorBoundary.tsx（错误边界）
-  └── hooks/（自定义 Hooks）
-      ├── useAuth.ts（认证逻辑）
-      ├── useCharacters.ts（角色数据）
-      ├── useChat.ts（聊天逻辑）
-      ├── useFavorites.ts（收藏管理）
-      └── useFormValidation.ts（表单验证）
+  │   ├── SplashScreen.tsx
+  │   ├── AuthLayout.tsx（认证页布局）
+  │   └── GoogleCallback.tsx
+  └── UI 组件
+      ├── BottomNav.tsx / Toast.tsx / LazyImage.tsx
+      ├── Skeleton.tsx / SwipeableRow.tsx / ErrorBoundary.tsx
 ```
 
 ### 其他前端目录
@@ -505,41 +558,40 @@ components/
 ```
 src/
   ├── api/               ← API 客户端封装
-  │   ├── client.ts      ← fetch 封装 + 认证头
-  │   ├── characters.ts  ← 角色 API
-  │   ├── chat.ts        ← 聊天 API
-  │   ├── users.ts       ← 用户 API
-  │   ├── worlds.ts      ← 世界书 API
-  │   ├── google-oauth.ts ← Google OAuth
-  │   └── index.ts       ← 统一导出
-  ├── contexts/          ← React Context
-  │   └── AppContext.tsx  ← 全局 Context
-  ├── validations/       ← 前端验证
-  │   ├── auth.ts        ← 认证表单验证
-  │   ├── character.ts   ← 角色表单验证
-  │   └── index.ts       ← 统一导出
-  ├── utils/             ← 工具函数
-  │   ├── chatCache.ts   ← IndexedDB 离线聊天缓存（DB: simpletavern-cache）
-  │   ├── analytics.ts   ← 数据埋点（批量队列 + Web Vitals + 10s 定时上报）
-  │   └── formatDate.ts  ← 聊天日期格式化（兼容 ISO 8601 和 SillyTavern 格式）
-  ├── sw-register.ts     ← Service Worker 注册（生产环境）
-  ├── types.ts           ← TypeScript 类型定义（含 SendState）
-  └── data.ts            ← 静态数据（FAQ 等）
+  │   ├── client.ts      ← fetch 封装 + 401 拦截
+  │   ├── characters.ts / chat.ts / users.ts / worlds.ts
+  │   ├── google-oauth.ts / index.ts
+  ├── stores/            ← zustand
+  │   ├── characterStore.ts
+  │   └── chatStore.ts
+  ├── hooks/
+  │   ├── useAppNavigation.ts / useCharacterManagement.ts / useChatFlow.ts
+  │   ├── useAuth.ts / useCharacters.ts / useChat.ts / useFavorites.ts
+  │   ├── useFormValidation.ts / index.ts
+  ├── routes.tsx         ← ScreenId ↔ 路径 + AppRoutes
+  ├── validations/       ← auth / character schema
+  ├── utils/
+  │   ├── chatCache.ts / chatHistory.ts / chatMessages.ts
+  │   ├── chatSettings.ts / analytics.ts / formatDate.ts
+  ├── sw-register.ts
+  ├── types.ts / data.ts / App.tsx / main.tsx
 ```
+
+> `contexts/` 目录目前为空（已不再使用 AppContext）。
 
 ### 自定义 Hooks
 
-所有自定义 Hook 通过 `hooks/index.ts` 统一导出，同时导出 React Query 的 query key 常量：
+`hooks/index.ts` 主要导出 React Query 相关 hooks 与 key 常量；App 级编排 hooks 直接从各自文件导入：
 
 ```typescript
-// hooks/index.ts 统一导出
-export { useDiscoverCharacters, useMyCharacters, useCreateCharacter, ... } from './useCharacters';
-export { useChatThreads, useChatThread, useSendMessage, ... } from './useChat';
+// hooks/index.ts
+export { useDiscoverCharacters, useMyCharacters, ... , characterKeys } from './useCharacters';
+export { useChatThreads, useSendMessage, ... , chatKeys } from './useChat';
 export { useLogin, useRegister, useLogout, useCurrentUser, ... } from './useAuth';
-export { useFavorites, useAddFavorite, useRemoveFavorite, ... } from './useFavorites';
+export { useFavorites, useToggleFavorite, ... , favoriteKeys } from './useFavorites';
 
-// React Query key 常量
-export { characterKeys, chatKeys, favoriteKeys } from './...';
+// App 直接使用（不经 index 聚合也可）
+// useAppNavigation / useCharacterManagement / useChatFlow
 ```
 
 ## 管理后台架构
@@ -551,7 +603,7 @@ export { characterKeys, chatKeys, favoriteKeys } from './...';
 - **React 19** + TypeScript
 - **Vite 6** + `@vitejs/plugin-react`
 - **Tailwind CSS v4** + `@tailwindcss/vite`（零配置文件）
-- **react-router-dom** v7（管理后台使用路由库，与主前端手动路由不同）
+- **react-router-dom** v7（与主前端一致使用路由库）
 - **@tanstack/react-query**（服务端状态管理）
 - **lucide-react**（图标）
 - **zod**（schema 验证）
@@ -583,21 +635,21 @@ admin/src/
 
 ## Service Worker 缓存
 
-前端实现了 Service Worker 缓存方案，文件位于 `frontend/public/sw.js`，注册逻辑在 `src/sw-register.ts`。
+前端实现了**精简版** Service Worker，文件位于 `frontend/public/sw.js`，注册逻辑在 `src/sw-register.ts`。
 
 - **开发环境自动跳过**：`import.meta.env.DEV` 为 true 时不注册 SW
-- **直接注册**：不等待 `load` 事件，组件挂载时立即注册
-- **缓存版本号**：`BUILD_VERSION = 'YYYY-MM-DD-N'` 格式，`deploy-prd.sh` 每次部署时自动递增（同一天递增序号，跨天重置为 1）。`CACHE_NAME` 引用 `BUILD_VERSION`，版本号变化触发浏览器更新缓存。
+- **缓存版本号**：`BUILD_VERSION = 'YYYY-MM-DD-N'`，`deploy-prd.sh` 部署时自动递增；`CACHE_NAME = 'simpletavern-' + BUILD_VERSION`
+- **Push 通知**：支持 `push` / `notificationclick`（展示系统通知并 focus 窗口）
 
-### 缓存策略
+### 缓存策略（当前实现）
 
 | 策略 | 路由 | 效果 |
 |------|------|------|
-| **Stale-While-Revalidate** | `/api/discover`, `/api/users/settings` | 先返回缓存（瞬间），后台静默更新 |
-| **Cache-First** | `/api/chat/providers`, `/api/version` + 所有静态资源（JS/CSS/图片/字体） | 缓存命中直接返回，未命中才请求网络 |
-| **Network-First** | `/api/users/me`, `/api/users/favorites`, `/api/users/characters`, `/api/chat/threads` | 优先拿最新数据，网络失败时降级到缓存 |
+| **Cache-First** | 静态资源（`js/css/png/jpg/svg/woff…`）及预缓存清单（`/`、`/yuzuai_logo.png`、`/manifest.json`） | 命中缓存直接返回 |
+| **不缓存 / 穿透** | **所有 `/api/*` 及其他请求** | SW 不拦截，保证数据实时性 |
+| **永不缓存** | `/sw.js` | 始终走网络，配合 Nginx `no-cache` |
 
-> ⚠️ **关键**：`/api/users/me` **必须**使用 Network-First，不能用 Stale-While-Revalidate。否则退出登录后 SW 会返回缓存的旧会话数据，导致前端误判为已登录状态，产生登录→发现页的重定向循环。
+> ⚠️ **原则**：认证态、发现列表、聊天线程等 **API 一律不得由 SW 缓存**。历史上用 SWR 缓存 `/api/users/me` 曾导致退出登录重定向循环；现已改为「API 完全不缓存」。
 
 ### 生产环境 Nginx 配置
 
@@ -617,23 +669,26 @@ location /sw.js {
 
 | 分类 | 端点 | 说明 |
 |------|------|------|
-| **公开** | `GET /csrf-token` `GET /version` | 基础端点 |
+| **公开** | `GET /version` `GET /health` | 版本信息；健康检查（Docker / 探活，位于 requireLogin 之前） |
 | **认证** | `POST /api/users/login\|register\|list\|recover-*\|google-login` | 登录/注册/用户列表/密码恢复/Google OAuth |
 | **用户** | `POST /api/users/logout\|change-*` `GET /api/users/me` | 登出/改密码/改名/改头像/获取当前用户 |
-| **管理员** | `POST /api/users/create\|delete\|disable\|enable\|promote\|demote` | 用户管理 |
+| **管理员** | `POST /api/users/create\|delete\|disable\|enable\|promote\|demote` 等 | 用户管理（需 admin） |
 | **收藏** | `GET/POST /api/users/favorites` `DELETE /api/users/favorites/:id` | 收藏系统 |
-| **角色** | `POST /api/characters/all\|get\|create\|edit\|delete\|rename\|duplicate\|export\|import\|chats\|publish` | 角色 CRUD + 导入导出 + 复制 |
-| **角色头像** | `GET /api/characters/avatar/:filename` | 获取角色 PNG 头像（公开，302 重定向） |
-| **发现** | `GET /api/discover` `GET /api/discover/:id` `POST /api/discover/:id/reviews` | 种子角色 + 评价系统 |
-| **世界书** | `POST /api/worlds/list` | 用户端世界书列表（需登录） |
-| **管理-角色** | `POST /api/characters/admin-*` | 管理员角色管理（全量查询/编辑/删除） |
-| **管理-世界书** | `POST /api/worlds/admin-*` | 管理员世界书管理（CRUD/导入） |
-| **聊天** | `POST /api/chats/save\|get\|rename\|delete\|export\|import` `POST /api/chats/group/*` | 聊天 CRUD + 群组 |
-| **AI 聊天** | `POST /api/chat` `POST /api/chat/stream` `GET /api/chat/providers` | 角色扮演聊天（多 LLM）+ SSE 流式输出 |
-| **线程** | `GET /api/chat/threads` `GET /api/chat/threads/:id` | 聊天历史 |
-| **用户角色** | `GET /api/users/characters` `GET /api/users/png-characters` `POST /api/users/characters/edit\|delete` | 用户创建的角色列表（含 PNG 头像版）+ 编辑/删除 |
+| **角色（登录）** | `POST /api/characters/all\|get\|create\|edit\|delete\|rename\|duplicate\|export\|import\|chats` | 角色 CRUD + 导入导出 |
+| **角色（公开）** | `POST /api/characters/publish` `POST /api/characters/copy` `POST /api/characters/import` | 发布、复制公共角色、公开导入 |
+| **角色头像** | `GET /api/characters/avatar/:filename` | 获取角色 PNG 头像 |
+| **发现** | `GET /api/discover` `GET /api/discover/:id` `POST /api/discover/:id/reviews` | 发现页角色 + 评价 |
+| **用户角色** | `GET /api/users/characters` `GET /api/users/png-characters` `POST /api/users/characters/edit\|delete\|privacy` | 列表/编辑/删除/**隐私切换** |
+| **世界书** | `POST /api/worlds/list` `POST /api/worlds/get` | 用户端世界书（需登录） |
+| **管理-角色** | `POST /api/characters/admin-*`（含 `admin-import-ugirl`） | 管理员角色管理 / ugirl 导入 |
+| **管理-世界书** | `POST /api/worlds/admin-*` | 管理员世界书 CRUD/导入 |
+| **聊天** | `POST /api/chats/save\|get\|rename\|delete\|export\|import` `POST /api/chats/group/*` `POST /api/chats/batch-delete` `POST /api/chats/pin` | 聊天 CRUD、群组、批量删除、置顶 |
+| **AI 聊天** | `POST /api/chat` `POST /api/chat/stream` `POST /api/chat/debug-prompt` `GET /api/chat/providers` | 补全 / SSE 流式 / Prompt 调试 / Provider 列表 |
+| **线程** | `GET /api/chat/threads` `GET /api/chat/threads/:characterId` | 聊天历史线程 |
 | **设置** | `GET/POST /api/users/settings` | 用户设置读写 |
 | **埋点** | `POST /api/analytics/events` | 前端行为数据上报（公开端点） |
+
+> 注：历史上文档中的 `GET /csrf-token` 已随 CSRF 回滚移除，请勿再依赖。
 
 ## 重构进度
 
@@ -644,8 +699,10 @@ location /sw.js {
 | 2 | 角色与聊天模块（CRUD + PNG 角色卡） | ✓ 完成 |
 | 3 | AI 后端模块（OpenAI-compatible 多 LLM 支持） | ✓ 完成 |
 | 4 | 用户功能模块（收藏/发布角色/聊天线程/设置） | ✓ 完成 |
-| 4.5 | 前端性能优化（代码分割/SW缓存/图片懒加载/虚拟滚动） | ✓ 完成 |
-| 4.6 | 前端 UX 优化（SplashScreen/SwipeableRow/离线缓存/埋点/PWA完善） | ✓ 完成 |
+| 4.5 | 前端性能优化（代码分割/SW 静态缓存/图片懒加载/虚拟滚动） | ✓ 完成 |
+| 4.6 | 前端 UX 优化（SplashScreen/SwipeableRow/离线缓存/埋点/PWA） | ✓ 完成 |
+| 4.7 | 架构迭代（react-router、zustand、App hooks 拆分、vitest、类型安全） | ✓ 完成 |
+| 4.8 | 聊天质量（Prompt 管线、流式修复、多会话、privacyType、Markdown） | ✓ 完成 |
 | 5 | 图像与语音模块 | 待开始 |
 | 6 | 收尾与清理 | 待开始 |
 
@@ -732,25 +789,41 @@ cd /opt/simpletavern && sudo git fetch origin main && sudo git reset --hard orig
 
 ### 1. deploy-prd.sh 分支硬编码问题（已修复）
 
-`deploy-prd.sh` 曾硬编码 `git reset --hard origin/main`，导致服务器在 `feature/iteration-p0` 分支上运行部署时，每次都被回退到 `main`，新代码从未实际部署。**症状**：部署日志显示成功，但前端行为未变（Docker 镜像 CACHED、chunk 文件名不变）。
+`deploy-prd.sh` 曾硬编码 `git reset --hard origin/main`，导致服务器在 `feature/*` 分支上运行部署时，每次都被回退到 `main`，新代码从未实际部署。**症状**：部署日志显示成功，但前端行为未变（Docker 镜像 CACHED、chunk 文件名不变）。
 
 **修复**：改为自动检测当前分支 `$(git rev-parse --abbrev-ref HEAD)` 并 reset 到对应的远程分支。
 
-### 2. SW 缓存导致退出登录重定向循环（已修复）
+### 2. SW 缓存导致退出登录重定向循环（已修复，策略已升级）
 
 退出登录后，页面短暂显示 WELCOME 后立即跳转回 DISCOVER。
 
-**根因**：SW 对 `/api/users/me` 使用 `staleWhileRevalidate` 策略。退出后 React Query 清空缓存 → `useCurrentUser` 重新请求 `/api/users/me` → SW 立即返回缓存的旧响应（用户仍在线）→ 前端判定已登录 → 跳转 DISCOVER。
+**根因（历史）**：SW 对 `/api/users/me` 使用 `staleWhileRevalidate`，返回缓存的已登录响应。
 
-**修复**：
-- `/api/users/me` 从 `staleWhileRevalidate` 改为 `networkFirst`
-- `handleLogout` 中增加 `caches.delete()` 清除 SW Cache API 缓存
+**演进修复**：
+1. 先把 `/api/users/me` 改为 `networkFirst`
+2. **最终**：SW 精简为**只缓存静态资源，所有 API 不缓存**（见 `frontend/public/sw.js` 注释）
 
-**教训**：任何与认证状态相关的 API 端点，SW 缓存策略必须是 `networkFirst`，绝不能用 `staleWhileRevalidate` 或 `cacheFirst`。
+**教训**：**不要对任何认证/用户态 API 做 SW 缓存**；静态资源与 API 策略必须分离。
 
 ### 3. Docker 构建缓存误判
 
 当服务器本地代码未更新（`git reset --hard` 未执行）时，Docker 构建所有层都命中 CACHED，实际部署的是旧代码。**验证方法**：检查构建日志中前端 chunk 文件名是否变化（Vite build 产出带 hash 的文件名，代码变了文件名一定变）。
+
+### 4. Docker 健康检查 401（已修复）
+
+健康检查若打到需登录的路径会 401。应使用 `GET /version` 或 `GET /health`（均在 `requireLogin` 之前）。容器内必须用 `127.0.0.1`，勿用可能解析到 IPv6 的 `localhost`。
+
+### 5. SSE 流式被 compression 缓冲（已处理）
+
+`/api/chat/stream` 必须跳过 gzip compression，否则会缓冲破坏实时输出。`app.ts` 中 `compression.filter` 已对应该路径返回 `false`。
+
+### 6. 后端 Docker 出网 / host 解析
+
+容器访问宿主机服务可用 `host.docker.internal`（`docker-compose.yml` 已配置 `extra_hosts`）。错误地把 backend 改为 host 网络可能导致前端无法解析 backend 主机名，需谨慎。
+
+### 7. 生产构建必须排除测试
+
+Docker 使用 `tsc -p tsconfig.build.json` 排除 `src/__tests__`。若只跑 `tsc` 且测试有问题，可能污染/阻断 `dist` 产出。
 
 ## Git 工作流
 
@@ -777,5 +850,9 @@ cd /opt/simpletavern && sudo git fetch origin main && sudo git reset --hard orig
 - `refactor/architecture-reference.md` — 原项目架构问题分析 + 完整 API 接口清单
 - `refactor/migration-plan.md` — 完整重构计划（目标架构、6 阶段迁移、文件变更清单）
 - `refactor/api-reference.md` — 新后端 API 文档（含请求/响应格式、示例、数据模型）
-- `frontend-ux-optimization-spec.md` — 前端 UX 优化规格文档
+- `refactor/iteration-spec.md` / `iteration-spec-v2.md` / `iteration-spec-v3.md` — 迭代规格
+- `refactor/iteration-plan-privacy-type.md` — 角色 privacyType 计划
+- `refactor/iteration-final-summary.md` / `p0-p1-optimization-report.md` — 迭代优化总结
+- `auth-ux-optimization-spec.md` — 认证 UX 规格
 - `knowledge.md` — 项目补充知识（开发过程中积累的额外约定）
+- `backend/docs/logging.md` — 后端日志说明

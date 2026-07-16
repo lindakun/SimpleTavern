@@ -484,3 +484,24 @@ export async function adminGetUsers(req: Request, res: Response, next: NextFunct
         next(err);
     }
 }
+
+/**
+ * POST /api/users/admin-reset-password（管理员重置密码）
+ * body: { handle, newPassword }
+ */
+export async function adminResetPassword(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+        const { handle, newPassword } = req.body as { handle?: string; newPassword?: string };
+        if (!handle || !newPassword) {
+            throw new BadRequestError('Missing required fields: handle, newPassword');
+        }
+        if (typeof newPassword !== 'string' || newPassword.length < 4) {
+            throw new BadRequestError('密码至少 4 位');
+        }
+
+        await authService.changeUserPassword(handle, newPassword, undefined, true);
+        res.json({ ok: true });
+    } catch (err) {
+        next(err);
+    }
+}

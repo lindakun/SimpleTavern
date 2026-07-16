@@ -11,7 +11,40 @@ export const adminKeys = {
   users: () => [...adminKeys.all, 'users'] as const,
   me: () => [...adminKeys.all, 'me'] as const,
   stats: () => [...adminKeys.all, 'stats'] as const,
+  llm: () => [...adminKeys.all, 'llm'] as const,
 };
+
+// 运营统计
+export function useAdminStats() {
+  return useQuery({
+    queryKey: adminKeys.stats(),
+    queryFn: adminApi.getStats,
+    staleTime: 30_000,
+  });
+}
+
+// LLM 列表
+export function useAdminLlms() {
+  return useQuery({
+    queryKey: adminKeys.llm(),
+    queryFn: adminApi.getLlms,
+    staleTime: 30_000,
+  });
+}
+
+export function useTestLlm() {
+  return useMutation({
+    mutationFn: (id: string) => adminApi.testLlm(id),
+  });
+}
+
+// 重置密码
+export function useResetPassword() {
+  return useMutation({
+    mutationFn: ({ handle, newPassword }: { handle: string; newPassword: string }) =>
+      adminApi.resetPassword(handle, newPassword),
+  });
+}
 
 // 获取用户列表
 export function useUsers() {
@@ -134,9 +167,41 @@ export function useAdminDeletePublished() {
 export function useAdminEditCharacter() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (params: { handle: string; avatar_url: string; name?: string; tags?: string[] }) =>
-      adminApi.adminEditCharacter(params),
+    mutationFn: (params: {
+      handle: string;
+      avatar_url?: string;
+      characterId?: string;
+      source?: 'seed' | 'published' | 'file';
+      name?: string;
+      tags?: string[];
+      description?: string;
+    }) => adminApi.adminEditCharacter(params),
     onSuccess: () => qc.invalidateQueries({ queryKey: characterKeys.all }),
+  });
+}
+
+// 强制隐私
+export function useAdminSetPrivacy() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (params: {
+      handle: string;
+      characterId: string;
+      privacyType: 'public' | 'private';
+      source?: string;
+    }) => adminApi.adminSetPrivacy(params),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: characterKeys.all });
+      qc.invalidateQueries({ queryKey: adminKeys.stats() });
+    },
+  });
+}
+
+// 删除评价
+export function useAdminDeleteReview() {
+  return useMutation({
+    mutationFn: (params: { store: string; characterKey: string; reviewId: string }) =>
+      adminApi.deleteReview(params),
   });
 }
 

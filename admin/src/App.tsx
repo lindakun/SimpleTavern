@@ -7,6 +7,7 @@ import Dashboard from './pages/Dashboard';
 import Users from './pages/Users';
 import Characters from './pages/Characters';
 import Worlds from './pages/Worlds';
+import Llm from './pages/Llm';
 
 export default function App() {
   const [auth, setAuth] = useState<{
@@ -68,6 +69,7 @@ export default function App() {
         <Route path="/users" element={<Users />} />
         <Route path="/characters" element={<Characters />} />
         <Route path="/worlds" element={<Worlds />} />
+        <Route path="/llm" element={<Llm />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Layout>

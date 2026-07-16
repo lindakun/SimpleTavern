@@ -1,6 +1,6 @@
 import { type ReactNode } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Users, LogOut, Shield, UserCircle, BookOpen } from 'lucide-react';
+import { LayoutDashboard, Users, LogOut, Shield, UserCircle, BookOpen, Cpu } from 'lucide-react';
 import { adminApi } from '../api/admin';
 
 interface LayoutProps {
@@ -14,6 +14,7 @@ const NAV_ITEMS = [
   { path: '/users', label: '用户管理', icon: Users },
   { path: '/characters', label: '角色管理', icon: UserCircle },
   { path: '/worlds', label: '世界书管理', icon: BookOpen },
+  { path: '/llm', label: '模型配置', icon: Cpu },
 ];
 
 export default function Layout({ children, handle, onLogout }: LayoutProps) {

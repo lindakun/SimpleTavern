@@ -83,8 +83,11 @@ export const api = {
       body: body != null ? JSON.stringify(body) : null,
     }),
 
-  del: <T>(url: string) =>
-    apiRequest<T>(url, { method: 'DELETE' }),
+  del: <T>(url: string, body?: unknown) =>
+    apiRequest<T>(url, {
+      method: 'DELETE',
+      body: body != null ? JSON.stringify(body) : undefined,
+    }),
 
   // 文件上传（multipart/form-data）
   upload: <T>(url: string, file: File, fieldName = 'file') => {

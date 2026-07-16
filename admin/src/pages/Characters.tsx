@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   useAllCharacters,
@@ -6,11 +6,22 @@ import {
   useAdminDeletePublished,
   useAdminEditCharacter,
   useAdminImportUgirl,
+  useAdminSetPrivacy,
+  useAdminDeleteReview,
   useUsers,
   characterKeys,
 } from '../hooks/useAdminApi';
-import { Search, Trash2, X, Check, User, Pencil, Upload, ChevronDown, ChevronRight, Folder, Square, CheckSquare, Loader } from 'lucide-react';
-import type { AdminCharacterItem, UgirlImportResult } from '../types';
+import { adminApi } from '../api/admin';
+import {
+  Search, Trash2, X, Check, User, Pencil, Upload, ChevronDown, ChevronRight,
+  Folder, Square, CheckSquare, Loader, Eye, Lock, Unlock, Star,
+} from 'lucide-react';
+import type {
+  AdminCharacterItem,
+  UgirlImportResult,
+  AdminCharacterDetailResponse,
+  AdminReviewItem,
+} from '../types';
 
 export default function Characters() {
   const qc = useQueryClient();
@@ -19,6 +30,7 @@ export default function Characters() {
   const deleteChar = useAdminDeleteCharacter();
   const deletePublished = useAdminDeletePublished();
   const editChar = useAdminEditCharacter();
+  const setPrivacy = useAdminSetPrivacy();
 
   // 批量导入状态
   const importUgirl = useAdminImportUgirl();
@@ -42,9 +54,11 @@ export default function Characters() {
   // 过滤条件
   const [ownerFilter, setOwnerFilter] = useState('ALL');
   const [tagFilter, setTagFilter] = useState('ALL');
+  const [privacyFilter, setPrivacyFilter] = useState<'ALL' | 'public' | 'private'>('ALL');
   const [search, setSearch] = useState('');
   const [confirmDelete, setConfirmDelete] = useState<{ owner: string; avatar: string; name: string; source: string } | null>(null);
   const [editingChar, setEditingChar] = useState<AdminCharacterItem | null>(null);
+  const [detailChar, setDetailChar] = useState<AdminCharacterItem | null>(null);
 
   // 提取所有唯一标签
   const allTags = useMemo(() => {
@@ -62,13 +76,17 @@ export default function Characters() {
     return characters.filter((c) => {
       if (ownerFilter !== 'ALL' && c._owner !== ownerFilter) return false;
       if (tagFilter !== 'ALL' && (!Array.isArray(c.tags) || !c.tags.includes(tagFilter))) return false;
+      if (privacyFilter !== 'ALL') {
+        const p = c.privacyType || (c._source === 'seed' ? 'public' : 'private');
+        if (p !== privacyFilter) return false;
+      }
       if (search.trim()) {
         const q = search.toLowerCase();
         if (!c.name?.toLowerCase().includes(q)) return false;
       }
       return true;
     });
-  }, [characters, ownerFilter, tagFilter, search]);
+  }, [characters, ownerFilter, tagFilter, privacyFilter, search]);
 
   const handleDelete = async () => {
     if (!confirmDelete) return;
@@ -184,6 +202,18 @@ export default function Characters() {
                 {tag === 'ALL' ? '全部标签' : tag}
               </option>
             ))}
+          </select>
+        </div>
+
+        <div className="flex items-center gap-2 bg-surface-container/50 border border-outline-variant/20 rounded-xl px-3 py-1.5">
+          <select
+            value={privacyFilter}
+            onChange={(e) => setPrivacyFilter(e.target.value as 'ALL' | 'public' | 'private')}
+            className="bg-transparent text-xs text-white outline-none cursor-pointer"
+          >
+            <option value="ALL">全部隐私</option>
+            <option value="public">仅公开</option>
+            <option value="private">仅私有</option>
           </select>
         </div>
 
@@ -438,6 +468,7 @@ export default function Characters() {
                   </th>
                   <th className="text-left px-5 py-3 font-semibold">角色名称</th>
                   <th className="text-left px-5 py-3 font-semibold">拥有者</th>
+                  <th className="text-left px-5 py-3 font-semibold">隐私</th>
                   <th className="text-left px-5 py-3 font-semibold">标签</th>
                   <th className="text-right px-5 py-3 font-semibold">大小</th>
                   <th className="text-right px-5 py-3 font-semibold">操作</th>
@@ -446,7 +477,7 @@ export default function Characters() {
               <tbody>
                 {filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="text-center py-12 text-on-surface-variant">
+                    <td colSpan={7} className="text-center py-12 text-on-surface-variant">
                       没有找到匹配的角色
                     </td>
                   </tr>
@@ -456,6 +487,9 @@ export default function Characters() {
                     const charKey = getCharKey(char);
                     const isSelected = selectedKeys.has(charKey);
                     const isSeed = char._source === 'seed';
+                    const isPublished = char._source === 'published';
+                    const privacy = char.privacyType || (isSeed ? 'public' : 'private');
+                    const deleteAvatarKey = isPublished ? (char.id || '') : fileName;
                     return (
                     <tr
                       key={charKey}
@@ -475,7 +509,10 @@ export default function Characters() {
                         )}
                       </td>
                       <td className="px-5 py-3">
-                        <div className="flex items-center gap-2.5">
+                        <button
+                          onClick={() => setDetailChar(char)}
+                          className="flex items-center gap-2.5 text-left cursor-pointer group"
+                        >
                           <div className="w-7 h-7 rounded-lg bg-accent-purple/15 flex items-center justify-center text-[10px] font-bold text-accent-purple overflow-hidden flex-shrink-0">
                             {char.avatar && !char.avatar.startsWith('data:') && char.avatar.startsWith('http') ? (
                               <img src={char.avatar} alt="" className="w-full h-full object-cover" />
@@ -484,15 +521,28 @@ export default function Characters() {
                             )}
                           </div>
                           <div>
-                            <span className="text-white font-medium">{char.name || '未命名'}</span>
+                            <span className="text-white font-medium group-hover:text-accent-pink transition-colors">
+                              {char.name || '未命名'}
+                            </span>
                             {fileName && (
                               <span className="text-on-surface-variant/40 ml-2 text-[10px] font-mono">{fileName}</span>
                             )}
                           </div>
-                        </div>
+                        </button>
                       </td>
                       <td className="px-5 py-3">
                         <span className="text-on-surface-variant font-mono">{char._owner}</span>
+                      </td>
+                      <td className="px-5 py-3">
+                        <span
+                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] ${
+                            privacy === 'public'
+                              ? 'bg-green-500/10 border border-green-500/30 text-green-400'
+                              : 'bg-yellow-500/10 border border-yellow-500/30 text-yellow-400'
+                          }`}
+                        >
+                          {privacy === 'public' ? '公开' : '私有'}
+                        </span>
                       </td>
                       <td className="px-5 py-3">
                         <div className="flex flex-wrap gap-1">
@@ -513,10 +563,34 @@ export default function Characters() {
                       </td>
                       <td className="px-5 py-3 text-right">
                         <div className="flex items-center justify-end gap-1">
+                          <button
+                            onClick={() => setDetailChar(char)}
+                            title="查看详情"
+                            className="p-1.5 rounded-lg text-on-surface-variant/50 hover:text-white hover:bg-surface-elevated cursor-pointer transition-colors"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                          </button>
                           {isSeed ? (
-                            <span className="text-[9px] text-on-surface-variant/30 font-mono italic px-2">内置</span>
+                            <span className="text-[9px] text-on-surface-variant/30 font-mono italic px-2">只读</span>
                           ) : (
                             <>
+                              {isPublished && (
+                                <button
+                                  onClick={() =>
+                                    setPrivacy.mutate({
+                                      handle: char._owner,
+                                      characterId: char.id || '',
+                                      privacyType: privacy === 'public' ? 'private' : 'public',
+                                      source: 'published',
+                                    })
+                                  }
+                                  disabled={setPrivacy.isPending || !char.id}
+                                  title={privacy === 'public' ? '下架（设为私有）' : '上架（设为公开）'}
+                                  className="p-1.5 rounded-lg text-on-surface-variant/50 hover:text-yellow-400 hover:bg-yellow-500/10 disabled:opacity-30 cursor-pointer transition-colors"
+                                >
+                                  {privacy === 'public' ? <Lock className="w-3.5 h-3.5" /> : <Unlock className="w-3.5 h-3.5" />}
+                                </button>
+                              )}
                               <button
                                 onClick={() => setEditingChar(char)}
                                 title="编辑角色"
@@ -527,11 +601,11 @@ export default function Characters() {
 
                               {confirmDelete &&
                                confirmDelete.owner === char._owner &&
-                               confirmDelete.avatar === fileName ? (
+                               confirmDelete.avatar === deleteAvatarKey ? (
                                 <>
                                   <button
                                     onClick={handleDelete}
-                                    disabled={deleteChar.isPending}
+                                    disabled={deleteChar.isPending || deletePublished.isPending}
                                     className="p-1.5 rounded-lg text-red-400 hover:bg-red-500/10 cursor-pointer"
                                     title="确认删除"
                                   >
@@ -550,7 +624,7 @@ export default function Characters() {
                                   onClick={() =>
                                     setConfirmDelete({
                                       owner: char._owner,
-                                      avatar: char._source === 'published' ? (char.id || '') : fileName,
+                                      avatar: deleteAvatarKey,
                                       name: char.name || fileName,
                                       source: char._source || 'file',
                                     })
@@ -637,17 +711,36 @@ export default function Characters() {
         <EditModal
           char={editingChar}
           fileName={getFileName(editingChar)}
-          onSave={async (name, tags) => {
+          onSave={async (name, tags, description) => {
+            const source = (editingChar._source || 'file') as 'published' | 'file';
             await editChar.mutateAsync({
               handle: editingChar._owner,
-              avatar_url: getFileName(editingChar),
+              source,
+              avatar_url: source === 'file' ? getFileName(editingChar) : undefined,
+              characterId: source === 'published' ? editingChar.id : undefined,
               name,
               tags,
+              description,
             });
             setEditingChar(null);
           }}
           onClose={() => setEditingChar(null)}
           isPending={editChar.isPending}
+        />
+      )}
+
+      {/* 详情抽屉 */}
+      {detailChar && (
+        <CharacterDetailDrawer
+          char={detailChar}
+          fileName={getFileName(detailChar)}
+          onClose={() => setDetailChar(null)}
+          onEdit={() => {
+            if (detailChar._source !== 'seed') {
+              setEditingChar(detailChar);
+              setDetailChar(null);
+            }
+          }}
         />
       )}
     </div>
@@ -669,12 +762,13 @@ function EditModal({
 }: {
   char: AdminCharacterItem;
   fileName: string;
-  onSave: (name: string, tags: string[]) => Promise<void>;
+  onSave: (name: string, tags: string[], description: string) => Promise<void>;
   onClose: () => void;
   isPending: boolean;
 }) {
   const [name, setName] = useState(char.name || '');
   const [tagsStr, setTagsStr] = useState(Array.isArray(char.tags) ? char.tags.join(', ') : '');
+  const [description, setDescription] = useState(char.description || '');
   const [error, setError] = useState('');
 
   const handleSave = async () => {
@@ -686,23 +780,23 @@ function EditModal({
       .split(',')
       .map((t) => t.trim())
       .filter(Boolean);
-    await onSave(name.trim(), tags);
+    await onSave(name.trim(), tags, description);
   };
 
   return (
     <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-6">
-      <div className="w-full max-w-md bg-surface border border-outline-variant/20 rounded-2xl overflow-hidden">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-outline-variant/20">
+      <div className="w-full max-w-md bg-surface border border-outline-variant/20 rounded-2xl overflow-hidden max-h-[90vh] flex flex-col">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-outline-variant/20 flex-shrink-0">
           <h2 className="text-sm font-bold text-white font-mono">编辑角色</h2>
           <button onClick={onClose} className="text-on-surface-variant hover:text-white cursor-pointer">
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        <div className="p-5 space-y-4">
+        <div className="p-5 space-y-4 overflow-y-auto">
           <div className="flex items-center gap-3 pb-2 border-b border-outline-variant/10">
             <span className="text-xs text-on-surface-variant font-mono">拥有者: {char._owner}</span>
-            <span className="text-[10px] text-on-surface-variant/40 font-mono">{fileName}</span>
+            <span className="text-[10px] text-on-surface-variant/40 font-mono">{fileName || char.id}</span>
           </div>
 
           <div className="space-y-1.5">
@@ -711,7 +805,7 @@ function EditModal({
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="w-full bg-surface-container border border-outline-variant/30 rounded-xl px-4 py-2.5 text-xs text-white placeholder:text-on-surface-variant/30 outline-none focus:border-accent-pink transition-colors"
+              className="w-full bg-surface-container border border-outline-variant/30 rounded-xl px-4 py-2.5 text-xs text-white outline-none focus:border-accent-pink transition-colors"
             />
           </div>
 
@@ -724,7 +818,17 @@ function EditModal({
               value={tagsStr}
               onChange={(e) => setTagsStr(e.target.value)}
               placeholder="傲娇, 治愈, 赛博朋克"
-              className="w-full bg-surface-container border border-outline-variant/30 rounded-xl px-4 py-2.5 text-xs text-white placeholder:text-on-surface-variant/30 outline-none focus:border-accent-pink transition-colors"
+              className="w-full bg-surface-container border border-outline-variant/30 rounded-xl px-4 py-2.5 text-xs text-white outline-none focus:border-accent-pink transition-colors"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-[11px] font-semibold text-on-surface-variant ml-1">描述</label>
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              rows={5}
+              className="w-full bg-surface-container border border-outline-variant/30 rounded-xl px-4 py-2.5 text-xs text-white outline-none focus:border-accent-pink transition-colors resize-y"
             />
           </div>
 
@@ -751,6 +855,200 @@ function EditModal({
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+function CharacterDetailDrawer({
+  char,
+  fileName,
+  onClose,
+  onEdit,
+}: {
+  char: AdminCharacterItem;
+  fileName: string;
+  onClose: () => void;
+  onEdit: () => void;
+}) {
+  const [detail, setDetail] = useState<AdminCharacterDetailResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const deleteReview = useAdminDeleteReview();
+  const [reviews, setReviews] = useState<AdminReviewItem[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError('');
+    const source = (char._source || 'file') as 'seed' | 'published' | 'file';
+    adminApi
+      .getCharacterDetail({
+        source,
+        handle: source === 'seed' ? undefined : char._owner,
+        characterId: source === 'seed' || source === 'published' ? char.id : undefined,
+        avatar_url: source === 'file' ? fileName : undefined,
+      })
+      .then((data) => {
+        if (cancelled) return;
+        setDetail(data);
+        setReviews(data.reviews || []);
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        setError(err instanceof Error ? err.message : '加载失败');
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [char, fileName]);
+
+  const c = detail?.character || char;
+  const readonly = detail?.readonly ?? char._source === 'seed';
+
+  const handleDeleteReview = async (r: AdminReviewItem) => {
+    try {
+      await deleteReview.mutateAsync({
+        store: r.store,
+        characterKey: r.characterKey,
+        reviewId: r.id,
+      });
+      setReviews((prev) => prev.filter((x) => x.id !== r.id));
+    } catch {
+      /* mutation surfaces error */
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end">
+      <div className="absolute inset-0 bg-black/60" onClick={onClose} />
+      <div className="relative w-full max-w-lg bg-surface border-l border-outline-variant/20 h-full overflow-y-auto animate-subtle-fadeIn">
+        <div className="sticky top-0 z-10 bg-surface/95 backdrop-blur border-b border-outline-variant/20 px-5 py-4 flex items-center justify-between">
+          <div>
+            <h2 className="text-sm font-bold text-white font-mono">{c.name || '角色详情'}</h2>
+            <p className="text-[10px] text-on-surface-variant font-mono mt-0.5">
+              {c._owner} · {c._source}
+              {readonly ? ' · 只读' : ''}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            {!readonly && (
+              <button
+                onClick={onEdit}
+                className="px-3 py-1.5 text-[11px] text-accent-pink border border-accent-pink/30 rounded-lg hover:bg-accent-pink/10 cursor-pointer"
+              >
+                编辑
+              </button>
+            )}
+            <button onClick={onClose} className="p-1.5 text-on-surface-variant hover:text-white cursor-pointer">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        <div className="p-5 space-y-5">
+          {loading && (
+            <div className="flex items-center gap-2 text-xs text-on-surface-variant">
+              <Loader className="w-4 h-4 animate-spin" /> 加载详情...
+            </div>
+          )}
+          {error && (
+            <div className="bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3 text-xs text-red-400">{error}</div>
+          )}
+
+          <section className="space-y-2">
+            <h3 className="text-[11px] font-semibold text-on-surface-variant font-mono">基础信息</h3>
+            <div className="bg-surface-container/40 border border-outline-variant/15 rounded-xl p-4 space-y-2 text-xs">
+              <Row label="隐私" value={String(c.privacyType || (c._source === 'seed' ? 'public' : '-'))} />
+              <Row label="标签" value={Array.isArray(c.tags) ? c.tags.join(', ') || '-' : '-'} />
+              <Row label="文件" value={fileName || c.id || '-'} />
+            </div>
+          </section>
+
+          <section className="space-y-2">
+            <h3 className="text-[11px] font-semibold text-on-surface-variant font-mono">描述</h3>
+            <p className="text-xs text-white/80 whitespace-pre-wrap leading-relaxed bg-surface-container/40 border border-outline-variant/15 rounded-xl p-4">
+              {c.description || '（无）'}
+            </p>
+          </section>
+
+          {(c.personality || c.scenario || c.first_mes) && (
+            <section className="space-y-3">
+              {c.personality ? (
+                <div>
+                  <h3 className="text-[11px] font-semibold text-on-surface-variant font-mono mb-1">性格</h3>
+                  <p className="text-xs text-white/70 whitespace-pre-wrap bg-surface-container/40 rounded-xl p-3 border border-outline-variant/15">
+                    {String(c.personality).slice(0, 800)}
+                  </p>
+                </div>
+              ) : null}
+              {c.scenario ? (
+                <div>
+                  <h3 className="text-[11px] font-semibold text-on-surface-variant font-mono mb-1">场景</h3>
+                  <p className="text-xs text-white/70 whitespace-pre-wrap bg-surface-container/40 rounded-xl p-3 border border-outline-variant/15">
+                    {String(c.scenario).slice(0, 800)}
+                  </p>
+                </div>
+              ) : null}
+              {c.first_mes ? (
+                <div>
+                  <h3 className="text-[11px] font-semibold text-on-surface-variant font-mono mb-1">开场白</h3>
+                  <p className="text-xs text-white/70 whitespace-pre-wrap bg-surface-container/40 rounded-xl p-3 border border-outline-variant/15">
+                    {String(c.first_mes).slice(0, 800)}
+                  </p>
+                </div>
+              ) : null}
+            </section>
+          )}
+
+          <section className="space-y-2">
+            <h3 className="text-[11px] font-semibold text-on-surface-variant font-mono flex items-center gap-1.5">
+              <Star className="w-3 h-3 text-accent-pink" />
+              评价 ({reviews.length})
+            </h3>
+            {reviews.length === 0 ? (
+              <p className="text-xs text-on-surface-variant py-4 text-center">暂无评价</p>
+            ) : (
+              <div className="space-y-2">
+                {reviews.map((r) => (
+                  <div
+                    key={r.id}
+                    className="bg-surface-container/40 border border-outline-variant/15 rounded-xl p-3 space-y-1.5"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 text-[11px]">
+                        <span className="text-white font-medium">{r.username}</span>
+                        <span className="text-yellow-400 font-mono">{r.rating}★</span>
+                        <span className="text-on-surface-variant/50 font-mono">{r.date}</span>
+                      </div>
+                      <button
+                        onClick={() => handleDeleteReview(r)}
+                        disabled={deleteReview.isPending}
+                        title="删除评价"
+                        className="p-1 rounded text-on-surface-variant/40 hover:text-red-400 hover:bg-red-500/10 cursor-pointer"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    </div>
+                    <p className="text-xs text-white/75 whitespace-pre-wrap">{r.comment}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Row({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex gap-3">
+      <span className="text-on-surface-variant w-12 flex-shrink-0">{label}</span>
+      <span className="text-white break-all">{value}</span>
     </div>
   );
 }

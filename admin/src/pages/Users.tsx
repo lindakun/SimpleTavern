@@ -5,6 +5,7 @@ import {
   useDeleteUser,
   useToggleUserStatus,
   useToggleAdmin,
+  useResetPassword,
 } from '../hooks/useAdminApi';
 import type { CreateUserRequest, UserViewModel } from '../types';
 import {
@@ -17,6 +18,7 @@ import {
   Trash2,
   X,
   Check,
+  KeyRound,
 } from 'lucide-react';
 
 export default function Users() {
@@ -115,6 +117,7 @@ function UserRow({ user }: { user: UserViewModel }) {
   const toggleAdmin = useToggleAdmin();
   const deleteUser = useDeleteUser();
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [showReset, setShowReset] = useState(false);
 
   const isDefaultUser = user.handle === 'default-user';
   const date = new Date(user.created).toLocaleDateString('zh-CN');
@@ -161,7 +164,17 @@ function UserRow({ user }: { user: UserViewModel }) {
         {date}
       </td>
       <td className="px-5 py-3.5 text-right">
+        {showReset && (
+          <ResetPasswordModal handle={user.handle} onClose={() => setShowReset(false)} />
+        )}
         <div className="flex items-center justify-end gap-1.5">
+          <button
+            onClick={() => setShowReset(true)}
+            title="重置密码"
+            className="p-1.5 rounded-lg text-on-surface-variant/50 hover:text-accent-pink hover:bg-accent-pink/10 cursor-pointer transition-colors"
+          >
+            <KeyRound className="w-3.5 h-3.5" />
+          </button>
           {/* 启用/禁用 */}
           {user.enabled !== false ? (
             <button
@@ -347,6 +360,83 @@ function CreateUserModal({ onClose }: { onClose: () => void }) {
               {createUser.isPending ? '创建中...' : '创建'}
             </button>
           </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ResetPasswordModal({ handle, onClose }: { handle: string; onClose: () => void }) {
+  const resetPassword = useResetPassword();
+  const [password, setPassword] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [error, setError] = useState('');
+  const [done, setDone] = useState(false);
+
+  const handleSubmit = async () => {
+    setError('');
+    if (password.length < 4) {
+      setError('密码至少 4 位');
+      return;
+    }
+    if (password !== confirm) {
+      setError('两次输入的密码不一致');
+      return;
+    }
+    try {
+      await resetPassword.mutateAsync({ handle, newPassword: password });
+      setDone(true);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : '重置失败');
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-6">
+      <div className="w-full max-w-md bg-surface border border-outline-variant/20 rounded-2xl overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-outline-variant/20">
+          <h2 className="text-sm font-bold text-white font-mono">重置密码 · {handle}</h2>
+          <button onClick={onClose} className="text-on-surface-variant hover:text-white cursor-pointer">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+        <div className="p-5 space-y-4">
+          {done ? (
+            <div className="space-y-4">
+              <div className="bg-green-500/10 border border-green-500/30 rounded-xl px-4 py-3 text-xs text-green-400">
+                密码已重置，用户可使用新密码登录。
+              </div>
+              <button
+                onClick={onClose}
+                className="w-full py-2.5 bg-gradient-to-r from-accent-pink to-accent-purple text-white text-xs font-bold rounded-xl cursor-pointer"
+              >
+                关闭
+              </button>
+            </div>
+          ) : (
+            <>
+              <InputField label="新密码 *" type="password" value={password} onChange={setPassword} placeholder="至少 4 位" />
+              <InputField label="确认密码 *" type="password" value={confirm} onChange={setConfirm} placeholder="再次输入" />
+              {error && (
+                <div className="bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-2.5 text-xs text-red-400">{error}</div>
+              )}
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={onClose}
+                  className="flex-1 py-2.5 bg-surface-elevated border border-outline-variant/30 text-xs text-on-surface-variant rounded-xl cursor-pointer"
+                >
+                  取消
+                </button>
+                <button
+                  onClick={handleSubmit}
+                  disabled={resetPassword.isPending}
+                  className="flex-1 py-2.5 bg-gradient-to-r from-accent-pink to-accent-purple text-white text-xs font-bold rounded-xl disabled:opacity-50 cursor-pointer"
+                >
+                  {resetPassword.isPending ? '提交中...' : '确认重置'}
+                </button>
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>

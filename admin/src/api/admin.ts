@@ -3,7 +3,20 @@
  */
 
 import { api } from './client';
-import type { UserViewModel, CreateUserRequest, UserActionRequest, AdminCharacterItem, AdminWorldItem, WorldInfoData, UgirlImportResult } from '../types';
+import type {
+  UserViewModel,
+  CreateUserRequest,
+  UserActionRequest,
+  AdminCharacterItem,
+  AdminWorldItem,
+  WorldInfoData,
+  UgirlImportResult,
+  AdminStats,
+  AdminCharacterDetailResponse,
+  AdminLlmListResponse,
+  AdminLlmTestResult,
+  AdminCharacterSource,
+} from '../types';
 
 export const adminApi = {
   // 获取用户列表
@@ -34,6 +47,10 @@ export const adminApi = {
   demoteUser: (handle: string) =>
     api.post<void>('/api/users/demote', { handle }),
 
+  // 管理员重置密码
+  resetPassword: (handle: string, newPassword: string) =>
+    api.post<{ ok: boolean }>('/api/users/admin-reset-password', { handle, newPassword }),
+
   // 获取当前用户信息
   getMe: () =>
     api.get<{ handle: string; name: string; admin: boolean; avatar: string }>('/api/users/me'),
@@ -46,53 +63,78 @@ export const adminApi = {
   logout: () =>
     api.post<void>('/api/users/logout'),
 
-  // 获取角色总数
-  getCharactersCount: () =>
-    api.post<unknown[]>('/api/characters/all', {}),
+  // ===== 运营统计 =====
+  getStats: () =>
+    api.get<AdminStats>('/api/admin/stats'),
+
+  // ===== LLM =====
+  getLlms: () =>
+    api.get<AdminLlmListResponse>('/api/admin/llm'),
+
+  testLlm: (id: string) =>
+    api.post<AdminLlmTestResult>('/api/admin/llm/test', { id }),
+
+  // ===== 评价 =====
+  deleteReview: (params: { store: string; characterKey: string; reviewId: string }) =>
+    api.del<{ ok: boolean }>('/api/admin/reviews', params),
 
   // ===== 角色管理（Admin） =====
 
-  // 获取所有用户的所有角色
   getAllCharacters: (handle?: string) =>
     api.post<AdminCharacterItem[]>('/api/characters/admin-all', handle ? { handle } : {}),
 
-  // 删除指定用户的角色
+  getCharacterDetail: (params: {
+    source: AdminCharacterSource;
+    handle?: string;
+    characterId?: string;
+    avatar_url?: string;
+  }) =>
+    api.post<AdminCharacterDetailResponse>('/api/characters/admin-get', params),
+
   adminDeleteCharacter: (handle: string, avatar_url: string) =>
     api.post<void>('/api/characters/admin-delete', { handle, avatar_url }),
 
-  // 编辑指定用户的角色
-  adminEditCharacter: (params: { handle: string; avatar_url: string; name?: string; tags?: string[] }) =>
+  adminEditCharacter: (params: {
+    handle: string;
+    avatar_url?: string;
+    characterId?: string;
+    source?: AdminCharacterSource;
+    name?: string;
+    tags?: string[];
+    description?: string;
+  }) =>
     api.post<void>('/api/characters/admin-edit', params),
 
-  // 删除指定用户的发布角色
+  adminSetPrivacy: (params: {
+    handle: string;
+    characterId: string;
+    privacyType: 'public' | 'private';
+    source?: string;
+  }) =>
+    api.post<{ ok: boolean }>('/api/characters/admin-set-privacy', params),
+
   adminDeletePublished: (handle: string, characterId: string) =>
     api.post<void>('/api/characters/admin-delete-published', { handle, characterId }),
 
   // ===== 世界书管理（Admin） =====
 
-  // 获取所有世界书
   getAllWorlds: () =>
     api.post<AdminWorldItem[]>('/api/worlds/admin-list', {}),
 
-  // 获取指定世界书内容
   adminGetWorld: (name: string) =>
     api.post<WorldInfoData>('/api/worlds/admin-get', { name }),
 
-  // 创建或保存世界书
   adminSaveWorld: (name: string, data: WorldInfoData) =>
     api.post<void>('/api/worlds/admin-save', { name, data }),
 
-  // 删除世界书
   adminDeleteWorld: (name: string) =>
     api.post<void>('/api/worlds/admin-delete', { name }),
 
-  // 导入世界书（上传 .json 文件）
   adminImportWorld: (file: File) =>
     api.upload<{ ok: boolean; name: string }>('/api/worlds/admin-import', file),
 
   // ===== ugirl 批量导入 =====
 
-  // 批量导入 ugirl 角色（传入服务器上的 JSON 文件路径）
   adminImportUgirl: (filePath: string, handle: string) =>
     api.post<UgirlImportResult>('/api/characters/admin-import-ugirl', {
       file_path: filePath,
