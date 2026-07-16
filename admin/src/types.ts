@@ -146,7 +146,7 @@ export interface UgirlImportResult {
   }>;
 }
 
-// 管理员角色数据（来自后端 admin-all 接口）
+// 管理员角色数据（来自后端 admin-all / admin-query 接口）
 export interface AdminCharacterItem {
   _owner: string;
   _fileName: string;
@@ -158,11 +158,37 @@ export interface AdminCharacterItem {
   personality?: string;
   scenario?: string;
   first_mes?: string;
+  system_prompt?: string;
   avatar: string;
-  privacyType?: 'public' | 'private';
+  privacyType?: 'public' | 'private' | null;
+  reviewCount?: number;
   date_added?: number;
+  created?: number;
   data_size?: number;
   chat_size?: number;
   shallow?: boolean;
   [key: string]: unknown;
+}
+
+export type AdminCharacterSourceFilter = 'all' | 'seed' | 'published' | 'file';
+export type AdminCharacterPrivacyFilter = 'all' | 'public' | 'private';
+export type AdminCharacterSort = 'name' | 'owner' | 'date' | 'size';
+
+export interface AdminCharacterQueryParams {
+  handle?: string;
+  source?: AdminCharacterSourceFilter;
+  privacy?: AdminCharacterPrivacyFilter;
+  tag?: string;
+  q?: string;
+  sort?: AdminCharacterSort;
+  order?: 'asc' | 'desc';
+  page?: number;
+  pageSize?: number;
+}
+
+export interface AdminCharacterQueryResult {
+  items: AdminCharacterItem[];
+  total: number;
+  page: number;
+  pageSize: number;
 }

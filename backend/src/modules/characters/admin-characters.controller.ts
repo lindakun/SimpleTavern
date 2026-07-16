@@ -22,6 +22,8 @@ import { getConfig } from '../../config/index.js';
 import { logger } from '../../common/logger.js';
 import { BadRequestError, NotFoundError } from '../../common/errors.js';
 import { invalidateAdminStatsCache } from '../admin/admin.stats.controller.js';
+import { invalidateDiscoverCache } from './discover.controller.js';
+import { importCharacterFile } from './characters.importer.js';
 
 export type AdminCharacterSource = 'seed' | 'published' | 'file';
 
@@ -48,64 +50,166 @@ function pickCharFields(char: Record<string, unknown>) {
     };
 }
 
+/** 聚合全站角色（供 admin-all / admin-query 复用） */
+async function collectAllCharacters(filterHandle?: string): Promise<Record<string, unknown>[]> {
+    const config = getConfig();
+    const users = await getAllUsers();
+    const results: Record<string, unknown>[] = [];
+
+    if (!filterHandle) {
+        for (const seed of getSeedCharacters()) {
+            results.push({
+                ...seed,
+                _owner: '__seed__',
+                _fileName: '',
+                _source: 'seed',
+                privacyType: (seed as { privacyType?: string }).privacyType || 'public',
+                reviewCount: Array.isArray(seed.reviews) ? seed.reviews.length : (seed.reviewCount || 0),
+            });
+        }
+    }
+
+    for (const user of users) {
+        const handle = user.handle;
+        if (filterHandle && handle !== filterHandle) continue;
+        const userChars = await getUserCharacters(handle);
+        for (const uc of userChars) {
+            results.push({
+                ...uc,
+                _owner: handle,
+                _fileName: '',
+                _source: 'published',
+                privacyType: uc.privacyType || 'private',
+                reviewCount: Array.isArray(uc.reviews) ? uc.reviews.length : (uc.reviewCount || 0),
+            });
+        }
+    }
+
+    for (const user of users) {
+        const handle = user.handle;
+        if (filterHandle && handle !== filterHandle) continue;
+
+        const dirs = getUserDirectories(config.dataRoot, handle);
+        const characters = getAllCharacters(dirs.characters, dirs.chats, true);
+
+        for (const char of characters) {
+            const rec = char as Record<string, unknown>;
+            const fileName = (rec.avatar as string) || '';
+            results.push({
+                ...char,
+                _owner: handle,
+                _fileName: fileName,
+                _source: 'file',
+                // file 不可上发现页，列表展示用
+                privacyType: rec.privacyType || null,
+                reviewCount: typeof rec.reviewCount === 'number' ? rec.reviewCount : 0,
+            });
+        }
+    }
+
+    return results;
+}
+
 /**
  * 管理员 - 获取所有用户的所有角色
  * POST /api/characters/admin-all
  */
 export async function adminGetAllCharacters(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-        const config = getConfig();
         const filterHandle = req.body?.handle as string | undefined;
-        const users = await getAllUsers();
-        const results: Record<string, unknown>[] = [];
+        res.json(await collectAllCharacters(filterHandle));
+    } catch (err) {
+        next(err);
+    }
+}
 
-        // 1. 种子角色
-        if (!filterHandle) {
-            for (const seed of getSeedCharacters()) {
-                results.push({
-                    ...seed,
-                    _owner: '__seed__',
-                    _fileName: '',
-                    _source: 'seed',
-                });
-            }
+/**
+ * 管理员 - 筛选分页查询
+ * POST /api/characters/admin-query
+ */
+export async function adminQueryCharacters(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+        const {
+            handle,
+            source = 'all',
+            privacy = 'all',
+            tag,
+            q,
+            sort = 'name',
+            order = 'asc',
+            page = 1,
+            pageSize = 50,
+        } = req.body as {
+            handle?: string;
+            source?: 'seed' | 'published' | 'file' | 'all';
+            privacy?: 'public' | 'private' | 'all';
+            tag?: string;
+            q?: string;
+            sort?: 'name' | 'owner' | 'date' | 'size';
+            order?: 'asc' | 'desc';
+            page?: number;
+            pageSize?: number;
+        };
+
+        const pageNum = Math.max(1, Number(page) || 1);
+        const size = Math.min(200, Math.max(1, Number(pageSize) || 50));
+
+        let items = await collectAllCharacters(handle);
+
+        if (source && source !== 'all') {
+            items = items.filter((c) => c._source === source);
         }
 
-        // 2. 用户发布角色（node-persist 存储）
-        for (const user of users) {
-            const handle = user.handle;
-            if (filterHandle && handle !== filterHandle) continue;
-            const userChars = await getUserCharacters(handle);
-            for (const uc of userChars) {
-                results.push({
-                    ...uc,
-                    _owner: handle,
-                    _fileName: '',
-                    _source: 'published',
-                });
-            }
+        if (privacy && privacy !== 'all') {
+            items = items.filter((c) => {
+                if (c._source === 'file') return false; // file 无上架隐私，不参与 public/private 筛选
+                const p = (c.privacyType as string) || (c._source === 'seed' ? 'public' : 'private');
+                return p === privacy;
+            });
         }
 
-        // 3. 文件角色（PNG 角色卡）
-        for (const user of users) {
-            const handle = user.handle;
-            if (filterHandle && handle !== filterHandle) continue;
-
-            const dirs = getUserDirectories(config.dataRoot, handle);
-            const characters = getAllCharacters(dirs.characters, dirs.chats, true);
-
-            for (const char of characters) {
-                const fileName = (char as Record<string, unknown>).avatar as string || '';
-                results.push({
-                    ...char,
-                    _owner: handle,
-                    _fileName: fileName,
-                    _source: 'file',
-                });
-            }
+        if (tag) {
+            items = items.filter((c) => Array.isArray(c.tags) && (c.tags as string[]).includes(tag));
         }
 
-        res.json(results);
+        if (q && String(q).trim()) {
+            const needle = String(q).trim().toLowerCase();
+            items = items.filter((c) => String(c.name || '').toLowerCase().includes(needle));
+        }
+
+        const dir = order === 'desc' ? -1 : 1;
+        items.sort((a, b) => {
+            let av: string | number = 0;
+            let bv: string | number = 0;
+            switch (sort) {
+                case 'owner':
+                    av = String(a._owner || '');
+                    bv = String(b._owner || '');
+                    break;
+                case 'date':
+                    av = Number(a.date_added || a.created || 0);
+                    bv = Number(b.date_added || b.created || 0);
+                    break;
+                case 'size':
+                    av = Number(a.data_size || 0);
+                    bv = Number(b.data_size || 0);
+                    break;
+                case 'name':
+                default:
+                    av = String(a.name || '').toLowerCase();
+                    bv = String(b.name || '').toLowerCase();
+                    break;
+            }
+            if (av < bv) return -1 * dir;
+            if (av > bv) return 1 * dir;
+            return 0;
+        });
+
+        const total = items.length;
+        const start = (pageNum - 1) * size;
+        const pageItems = items.slice(start, start + size);
+
+        res.json({ items: pageItems, total, page: pageNum, pageSize: size });
     } catch (err) {
         next(err);
     }
@@ -256,6 +360,7 @@ export async function adminSetPrivacy(req: Request, res: Response, next: NextFun
         }
 
         invalidateAdminStatsCache();
+        invalidateDiscoverCache();
         res.json({ ok: true, character: updated });
     } catch (err) {
         next(err);
@@ -303,6 +408,16 @@ export async function adminDeleteCharacter(req: Request, res: Response, next: Ne
  * 管理员 - 编辑角色（file / published；seed 只读）
  * POST /api/characters/admin-edit
  */
+function applyCharField(
+    fullChar: Record<string, unknown>,
+    key: string,
+    value: unknown,
+): void {
+    fullChar[key] = value;
+    const data = fullChar['data'] as Record<string, unknown> | undefined;
+    if (data) data[key] = value;
+}
+
 export async function adminEditCharacter(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
         const {
@@ -313,6 +428,10 @@ export async function adminEditCharacter(req: Request, res: Response, next: Next
             name,
             tags,
             description,
+            personality,
+            scenario,
+            first_mes,
+            system_prompt,
         } = req.body as {
             handle?: string;
             avatar_url?: string;
@@ -321,6 +440,10 @@ export async function adminEditCharacter(req: Request, res: Response, next: Next
             name?: string;
             tags?: string[];
             description?: string;
+            personality?: string;
+            scenario?: string;
+            first_mes?: string;
+            system_prompt?: string;
         };
 
         if (source === 'seed' || handle === '__seed__') {
@@ -336,9 +459,14 @@ export async function adminEditCharacter(req: Request, res: Response, next: Next
                 ...(name !== undefined ? { name } : {}),
                 ...(tags !== undefined ? { tags } : {}),
                 ...(description !== undefined ? { description } : {}),
+                ...(personality !== undefined ? { personality } : {}),
+                ...(scenario !== undefined ? { scenario } : {}),
+                ...(first_mes !== undefined ? { first_mes } : {}),
+                ...(system_prompt !== undefined ? { system_prompt } : {}),
             });
             if (!updated) throw new NotFoundError('Published character');
             invalidateAdminStatsCache();
+            invalidateDiscoverCache();
             res.json({ ok: true, character: updated });
             return;
         }
@@ -357,25 +485,53 @@ export async function adminEditCharacter(req: Request, res: Response, next: Next
             return;
         }
 
-        if (name !== undefined) {
-            fullChar['name'] = name;
-            const data = fullChar['data'] as Record<string, unknown> | undefined;
-            if (data) data['name'] = name;
-        }
-        if (tags !== undefined) {
-            fullChar['tags'] = tags;
-            const data = fullChar['data'] as Record<string, unknown> | undefined;
-            if (data) data['tags'] = tags;
-        }
-        if (description !== undefined) {
-            fullChar['description'] = description;
-            const data = fullChar['data'] as Record<string, unknown> | undefined;
-            if (data) data['description'] = description;
-        }
+        if (name !== undefined) applyCharField(fullChar as Record<string, unknown>, 'name', name);
+        if (tags !== undefined) applyCharField(fullChar as Record<string, unknown>, 'tags', tags);
+        if (description !== undefined) applyCharField(fullChar as Record<string, unknown>, 'description', description);
+        if (personality !== undefined) applyCharField(fullChar as Record<string, unknown>, 'personality', personality);
+        if (scenario !== undefined) applyCharField(fullChar as Record<string, unknown>, 'scenario', scenario);
+        if (first_mes !== undefined) applyCharField(fullChar as Record<string, unknown>, 'first_mes', first_mes);
+        if (system_prompt !== undefined) applyCharField(fullChar as Record<string, unknown>, 'system_prompt', system_prompt);
 
         editCharacter(avatar_url, dirs.characters, fullChar);
         invalidateAdminStatsCache();
         res.json({ ok: true });
+    } catch (err) {
+        next(err);
+    }
+}
+
+/**
+ * 管理员 - 上传 PNG/JSON 角色卡到指定用户
+ * POST /api/characters/admin-import-png  (multipart: file + handle)
+ */
+export async function adminImportPng(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+        const file = req.file;
+        if (!file) throw new BadRequestError('No file uploaded');
+
+        const handle = String(req.body?.handle || '').trim();
+        if (!handle) {
+            try { fs.unlinkSync(file.path); } catch { /* ignore */ }
+            throw new BadRequestError('Missing required field: handle');
+        }
+
+        const users = await getAllUsers();
+        if (!users.find((u) => u.handle === handle)) {
+            try { fs.unlinkSync(file.path); } catch { /* ignore */ }
+            throw new BadRequestError(`目标用户 "${handle}" 不存在`);
+        }
+
+        const config = getConfig();
+        const dirs = getUserDirectories(config.dataRoot, handle);
+        if (!fs.existsSync(dirs.characters)) {
+            fs.mkdirSync(dirs.characters, { recursive: true });
+        }
+
+        const pngName = await importCharacterFile(file.path, file.originalname, dirs.characters);
+        logger.info(`管理员导入角色到 ${handle}: ${pngName}`);
+        invalidateAdminStatsCache();
+        res.json({ ok: true, path: pngName, handle });
     } catch (err) {
         next(err);
     }

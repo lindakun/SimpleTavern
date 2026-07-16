@@ -2,7 +2,7 @@
  * Admin API 调用封装
  */
 
-import { api } from './client';
+import { api, apiRequest } from './client';
 import type {
   UserViewModel,
   CreateUserRequest,
@@ -16,6 +16,8 @@ import type {
   AdminLlmListResponse,
   AdminLlmTestResult,
   AdminCharacterSource,
+  AdminCharacterQueryParams,
+  AdminCharacterQueryResult,
 } from '../types';
 
 export const adminApi = {
@@ -83,6 +85,9 @@ export const adminApi = {
   getAllCharacters: (handle?: string) =>
     api.post<AdminCharacterItem[]>('/api/characters/admin-all', handle ? { handle } : {}),
 
+  queryCharacters: (params: AdminCharacterQueryParams) =>
+    api.post<AdminCharacterQueryResult>('/api/characters/admin-query', params),
+
   getCharacterDetail: (params: {
     source: AdminCharacterSource;
     handle?: string;
@@ -102,6 +107,10 @@ export const adminApi = {
     name?: string;
     tags?: string[];
     description?: string;
+    personality?: string;
+    scenario?: string;
+    first_mes?: string;
+    system_prompt?: string;
   }) =>
     api.post<void>('/api/characters/admin-edit', params),
 
@@ -115,6 +124,17 @@ export const adminApi = {
 
   adminDeletePublished: (handle: string, characterId: string) =>
     api.post<void>('/api/characters/admin-delete-published', { handle, characterId }),
+
+  adminImportPng: (file: File, handle: string) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('handle', handle);
+    return apiRequest<{ ok: boolean; path: string; handle: string }>('/api/characters/admin-import-png', {
+      method: 'POST',
+      body: formData,
+      timeout: 120_000,
+    });
+  },
 
   // ===== 世界书管理（Admin） =====
 

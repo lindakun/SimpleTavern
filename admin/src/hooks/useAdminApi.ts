@@ -134,12 +134,22 @@ export const characterKeys = {
   list: (handle?: string) => [...characterKeys.all, handle ?? '__all__'] as const,
 };
 
-// 获取所有角色
+// 获取所有角色（兼容旧接口）
 export function useAllCharacters(handle?: string) {
   return useQuery({
     queryKey: characterKeys.list(handle),
     queryFn: () => adminApi.getAllCharacters(handle),
     staleTime: 15_000,
+  });
+}
+
+// 分页筛选查询
+export function useQueryCharacters(params: import('../types').AdminCharacterQueryParams) {
+  return useQuery({
+    queryKey: [...characterKeys.all, 'query', params] as const,
+    queryFn: () => adminApi.queryCharacters(params),
+    staleTime: 10_000,
+    placeholderData: (prev) => prev,
   });
 }
 
@@ -175,8 +185,25 @@ export function useAdminEditCharacter() {
       name?: string;
       tags?: string[];
       description?: string;
+      personality?: string;
+      scenario?: string;
+      first_mes?: string;
+      system_prompt?: string;
     }) => adminApi.adminEditCharacter(params),
     onSuccess: () => qc.invalidateQueries({ queryKey: characterKeys.all }),
+  });
+}
+
+// PNG 上传导入
+export function useAdminImportPng() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ file, handle }: { file: File; handle: string }) =>
+      adminApi.adminImportPng(file, handle),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: characterKeys.all });
+      qc.invalidateQueries({ queryKey: adminKeys.stats() });
+    },
   });
 }
 
