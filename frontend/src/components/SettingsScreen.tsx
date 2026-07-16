@@ -6,6 +6,7 @@ import {
   saveChatSettings,
   type ChatSettings,
   type ResponseLength,
+  type PromptStrictness,
 } from '../utils/chatSettings';
 
 interface SettingsScreenProps {
@@ -176,7 +177,7 @@ export default function SettingsScreen({ onNavigate }: SettingsScreenProps) {
             <div className="space-y-1">
               <h4 className="text-xs font-semibold text-white">回复长度</h4>
               <p className="text-[10px] text-on-surface-variant leading-relaxed">
-                控制单次生成的大致篇幅（映射 max_tokens）。
+                控制单次生成的大致篇幅（映射 max_tokens）。若常被截断，选「长」或点聊天气泡「续写」。
               </p>
             </div>
             <div className="grid grid-cols-3 gap-2 text-xs text-center font-mono font-bold">
@@ -190,6 +191,35 @@ export default function SettingsScreen({ onNavigate }: SettingsScreenProps) {
                   onClick={() => updateChat({ responseLength: key })}
                   className={`py-2 px-3 rounded-lg border text-[10px] cursor-pointer transition-colors ${
                     chatSettings.responseLength === key
+                      ? 'border-accent-pink text-accent-pink bg-accent-pink/5'
+                      : 'border-outline-variant/20 text-on-surface-variant bg-surface-elevated/40'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="bg-surface-container/60 border border-outline-variant/20 p-4 rounded-xl space-y-3">
+            <div className="space-y-1">
+              <h4 className="text-xs font-semibold text-white">导演词强度</h4>
+              <p className="text-[10px] text-on-surface-variant leading-relaxed">
+                控制默认输出约束。角色卡自带 system 时建议「尊重角色卡」或「标准」，避免与作者指令打架。
+              </p>
+            </div>
+            <div className="grid grid-cols-3 gap-2 text-xs text-center font-mono font-bold">
+              {([
+                ['light', '尊重角色卡'],
+                ['standard', '标准'],
+                ['strict', '强约束'],
+              ] as [PromptStrictness, string][]).map(([key, label]) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => updateChat({ promptStrictness: key })}
+                  className={`py-2 px-2 rounded-lg border text-[10px] cursor-pointer transition-colors ${
+                    chatSettings.promptStrictness === key
                       ? 'border-accent-pink text-accent-pink bg-accent-pink/5'
                       : 'border-outline-variant/20 text-on-surface-variant bg-surface-elevated/40'
                   }`}

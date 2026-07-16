@@ -9,9 +9,11 @@ import { getUserDirs, getSessionHandle } from '../../shared/utils/user-dirs.js';
 import { getUserDirectories } from '../users/users.repository.js';
 import type { Chat, ChatMessage } from './types.js';
 
-/** 聊天线程信息 */
+/** 聊天线程信息（每个角色可有多个 chatFile 会话） */
 interface ChatThread {
     characterId: string;
+    /** 会话文件名（无 .jsonl 后缀），默认 chat */
+    chatFile: string;
     characterName: string;
     lastMessageText: string;
     lastActive: string;
@@ -48,6 +50,8 @@ export function saveChat(req: Request, res: Response, next: NextFunction): void 
 
 /**
  * POST /api/chats/get
+ * - 无 limit：返回完整 JSONL 数组（兼容旧客户端）
+ * - 有 limit：返回 { chat, hasMore, totalMessages, offset, limit }
  */
 export function getChat(req: Request, res: Response, _next: NextFunction): void {
     try {
@@ -63,6 +67,21 @@ export function getChat(req: Request, res: Response, _next: NextFunction): void 
 
         if (!fileName) {
             res.json({});
+            return;
+        }
+
+        const limitRaw = req.body.limit;
+        const limit = limitRaw !== undefined && limitRaw !== null && limitRaw !== ''
+            ? Number(limitRaw)
+            : 0;
+        const offset = Number(req.body.offset) || 0;
+
+        if (limit > 0) {
+            const page = chatService.getChatDataPage(dirs.chats, charName, String(fileName), {
+                limit,
+                offset,
+            });
+            res.json(page);
             return;
         }
 
@@ -291,22 +310,28 @@ export function getChatThreads(req: Request, res: Response, next: NextFunction):
             const files = listChatFiles(chatDir);
             if (files.length === 0) continue;
 
-            const latestFile = files[files.length - 1];
-            const filePath = path.join(chatDir, latestFile);
-            const firstLine = readFirstLine(filePath);
-            const meta = firstLine ? tryParseJson(firstLine) : {};
-            const chatData = readChatFile(filePath);
-            const lastMsg = chatData.length > 1 ? chatData[chatData.length - 1] as import('./types.js').ChatMessage : null;
-            const charName = meta?.character_name || entry.name;
+            // 每个 .jsonl 文件 = 一条会话线程（支持同角色多会话）
+            for (const file of files) {
+                const filePath = path.join(chatDir, file);
+                const firstLine = readFirstLine(filePath);
+                const meta = firstLine ? tryParseJson(firstLine) : {};
+                const chatData = readChatFile(filePath);
+                const lastMsg = chatData.length > 1
+                    ? chatData[chatData.length - 1] as import('./types.js').ChatMessage
+                    : null;
+                const charName = meta?.character_name || entry.name;
+                const chatFile = file.replace(/\.jsonl$/i, '');
 
-            threads.push({
-                characterId: entry.name,
-                characterName: charName,
-                lastMessageText: lastMsg?.mes || '',
-                lastActive: normalizeSendDate(lastMsg?.send_date, filePath),
-                messageCount: Math.max(0, chatData.length - 1),
-                pinned: pinnedSet.has(entry.name),
-            });
+                threads.push({
+                    characterId: entry.name,
+                    chatFile,
+                    characterName: charName,
+                    lastMessageText: lastMsg?.mes || '',
+                    lastActive: normalizeSendDate(lastMsg?.send_date, filePath),
+                    messageCount: Math.max(0, chatData.length - 1),
+                    pinned: pinnedSet.has(entry.name),
+                });
+            }
         }
 
         // 置顶优先，然后按最后活跃时间排序

@@ -56,17 +56,25 @@ export function useAppNavigation() {
     }
   }, [user, currentScreen, navigate]);
 
-  // ── Initial route ──
+  // ── Initial route（保留合法深链，仅在根路径/未知路径时重定向）──
   const didInitRoute = useRef(false);
   useEffect(() => {
     if (!isFetched || didInitRoute.current) return;
     didInitRoute.current = true;
+
+    const path = location.pathname;
+    const screen = pathToScreen(path);
+    // 已有合法路由（含 /chat、/character/:id 等）→ 不覆盖
+    if (screen && path !== '/') return;
+
     if (currentUser) {
       navigate('/discover', { replace: true });
-    } else {
+    } else if (path !== '/') {
+      // 未知路径且未登录 → 欢迎页
       navigate('/', { replace: true });
     }
-  }, [isFetched, currentUser, navigate]);
+    // path === '/' 且未登录：停留在欢迎页，无需 navigate
+  }, [isFetched, currentUser, navigate, location.pathname]);
 
   // ── Splash Screen ──
   const [splashComplete, setSplashComplete] = useState(false);

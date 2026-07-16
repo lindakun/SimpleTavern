@@ -15,6 +15,12 @@ import type { ChatMessage } from '../types.js';
 // Types
 // ─────────────────────────────────────────────
 
+/** 世界书插入位置：before=并入主 system；after=对话后 system（默认） */
+export type LorePosition = 'before' | 'after';
+
+/** 导演词强度：light 尊重卡内 system；strict 强约束输出 */
+export type PromptStrictness = 'light' | 'standard' | 'strict';
+
 export interface LoreEntry {
     keys: string[];
     secondary_keys?: string[];
@@ -23,6 +29,18 @@ export interface LoreEntry {
     enabled?: boolean;
     selective?: boolean;
     insertion_order?: number;
+    /**
+     * 关键词扫描深度：仅用最近 N 条历史 + 当前消息（0 = 全窗口）
+     * 对齐 SillyTavern depth 的最小子集
+     */
+    depth?: number;
+    /** 插入位置 */
+    position?: LorePosition;
+}
+
+export interface SelectedLoreItem {
+    content: string;
+    position: LorePosition;
 }
 
 export interface PromptBuildRequest {
@@ -54,6 +72,17 @@ export interface PromptBuildRequest {
      * 紧凑模式（本地小模型）：缩短 system、略减 max 相关文案，降低延迟与跑偏
      */
     compact?: boolean;
+    /** 导演词强度；缺省 standard（有卡内 system_prompt 时输出要求略软） */
+    promptStrictness?: PromptStrictness;
+    /**
+     * 上下文总字符预算（近似 token）。
+     * 超出时按优先级裁剪：旧历史 → 摘要 → lore → 示例 → 场景
+     */
+    contextBudgetChars?: number;
+    /** 默认 lore 扫描深度（条）；0 = 不限制 */
+    loreScanDepth?: number;
+    /** 续写模式：弱化「本轮结构」要求，强调接着写 */
+    continueMode?: boolean;
 }
 
 export interface PromptBuildResult {
@@ -70,6 +99,8 @@ export interface PromptDebugInfo {
     exampleInSystem: boolean;
     loreCount: number;
     loreChars: number;
+    loreBefore: number;
+    loreAfter: number;
     historyIn: number;
     historyOut: number;
     historyCleaned: number;
@@ -77,8 +108,13 @@ export interface PromptDebugInfo {
     summaryChars: number;
     systemChars: number;
     totalMessages: number;
+    totalChars: number;
     roleSequence: string;
     compact: boolean;
+    strictness: PromptStrictness;
+    budgetChars: number;
+    budgetTrimmed: boolean;
+    continueMode: boolean;
     slots: {
         system: number;
         postSystem: number;
@@ -212,51 +248,102 @@ export function formatExampleForSystem(
 // Lore
 // ─────────────────────────────────────────────
 
-export function selectLoreEntries(
+function normalizeLorePosition(raw: unknown): LorePosition {
+    if (raw === 'before' || raw === 'before_char' || raw === 0 || raw === '0') return 'before';
+    if (raw === 'after' || raw === 'after_char' || raw === 1 || raw === '1') return 'after';
+    // SillyTavern 数字 position：常见 0=before, 1=after, 其它当 after
+    if (typeof raw === 'number' && raw === 0) return 'before';
+    return 'after';
+}
+
+/**
+ * 按条目 depth 构造扫描文本（constant 不依赖关键词，仍可算进预算）
+ */
+function scanTextForEntry(
+    entry: LoreEntry,
+    fullScan: string,
+    historyTexts: string[],
+    currentMessage: string,
+    defaultDepth: number,
+): string {
+    const depth = entry.depth && entry.depth > 0
+        ? entry.depth
+        : (defaultDepth > 0 ? defaultDepth : 0);
+    if (!depth) return fullScan;
+    const recent = historyTexts.slice(-depth);
+    return [...recent, currentMessage || ''].join('\n').toLowerCase();
+}
+
+/**
+ * 选择 lore（带 position）；测试与旧调用可用 selectLoreEntries 取 content 列表
+ */
+export function selectLoreItems(
     entries: LoreEntry[],
     scanText: string,
     maxEntries = 12,
     budgetChars = 2500,
-): string[] {
+    options?: {
+        historyTexts?: string[];
+        currentMessage?: string;
+        defaultDepth?: number;
+    },
+): SelectedLoreItem[] {
     if (!entries?.length) return [];
 
-    const text = scanText.toLowerCase();
+    const full = (scanText || '').toLowerCase();
+    const historyTexts = options?.historyTexts || [];
+    const currentMessage = options?.currentMessage || '';
+    const defaultDepth = options?.defaultDepth ?? 0;
+
     const sorted = [...entries]
         .filter((e) => e.enabled !== false && e.content?.trim())
         .sort((a, b) => (a.insertion_order ?? 0) - (b.insertion_order ?? 0));
 
-    const selected: string[] = [];
+    const selected: SelectedLoreItem[] = [];
     let used = 0;
 
-    const tryPush = (content: string) => {
-        const c = content.trim();
+    const tryPush = (entry: LoreEntry) => {
+        const c = entry.content.trim();
         if (!c) return false;
         if (selected.length >= maxEntries) return false;
         if (used + c.length > budgetChars && selected.length > 0) return false;
-        selected.push(c);
+        selected.push({
+            content: c,
+            position: entry.position === 'before' ? 'before' : 'after',
+        });
         used += c.length;
         return true;
     };
 
-    // constant 优先
     for (const entry of sorted) {
-        if (entry.constant) tryPush(entry.content);
+        if (entry.constant) tryPush(entry);
     }
 
     for (const entry of sorted) {
         if (entry.constant) continue;
         const keys = (entry.keys || []).filter(Boolean);
         if (keys.length === 0) continue;
+        const text = scanTextForEntry(entry, full, historyTexts, currentMessage, defaultDepth);
         const matched = keys.some((k) => text.includes(k.toLowerCase()));
         if (!matched) continue;
         if (entry.selective && entry.secondary_keys?.length) {
             const secOk = entry.secondary_keys.some((k) => text.includes(k.toLowerCase()));
             if (!secOk) continue;
         }
-        tryPush(entry.content);
+        tryPush(entry);
     }
 
     return selected;
+}
+
+/** 兼容旧接口：仅返回 content 字符串列表 */
+export function selectLoreEntries(
+    entries: LoreEntry[],
+    scanText: string,
+    maxEntries = 12,
+    budgetChars = 2500,
+): string[] {
+    return selectLoreItems(entries, scanText, maxEntries, budgetChars).map((i) => i.content);
 }
 
 export function normalizeCharacterBook(book: unknown): LoreEntry[] {
@@ -283,6 +370,10 @@ export function normalizeCharacterBook(book: unknown): LoreEntry[] {
             : Array.isArray(e.keysecondary)
                 ? (e.keysecondary as string[])
                 : [];
+        const depthRaw = e.depth ?? e.scan_depth;
+        const depth = typeof depthRaw === 'number'
+            ? depthRaw
+            : Number(depthRaw) || 0;
         return {
             keys,
             secondary_keys: secondary,
@@ -291,6 +382,8 @@ export function normalizeCharacterBook(book: unknown): LoreEntry[] {
             enabled: e.enabled !== false && e.disable !== true,
             selective: Boolean(e.selective),
             insertion_order: Number(e.insertion_order ?? e.order ?? 0),
+            depth: depth > 0 ? depth : undefined,
+            position: normalizeLorePosition(e.position),
         };
     });
 }
@@ -565,11 +658,105 @@ export function normalizeCard(req: PromptBuildRequest): NormalizedCard {
 // System template
 // ─────────────────────────────────────────────
 
+function resolveStrictness(
+    req: PromptBuildRequest,
+    card: NormalizedCard,
+): PromptStrictness {
+    if (req.promptStrictness === 'light' || req.promptStrictness === 'standard' || req.promptStrictness === 'strict') {
+        return req.promptStrictness;
+    }
+    // 有卡内 system_prompt 时默认略软，减少与作者指令打架
+    if (card.systemPrompt.trim()) return 'standard';
+    return 'standard';
+}
+
+function buildOutputRules(
+    card: NormalizedCard,
+    compact: boolean,
+    strictness: PromptStrictness,
+    continueMode: boolean,
+): string {
+    if (continueMode) {
+        return [
+            `1. 你是「${card.charName}」，接着上一条未写完的回复继续写。`,
+            '2. 不要复述已出现的句子，从中断处自然接上。',
+            `3. 称呼用户为「${card.userName}」，保持人设与文风一致。`,
+            '4. 请写完整，不要再次在句子中间停止。',
+        ].join('\n');
+    }
+
+    if (compact) {
+        if (strictness === 'light') {
+            return [
+                `1. 你是「${card.charName}」，禁止说自己是 AI。`,
+                `2. 称呼用户为「${card.userName}」。`,
+                '3. 中文对白优先，篇幅适中，推进对话。',
+            ].join('\n');
+        }
+        return [
+            `1. 你是「${card.charName}」，禁止说自己是 AI。`,
+            '2. 使用中文。每轮包含：简短动作/神态 + 至少 1–2 句对白。',
+            '3. 篇幅约 60–200 字，推进对话，不要复读。',
+            `4. 称呼用户为「${card.userName}」，不要改名，不要用错误的第三人称指用户。`,
+            '5. 设定矛盾时以角色简介为准。',
+        ].join('\n');
+    }
+
+    if (strictness === 'light') {
+        return [
+            `1. 始终保持「${card.charName}」的身份；禁止声称自己是 AI。`,
+            `2. 称呼用户为「${card.userName}」，勿擅自改名。`,
+            '3. 文风与卡内 system/示例一致；卡内指令优先于默认规则。',
+            '4. 主动推进对话，避免无信息复读。',
+        ].join('\n');
+    }
+
+    if (strictness === 'strict') {
+        return [
+            `1. 始终保持「${card.charName}」的身份与性格，禁止出戏解释「我是AI」。`,
+            '2. 默认使用中文；角色设定另有要求时从其设定。',
+            '3. 对白自然；动作/神态/心理可用（）或 *...*，与角色卡风格一致时优先跟卡。',
+            '4. 主动推进情境与情绪，避免无信息复读上一句。',
+            '5. 篇幅：通常 80–350 字；冲突/告白/关键剧情可更长。不要无故只回几个字，也不要无意义注水。',
+            `6. 称呼用户固定为「${card.userName}」；不要擅自改名；不要把用户写成无关的「他/她」旁观叙事。`,
+            '7. 本轮至少包含：环境或动作描写 1 句 + 对白 2 句以上（极简寒暄除外）。',
+            '8. 不要编造与上方设定明显冲突的世界观事实。',
+            '9. 请完整写完本轮，不要在句子中间停止。',
+        ].join('\n');
+    }
+
+    // standard：有卡内 system 时不强制「对白 2 句」等硬结构
+    const hasCardSystem = Boolean(card.systemPrompt.trim());
+    if (hasCardSystem) {
+        return [
+            `1. 始终保持「${card.charName}」的身份与性格；禁止出戏解释「我是AI」。`,
+            '2. 卡内 system / 作者指令优先；以下为通用补充。',
+            '3. 默认中文；对白自然，动作/神态适度。',
+            '4. 主动推进情境，避免无信息复读。',
+            `5. 称呼用户为「${card.userName}」，勿改名，勿旁观叙事。`,
+            '6. 篇幅适中（约 80–350 字），关键剧情可更长。',
+        ].join('\n');
+    }
+
+    return [
+        `1. 始终保持「${card.charName}」的身份与性格，禁止出戏解释「我是AI」。`,
+        '2. 默认使用中文；角色设定另有要求时从其设定。',
+        '3. 对白自然；动作/神态/心理可用（）或 *...*，与角色卡风格一致时优先跟卡。',
+        '4. 主动推进情境与情绪，避免无信息复读上一句。',
+        '5. 篇幅：通常 80–350 字；冲突/告白/关键剧情可更长。',
+        `6. 称呼用户固定为「${card.userName}」；不要擅自改名。`,
+        '7. 不要编造与上方设定明显冲突的世界观事实。',
+    ].join('\n');
+}
+
 function buildMainSystem(
     card: NormalizedCard,
     exampleBlock: string,
     worldStatic: string,
+    loreBefore: string[],
     compact: boolean,
+    strictness: PromptStrictness,
+    continueMode: boolean,
 ): string {
     const parts: string[] = [];
 
@@ -605,43 +792,33 @@ function buildMainSystem(
         parts.push(`### 世界设定\n${w}`);
     }
 
-    parts.push('## 人称与关系（必须遵守）');
-    parts.push(card.relationshipHint);
+    if (loreBefore.length > 0) {
+        parts.push('### 常驻 / 前置世界书');
+        parts.push(loreBefore.map((s, i) => `(${i + 1}) ${s}`).join('\n'));
+    }
 
-    if (exampleBlock.trim()) {
+    // light 档且有卡内 system 时，弱化人称段，避免盖过作者设定
+    if (strictness !== 'light' || !card.systemPrompt.trim()) {
+        parts.push('## 人称与关系（必须遵守）');
+        parts.push(card.relationshipHint);
+    } else {
+        parts.push('## 人称（简要）');
+        parts.push(`对话对象为「${card.userName}」，称呼保持一致。`);
+    }
+
+    if (exampleBlock.trim() && strictness !== 'light') {
         const ex = compact && exampleBlock.length > 500
             ? exampleBlock.slice(0, 500) + '…'
             : exampleBlock.trim();
         parts.push('## 文风示例（仅学习语气与格式，不是已经发生的剧情）');
         parts.push(ex);
+    } else if (exampleBlock.trim() && strictness === 'light' && exampleBlock.length <= 400) {
+        parts.push('## 文风示例（参考语气）');
+        parts.push(exampleBlock.trim());
     }
 
     parts.push('## 输出要求');
-    if (compact) {
-        // 本地小模型：更短、更硬的约束
-        parts.push(
-            [
-                `1. 你是「${card.charName}」，禁止说自己是 AI。`,
-                '2. 使用中文。每轮包含：简短动作/神态 + 至少 1–2 句对白。',
-                '3. 篇幅约 60–200 字，推进对话，不要复读。',
-                `4. 称呼用户为「${card.userName}」，不要改名，不要用错误的第三人称指用户。`,
-                '5. 设定矛盾时以角色简介为准。',
-            ].join('\n'),
-        );
-    } else {
-        parts.push(
-            [
-                `1. 始终保持「${card.charName}」的身份与性格，禁止出戏解释「我是AI」。`,
-                '2. 默认使用中文；角色设定另有要求时从其设定。',
-                '3. 对白自然；动作/神态/心理可用（）或 *...*，与角色卡风格一致时优先跟卡。',
-                '4. 主动推进情境与情绪，避免无信息复读上一句。',
-                '5. 篇幅：通常 80–350 字；冲突/告白/关键剧情可更长。不要无故只回几个字，也不要无意义注水。',
-                `6. 称呼用户固定为「${card.userName}」；不要擅自改名；不要把用户写成无关的「他/她」旁观叙事。`,
-                '7. 本轮至少包含：环境或动作描写 1 句 + 对白 2 句以上（极简寒暄除外）。',
-                '8. 不要编造与上方设定明显冲突的世界观事实。',
-            ].join('\n'),
-        );
-    }
+    parts.push(buildOutputRules(card, compact, strictness, continueMode));
 
     if (card.thinCard) {
         parts.push('');
@@ -649,6 +826,79 @@ function buildMainSystem(
     }
 
     return parts.join('\n');
+}
+
+/**
+ * 上下文预算裁剪：优先丢掉旧历史，再截断摘要/后置 lore，最后压缩主 system
+ * 始终保留最后一条 user
+ */
+export function applyContextBudget(
+    messages: ChatMessage[],
+    budgetChars: number,
+): { messages: ChatMessage[]; trimmed: boolean; totalChars: number } {
+    if (budgetChars <= 0 || messages.length === 0) {
+        const totalChars = messages.reduce((n, m) => n + m.content.length, 0);
+        return { messages, trimmed: false, totalChars };
+    }
+
+    const clone = messages.map((m) => ({ ...m }));
+    const sum = () => clone.reduce((n, m) => n + m.content.length, 0);
+    let total = sum();
+    if (total <= budgetChars) {
+        return { messages: clone, trimmed: false, totalChars: total };
+    }
+
+    let trimmed = false;
+
+    // 1) 从最早的对话历史开始丢（保留首 system 与末 user）
+    let guard = 0;
+    while (total > budgetChars && guard++ < 200) {
+        const lastIdx = clone.length - 1;
+        const dropIdx = clone.findIndex((m, i) =>
+            i > 0 && i < lastIdx && (m.role === 'user' || m.role === 'assistant'),
+        );
+        if (dropIdx < 0) break;
+        total -= clone[dropIdx].content.length;
+        clone.splice(dropIdx, 1);
+        trimmed = true;
+    }
+
+    // 2) 截断中间的 system（摘要 / 后置 lore），保留 index 0
+    guard = 0;
+    while (total > budgetChars && guard++ < 50) {
+        const lastIdx = clone.length - 1;
+        const sysIdx = clone.findIndex((m, i) => i > 0 && i < lastIdx && m.role === 'system');
+        if (sysIdx < 0) break;
+        const target = Math.max(120, Math.floor(clone[sysIdx].content.length * 0.5));
+        if (clone[sysIdx].content.length <= 120) {
+            total -= clone[sysIdx].content.length;
+            clone.splice(sysIdx, 1);
+        } else {
+            const cut = clone[sysIdx].content.length - target;
+            clone[sysIdx] = {
+                ...clone[sysIdx],
+                content: clone[sysIdx].content.slice(0, target) + '\n…',
+            };
+            total -= cut - 2;
+        }
+        trimmed = true;
+        total = sum();
+    }
+
+    // 3) 压缩主 system
+    if (total > budgetChars && clone[0]?.role === 'system') {
+        const allow = Math.max(800, budgetChars - (total - clone[0].content.length) - 200);
+        if (clone[0].content.length > allow) {
+            clone[0] = {
+                ...clone[0],
+                content: clone[0].content.slice(0, allow) + '\n…',
+            };
+            trimmed = true;
+            total = sum();
+        }
+    }
+
+    return { messages: clone, trimmed, totalChars: sum() };
 }
 
 // ─────────────────────────────────────────────
@@ -661,6 +911,8 @@ function buildMainSystem(
 export function buildMessagesWithDebug(req: PromptBuildRequest): PromptBuildResult {
     const card = normalizeCard(req);
     const compact = Boolean(req.compact);
+    const continueMode = Boolean(req.continueMode);
+    const strictness = resolveStrictness(req, card);
     const macro = (t: string) => applyMacros(t || '', card.charName, card.userName);
 
     // 历史窗口（本地模型更狠地截断）
@@ -672,10 +924,11 @@ export function buildMessagesWithDebug(req: PromptBuildRequest): PromptBuildResu
         userName: card.userName,
     });
 
-    // lore 扫描：摘要 + 近期历史 + 当前消息
+    const historyTexts = histWin.history.map((m) => m.text);
+    // lore 全量扫描文本（无 depth 限制时用）
     const scanText = [
         histWin.summary,
-        ...histWin.history.map((m) => m.text),
+        ...historyTexts,
         req.message || '',
         card.description,
     ].join('\n');
@@ -689,12 +942,26 @@ export function buildMessagesWithDebug(req: PromptBuildRequest): PromptBuildResu
             constant: true,
             enabled: true,
             insertion_order: -100 + i,
+            position: 'before' as LorePosition,
         })),
     ];
 
     const loreBudget = req.loreBudgetChars ?? (compact ? 1200 : 2500);
-    const loreSnippets = selectLoreEntries(mergedLore, scanText, compact ? 6 : 12, loreBudget);
-    const loreChars = loreSnippets.reduce((n, s) => n + s.length, 0);
+    const defaultDepth = req.loreScanDepth ?? (compact ? 6 : 0);
+    const loreItems = selectLoreItems(
+        mergedLore,
+        scanText,
+        compact ? 6 : 12,
+        loreBudget,
+        {
+            historyTexts,
+            currentMessage: req.message || '',
+            defaultDepth,
+        },
+    );
+    const loreBefore = loreItems.filter((i) => i.position === 'before').map((i) => macro(i.content));
+    const loreAfter = loreItems.filter((i) => i.position === 'after').map((i) => macro(i.content));
+    const loreChars = loreItems.reduce((n, s) => n + s.content.length, 0);
 
     // 静态 worldBook 正文（长文本）
     let worldStatic = '';
@@ -708,9 +975,17 @@ export function buildMessagesWithDebug(req: PromptBuildRequest): PromptBuildResu
         card.userName,
         compact ? 500 : 1200,
     );
-    const mainSystem = buildMainSystem(card, exampleBlock, worldStatic, compact);
+    const mainSystem = buildMainSystem(
+        card,
+        exampleBlock,
+        worldStatic,
+        loreBefore,
+        compact,
+        strictness,
+        continueMode,
+    );
 
-    const messages: ChatMessage[] = [];
+    let messages: ChatMessage[] = [];
 
     messages.push({ role: 'system', content: sanitizeText(mainSystem) });
 
@@ -724,7 +999,7 @@ export function buildMessagesWithDebug(req: PromptBuildRequest): PromptBuildResu
     const wantFirstMes = req.includeFirstMes === true
         || (req.includeFirstMes !== false && historyEmpty);
     let firstMesInjected = false;
-    if (wantFirstMes && card.firstMes.trim() && historyEmpty) {
+    if (wantFirstMes && card.firstMes.trim() && historyEmpty && !continueMode) {
         messages.push({
             role: 'assistant',
             content: sanitizeText(card.firstMes),
@@ -740,30 +1015,35 @@ export function buildMessagesWithDebug(req: PromptBuildRequest): PromptBuildResu
         });
     }
 
-    // 本轮 lore + post_history + 人称提醒
+    // 本轮 lore(after) + post_history + 人称提醒
     const postParts: string[] = [];
-    if (loreSnippets.length > 0) {
+    if (loreAfter.length > 0) {
         postParts.push(
             '【本轮相关设定 / 世界书】（写作时请自然融入，不要逐条复读标题）\n' +
-            loreSnippets.map((s, i) => `(${i + 1}) ${macro(s)}`).join('\n'),
+            loreAfter.map((s, i) => `(${i + 1}) ${s}`).join('\n'),
         );
     }
     if (card.postHistory.trim()) {
         postParts.push(card.postHistory.trim());
     }
-    postParts.push(
-        `【人称提醒】用户是「${card.userName}」。回复中称呼一致，勿改名，勿把用户写成旁观的「他/她」。请完整写完本轮回复，不要在句子中间停止。`,
-    );
+    if (continueMode) {
+        postParts.push(
+            `【续写】用户是「${card.userName}」。从上一句未完成处接着写，禁止重复已有段落，写完整。`,
+        );
+    } else if (strictness !== 'light') {
+        postParts.push(
+            `【人称提醒】用户是「${card.userName}」。回复中称呼一致，勿改名，勿把用户写成旁观的「他/她」。请完整写完本轮回复，不要在句子中间停止。`,
+        );
+    }
 
     /**
      * 本地小模型（compact）的 chat template 往往只接受「开头一条 system」，
      * 在 history 之后再插 system 容易触发提前 EOS，表现为只输出几个字就断。
-     * 因此 compact 时把后置指令并入当前 user 消息，保持 SUAUA…U 交替。
+     * 因此 compact 时把后置指令并入主 system，保持 SUAUA…U 交替。
      */
     const userContent = sanitizeText(macro(req.message || ''));
     if (compact) {
         if (postParts.length > 0) {
-            // 追加进主 system 末尾（改写 messages[0]）
             messages[0] = {
                 role: 'system',
                 content: messages[0].content + '\n\n' + sanitizeText(postParts.join('\n\n')),
@@ -780,10 +1060,20 @@ export function buildMessagesWithDebug(req: PromptBuildRequest): PromptBuildResu
         messages.push({ role: 'user', content: userContent });
     }
 
+    // 上下文预算（字符近似）
+    const budgetChars = req.contextBudgetChars
+        ?? (compact ? 12_000 : 28_000);
+    const budgeted = applyContextBudget(messages, budgetChars);
+    messages = budgeted.messages;
+
     const roleSequence = messages.map((m) => m.role[0].toUpperCase()).join('');
     const systemChars = messages
         .filter((m) => m.role === 'system')
         .reduce((n, m) => n + m.content.length, 0);
+    // 预算裁剪后 history 条数可能变少
+    const historyOutCount = messages.filter((m) => m.role === 'user' || m.role === 'assistant').length
+        - (messages[messages.length - 1]?.role === 'user' ? 1 : 0)
+        - (firstMesInjected ? 1 : 0);
 
     const debug: PromptDebugInfo = {
         charName: card.charName,
@@ -791,23 +1081,29 @@ export function buildMessagesWithDebug(req: PromptBuildRequest): PromptBuildResu
         thinCard: card.thinCard,
         firstMesInjected,
         firstMesSynthesized: card.firstMesSynthesized && firstMesInjected,
-        exampleInSystem: Boolean(exampleBlock),
-        loreCount: loreSnippets.length,
+        exampleInSystem: Boolean(exampleBlock) && strictness !== 'light',
+        loreCount: loreItems.length,
         loreChars,
+        loreBefore: loreBefore.length,
+        loreAfter: loreAfter.length,
         historyIn: histWin.inputCount,
-        historyOut: histWin.history.length,
+        historyOut: Math.max(0, historyOutCount),
         historyCleaned: histWin.cleanedCount,
         summarized: histWin.summarized,
         summaryChars: histWin.summary.length,
         systemChars,
         totalMessages: messages.length,
+        totalChars: budgeted.totalChars,
         roleSequence,
         compact,
+        strictness,
+        budgetChars,
+        budgetTrimmed: budgeted.trimmed,
+        continueMode,
         slots: {
             system: messages.filter((m) => m.role === 'system').length,
-            // compact 时后置指令并入主 system，不再单独占一条
             postSystem: compact ? 0 : (postParts.length > 0 ? 1 : 0),
-            history: histWin.history.length,
+            history: Math.max(0, historyOutCount),
             user: 1,
         },
     };
@@ -872,13 +1168,16 @@ export function formatPromptDebugLog(debug: PromptDebugInfo): string {
         `prompt char=${debug.charName}`,
         `thin=${debug.thinCard}`,
         `compact=${debug.compact}`,
+        `strict=${debug.strictness}`,
         `seq=${debug.roleSequence}`,
         `msgs=${debug.totalMessages}`,
+        `chars=${debug.totalChars}/${debug.budgetChars}${debug.budgetTrimmed ? '(trim)' : ''}`,
         `sys=${debug.systemChars}c`,
         `hist=${debug.historyIn}→${debug.historyOut} clean=${debug.historyCleaned}`,
         `sum=${debug.summarized ? debug.summaryChars + 'c' : 'no'}`,
-        `lore=${debug.loreCount}/${debug.loreChars}c`,
+        `lore=${debug.loreCount}/${debug.loreChars}c b${debug.loreBefore}/a${debug.loreAfter}`,
         `ex=${debug.exampleInSystem}`,
         `fm=${debug.firstMesInjected}${debug.firstMesSynthesized ? '(syn)' : ''}`,
-    ].join(' ');
+        debug.continueMode ? 'cont=1' : '',
+    ].filter(Boolean).join(' ');
 }

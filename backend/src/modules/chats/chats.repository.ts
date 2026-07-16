@@ -39,44 +39,40 @@ export function readChatFile(filePath: string): Chat {
     }
 }
 
+/** 分页读取结果（含 hasMore 元信息） */
+export interface ChatPageResult {
+    chat: Chat;
+    totalMessages: number;
+    hasMore: boolean;
+    offset: number;
+    limit: number;
+}
+
 /**
  * 分页读取聊天文件（JSONL 格式）
- * 首次加载只读取最近 N 条消息，滚动时加载更多
- *
- * @param filePath 聊天文件路径
- * @param options 分页选项
- * @returns 分页聊天数据
+ * offset 表示从末尾已跳过的消息数；limit 为本次取条数
  */
-export function readChatFilePaginated(
+export function readChatFilePage(
     filePath: string,
     options?: {
-        /** 首次加载的消息数量（不包括 header） */
-        initialLimit?: number;
-        /** 滚动时每次加载的消息数量 */
-        pageSize?: number;
-        /** 偏移量：从末尾开始跳过的消息数 */
+        limit?: number;
+        /** 从末尾开始跳过的消息数 */
         offset?: number;
     },
-): Chat {
-    const { initialLimit = 50, pageSize = 50, offset = 0 } = options ?? {};
+): ChatPageResult {
+    const limit = Math.min(Math.max(options?.limit ?? 50, 1), 200);
+    const offset = Math.max(options?.offset ?? 0, 0);
+    const emptyHeader = { chat_metadata: {}, user_name: '', character_name: '' };
 
     try {
         if (!fs.existsSync(filePath)) {
-            return [{ chat_metadata: {}, user_name: '', character_name: '' }];
+            return { chat: [emptyHeader], totalMessages: 0, hasMore: false, offset, limit };
         }
 
-        // 对于小文件，直接读取全部
-        const stats = fs.statSync(filePath);
-        const fileSize = stats.size;
-
-        // 如果文件小于 50KB，直接读取全部
-        if (fileSize < 50 * 1024) {
-            return readChatFile(filePath);
-        }
-
-        // 大文件：分页读取
         const content = fs.readFileSync(filePath, 'utf-8');
-        if (!content) return [{ chat_metadata: {}, user_name: '', character_name: '' }];
+        if (!content) {
+            return { chat: [emptyHeader], totalMessages: 0, hasMore: false, offset, limit };
+        }
 
         const allLines = content
             .split('\n')
@@ -91,24 +87,42 @@ export function readChatFilePaginated(
             .filter(x => x !== null);
 
         if (allLines.length === 0) {
-            return [{ chat_metadata: {}, user_name: '', character_name: '' }];
+            return { chat: [emptyHeader], totalMessages: 0, hasMore: false, offset, limit };
         }
 
-        // 第一行是 header，其余是 messages
         const header = allLines[0];
         const allMessages = allLines.slice(1);
-
-        // 计算要读取的消息范围
         const totalMessages = allMessages.length;
-        const startIndex = Math.max(0, totalMessages - offset - initialLimit);
+        const startIndex = Math.max(0, totalMessages - offset - limit);
         const endIndex = Math.max(0, totalMessages - offset);
-
         const messages = allMessages.slice(startIndex, endIndex);
+        const hasMore = startIndex > 0;
 
-        return [header, ...messages] as Chat;
+        return {
+            chat: [header, ...messages] as Chat,
+            totalMessages,
+            hasMore,
+            offset,
+            limit,
+        };
     } catch {
-        return [{ chat_metadata: {}, user_name: '', character_name: '' }];
+        return { chat: [emptyHeader], totalMessages: 0, hasMore: false, offset, limit };
     }
+}
+
+/**
+ * 兼容旧接口：仅返回 Chat 数组
+ */
+export function readChatFilePaginated(
+    filePath: string,
+    options?: {
+        initialLimit?: number;
+        pageSize?: number;
+        offset?: number;
+    },
+): Chat {
+    const limit = options?.initialLimit ?? options?.pageSize ?? 50;
+    return readChatFilePage(filePath, { limit, offset: options?.offset ?? 0 }).chat;
 }
 
 /**
@@ -176,7 +190,16 @@ export function listChatFiles(directory: string): string[] {
         }
         return fs.readdirSync(directory)
             .filter(f => f.endsWith('.jsonl'))
-            .sort();
+            .sort((a, b) => {
+                // 按修改时间升序，末尾为最新
+                try {
+                    const sa = fs.statSync(path.join(directory, a)).mtimeMs;
+                    const sb = fs.statSync(path.join(directory, b)).mtimeMs;
+                    return sa - sb;
+                } catch {
+                    return a.localeCompare(b);
+                }
+            });
     } catch {
         // 预期：操作失败，返回空数组
         return [];

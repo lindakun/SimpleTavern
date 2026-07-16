@@ -67,6 +67,8 @@ function collectLoreEntries(req: ChatRequest): LoreEntry[] {
         enabled: e.enabled,
         selective: e.selective,
         insertion_order: e.insertion_order,
+        depth: e.depth,
+        position: e.position,
     }));
     const fromWorldFile = loadWorldLoreEntries(req.worldBook);
     return [...fromBook, ...fromExplicit, ...fromWorldFile];
@@ -109,6 +111,10 @@ export function buildPromptMessages(req: ChatRequest, opts?: { compact?: boolean
         userName: req.userName,
         includeFirstMes: req.includeFirstMes,
         compact: opts?.compact,
+        promptStrictness: req.promptStrictness,
+        contextBudgetChars: req.contextBudgetChars,
+        loreScanDepth: req.loreScanDepth,
+        continueMode: req.continueMode,
     });
 
     logger.info(formatPromptDebugLog(debug));

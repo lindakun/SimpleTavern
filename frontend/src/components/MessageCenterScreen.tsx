@@ -6,11 +6,14 @@ import LazyImage from './LazyImage';
 import SwipeableRow, { chatSwipeActions } from './SwipeableRow';
 import { useToast } from './Toast.tsx';
 import { useChatThreads, useBatchDeleteChats, useTogglePinChat, chatKeys } from '../hooks/useChat';
+import { useChatApi } from '../api/chat';
 import { useQueryClient } from '@tanstack/react-query';
 import { formatChatDate } from '../utils/formatDate';
+import { useChatStore } from '../stores/chatStore';
 
 interface ThreadItem {
   characterId: string;
+  chatFile: string;
   characterName: string;
   avatar: string;
   lastMessageText: string;
@@ -18,13 +21,17 @@ interface ThreadItem {
   messageCount: number;
   pinned: boolean;
   character?: Character;
+  /** 列表唯一键：角色 + 会话文件 */
+  sessionKey: string;
 }
 
 interface MessageCenterScreenProps {
   characters: Character[];
-  chatThreads: Record<string, ChatThread>;
+  /** @deprecated 优先从 chatStore 订阅，避免 App 透传导致无关重渲染 */
+  chatThreads?: Record<string, ChatThread>;
   onNavigate: (screen: ScreenId) => void;
-  onSelectCharacter: (id: string) => void;
+  /** chatFile 存在时打开对应多会话 */
+  onSelectCharacter: (id: string, chatFile?: string) => void;
   onDeleteChatThreads?: (characterIds: string[]) => void;
   onTogglePinChat?: (characterId: string, pinned: boolean) => void;
 }
@@ -70,6 +77,9 @@ function MessageBody({
   isSelectionMode?: boolean;
 }) {
   const lastActiveDateStr = formatChatDate(item.lastActive);
+  const sessionLabel = item.chatFile && item.chatFile !== 'chat'
+    ? item.chatFile.replace(/^chat_/, '会话 ')
+    : null;
 
   return (
     <div className="flex-grow space-y-1 min-w-0">
@@ -78,6 +88,11 @@ function MessageBody({
           <span className="font-bold text-sm text-white hover:text-accent-pink truncate">
             {item.characterName}
           </span>
+          {sessionLabel && (
+            <span className="text-[9px] text-cyan-300/70 font-mono flex-shrink-0 truncate max-w-[72px]">
+              {sessionLabel}
+            </span>
+          )}
           {item.pinned && !isSelectionMode && (
             <Pin className="w-3 h-3 text-accent-pink flex-shrink-0" />
           )}
@@ -97,7 +112,7 @@ function MessageBody({
 
 export default function MessageCenterScreen({
   characters,
-  chatThreads,
+  chatThreads: chatThreadsProp,
   onNavigate,
   onSelectCharacter,
   onDeleteChatThreads,
@@ -105,9 +120,12 @@ export default function MessageCenterScreen({
 }: MessageCenterScreenProps) {
   const { showToast } = useToast();
   const queryClient = useQueryClient();
-  const { data: threadList = [], refetch: refetchThreads } = useChatThreads();
+  const storeThreads = useChatStore((s) => s.chatThreads);
+  const chatThreads = chatThreadsProp ?? storeThreads;
+  const { data: threadList = [], refetch: refetchThreads, isPending: threadsLoading } = useChatThreads();
   const batchDelete = useBatchDeleteChats();
   const togglePin = useTogglePinChat();
+  const chatApi = useChatApi();
   const longPressTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   useEffect(() => {
@@ -128,15 +146,24 @@ export default function MessageCenterScreen({
   };
 
   const chatList = useMemo<ThreadItem[]>(() => {
-    return threadList.map(thread => {
+    return threadList.map((thread) => {
       const character = findCharacter(characters, thread.characterId);
+      const chatFile = thread.chatFile || 'chat';
       const localThread = chatThreads[thread.characterId]
         ?? chatThreads[thread.characterId + '.png'];
+      // 仅当本地活跃会话文件匹配时，用本地 lastMessage 覆盖（流式中即时预览）
+      const localActiveFile = localThread?.chatFile || 'chat';
+      const useLocalPreview = localActiveFile === chatFile;
       return {
         characterId: thread.characterId,
+        chatFile,
+        sessionKey: `${thread.characterId}::${chatFile}`,
         characterName: thread.characterName || character?.name || thread.characterId,
         avatar: character?.avatar || '',
-        lastMessageText: thread.lastMessageText || localThread?.lastMessageText || '',
+        lastMessageText:
+          (useLocalPreview ? localThread?.lastMessageText : undefined)
+          || thread.lastMessageText
+          || '',
         lastActive: thread.lastActive || '',
         messageCount: thread.messageCount || 0,
         pinned: thread.pinned || false,
@@ -182,12 +209,16 @@ export default function MessageCenterScreen({
     } catch { /* handled by mutation */ }
   };
 
-  // 左滑删除单条
-  const handleDeleteSingle = async (characterId: string) => {
+  // 左滑删除单条会话（仅删该 chatFile，不删角色其它会话）
+  const handleDeleteSingle = async (characterId: string, chatFile: string) => {
     try {
-      await batchDelete.mutateAsync([characterId]);
-      if (onDeleteChatThreads) onDeleteChatThreads([characterId]);
-    } catch { /* handled by mutation */ }
+      await chatApi.deleteChat(characterId, chatFile || 'chat');
+      await refetchThreads();
+      queryClient.invalidateQueries({ queryKey: chatKeys.threads() });
+      showToast('已删除会话', 'success');
+    } catch {
+      showToast('删除失败', 'error');
+    }
   };
 
   const handleTogglePin = async (characterId: string, currentPinned: boolean) => {
@@ -260,7 +291,11 @@ export default function MessageCenterScreen({
         )}
 
         <div className="space-y-3">
-          {chatList.length === 0 ? (
+          {threadsLoading && chatList.length === 0 ? (
+            <div className="py-12 text-center text-on-surface-variant text-xs animate-pulse">
+              加载会话列表…
+            </div>
+          ) : chatList.length === 0 ? (
             <div className="py-12 text-center text-on-surface-variant text-xs">
               暂无聊天记录，去发现页面选择一个角色开始对话吧
             </div>
@@ -270,27 +305,30 @@ export default function MessageCenterScreen({
 
             const swipeActions = chatSwipeActions(
               () => handleTogglePin(item.characterId, item.pinned),
-              () => handleDeleteSingle(item.characterId),
+              () => handleDeleteSingle(item.characterId, item.chatFile),
               item.pinned,
             );
 
             return isSelectionMode ? (
-              <div key={item.characterId}
+              <div key={item.sessionKey}
                 onClick={() => toggleSelect(item.characterId)}
                 className={`flex items-center gap-4 cursor-pointer p-4 rounded-xl border transition-all ${
                   isSelected ? 'border-accent-pink/60 bg-accent-pink/5' : 'border-outline-variant/20 bg-surface-container/40'
                 } ${item.pinned ? 'border-l-2 border-l-accent-pink/60' : ''}`}
               >
-                <button onClick={(e) => { e.stopPropagation(); toggleSelect(item.characterId); }} className="flex-shrink-0 cursor-pointer">
+                <button type="button" onClick={(e) => { e.stopPropagation(); toggleSelect(item.characterId); }} className="flex-shrink-0 cursor-pointer">
                   {isSelected ? <CheckSquare className="w-5 h-5 text-accent-pink" /> : <Square className="w-5 h-5 text-on-surface-variant" />}
                 </button>
                 <AvatarSection item={item} />
                 <MessageBody item={item} isSelectionMode />
               </div>
             ) : (
-              <SwipeableRow key={item.characterId} actions={swipeActions}>
+              <SwipeableRow key={item.sessionKey} actions={swipeActions}>
                 <div
-                  onClick={() => { onSelectCharacter(selectId); onNavigate(ScreenId.CHAT); }}
+                  onClick={() => {
+                    onSelectCharacter(selectId, item.chatFile);
+                    onNavigate(ScreenId.CHAT);
+                  }}
                   onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); enterSelectionMode(item.characterId); }}
                   onTouchStart={() => {
                     longPressTimer.current = setTimeout(() => enterSelectionMode(item.characterId), 600);

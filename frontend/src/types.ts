@@ -88,10 +88,14 @@ export interface ChatMessage {
   role: 'user' | 'model';
   text: string;
   timestamp: string;
+  /** 因 max_tokens 被截断，可点「续写」 */
+  truncated?: boolean;
 }
 
 export interface ChatThread {
   characterId: string;
+  /** 会话文件名（无 .jsonl），默认 chat；同角色可多会话 */
+  chatFile?: string;
   characterName?: string;
   lastMessageText?: string;
   lastActive?: string;
@@ -100,6 +104,11 @@ export interface ChatThread {
   messages: ChatMessage[];
   updatedAt?: string;
   pinned?: boolean;
+}
+
+/** 活跃会话缓存键 */
+export function chatSessionKey(characterId: string, chatFile = 'chat'): string {
+  return `${characterId}::${chatFile || 'chat'}`;
 }
 
 export interface AppState {

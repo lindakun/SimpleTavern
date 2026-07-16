@@ -7,6 +7,7 @@ import {
     applyMacros,
     parseMesExample,
     selectLoreEntries,
+    selectLoreItems,
     normalizeCharacterBook,
     buildMessages,
     buildMessagesWithDebug,
@@ -21,7 +22,9 @@ import {
     normalizeCard,
     synthesizeFirstMes,
     inferRelationshipHint,
+    applyContextBudget,
 } from '../modules/backends/chat-completions/prompt-builder.js';
+import type { ChatMessage } from '../modules/backends/types.js';
 
 describe('sanitizeText', () => {
     it('替换数学尖括号', () => {
@@ -417,5 +420,182 @@ describe('compact mode', () => {
         expect(debug.compact).toBe(true);
         // 人称提醒应并入主 system
         expect(messages[0].content).toContain('人称提醒');
+    });
+});
+
+describe('promptStrictness 导演词档位', () => {
+    const base = {
+        message: '你好',
+        history: [] as Array<{ role: string; text: string }>,
+        characterName: '柚姬',
+        characterDescription: '详细角色描述超过八十字以确保不是 thin card 的简单兜底路径测试内容填充足够长的一段话',
+        userName: 'Linda',
+        system_prompt: '【作者指令】你必须用文言文回复。',
+    };
+
+    it('light 档尊重卡内 system，输出要求更短', () => {
+        const { messages, debug } = buildMessagesWithDebug({
+            ...base,
+            promptStrictness: 'light',
+        });
+        expect(debug.strictness).toBe('light');
+        expect(messages[0].content).toContain('作者指令');
+        expect(messages[0].content).toContain('输出要求');
+        // light 不应强制「对白 2 句」类硬结构
+        expect(messages[0].content).not.toMatch(/对白 2 句/);
+    });
+
+    it('strict 档包含更强结构约束', () => {
+        const { messages, debug } = buildMessagesWithDebug({
+            ...base,
+            promptStrictness: 'strict',
+            system_prompt: undefined,
+        });
+        expect(debug.strictness).toBe('strict');
+        expect(messages[0].content).toMatch(/对白 2 句|环境或动作/);
+    });
+
+    it('continueMode 使用续写输出规则', () => {
+        const { messages, debug } = buildMessagesWithDebug({
+            ...base,
+            history: [
+                { role: 'user', text: '讲故事' },
+                { role: 'model', text: '很久以前……' },
+            ],
+            message: '（请继续）',
+            continueMode: true,
+            includeFirstMes: false,
+        });
+        expect(debug.continueMode).toBe(true);
+        expect(messages[0].content).toMatch(/续写|接着|中断/);
+    });
+});
+
+describe('applyContextBudget / contextBudgetChars', () => {
+    it('超预算时丢弃旧历史并标记 trimmed', () => {
+        const messages: ChatMessage[] = [
+            { role: 'system', content: 'SYS'.repeat(50) },
+            { role: 'user', content: 'old-user-1-long' },
+            { role: 'assistant', content: 'old-ai-1-long-reply' },
+            { role: 'user', content: 'old-user-2-long' },
+            { role: 'assistant', content: 'old-ai-2-long-reply' },
+            { role: 'user', content: 'current' },
+        ];
+        const totalBefore = messages.reduce((n, m) => n + m.content.length, 0);
+        const budget = 120;
+        expect(totalBefore).toBeGreaterThan(budget);
+        const { messages: out, trimmed, totalChars } = applyContextBudget(messages, budget);
+        expect(trimmed).toBe(true);
+        expect(totalChars).toBeLessThanOrEqual(budget + 80); // 裁剪后逼近预算
+        // 最后一条 user 保留
+        expect(out[out.length - 1].role).toBe('user');
+        expect(out[out.length - 1].content).toBe('current');
+        // 首 system 仍在
+        expect(out[0].role).toBe('system');
+    });
+
+    it('预算充足时不裁剪', () => {
+        const messages: ChatMessage[] = [
+            { role: 'system', content: 'short' },
+            { role: 'user', content: 'hi' },
+        ];
+        const r = applyContextBudget(messages, 10_000);
+        expect(r.trimmed).toBe(false);
+        expect(r.messages).toHaveLength(2);
+    });
+
+    it('buildMessagesWithDebug 极小 budget 会 budgetTrimmed', () => {
+        const history = Array.from({ length: 20 }, (_, i) => ({
+            role: i % 2 === 0 ? 'user' : 'model',
+            text: `很长的历史消息内容填充用来触发预算裁剪编号${i}`.repeat(3),
+        }));
+        const { debug } = buildMessagesWithDebug({
+            message: '现在',
+            history,
+            characterName: 'A',
+            characterDescription: '详细角色描述超过八十字以确保不是 thin card 的简单兜底路径测试内容填充足够长',
+            userName: 'B',
+            contextBudgetChars: 800,
+            summarizeAfterMessages: 100, // 不先摘要，直接靠 budget 裁
+            keepRecentMessages: 20,
+            maxHistoryMessages: 40,
+        });
+        expect(debug.budgetChars).toBe(800);
+        expect(debug.budgetTrimmed).toBe(true);
+        expect(debug.totalChars).toBeLessThanOrEqual(900);
+    });
+});
+
+describe('lore depth / position', () => {
+    it('selectLoreItems 支持 position before/after', () => {
+        const items = selectLoreItems(
+            [
+                { keys: [], content: '前置常驻', constant: true, position: 'before' },
+                { keys: ['源晶'], content: '后置触发', constant: false, position: 'after' },
+            ],
+            '我要源晶',
+            12,
+            2500,
+        );
+        expect(items.some((i) => i.position === 'before' && i.content.includes('前置'))).toBe(true);
+        expect(items.some((i) => i.position === 'after' && i.content.includes('后置'))).toBe(true);
+    });
+
+    it('depth 限制关键词扫描范围', () => {
+        // 源晶只出现在很早的历史；depth=2 扫不到
+        const historyTexts = [
+            '第一句提到源晶',
+            '第二句无关',
+            '第三句无关',
+            '第四句无关',
+        ];
+        const deepMiss = selectLoreItems(
+            [{ keys: ['源晶'], content: '源晶设定', constant: false, depth: 2 }],
+            historyTexts.join('\n') + '\n当前',
+            12,
+            2500,
+            { historyTexts, currentMessage: '当前', defaultDepth: 0 },
+        );
+        expect(deepMiss.some((i) => i.content.includes('源晶设定'))).toBe(false);
+
+        const deepHit = selectLoreItems(
+            [{ keys: ['源晶'], content: '源晶设定', constant: false, depth: 10 }],
+            historyTexts.join('\n') + '\n当前',
+            12,
+            2500,
+            { historyTexts, currentMessage: '当前', defaultDepth: 0 },
+        );
+        expect(deepHit.some((i) => i.content.includes('源晶设定'))).toBe(true);
+    });
+
+    it('normalizeCharacterBook 解析 depth/position', () => {
+        const lore = normalizeCharacterBook({
+            entries: [
+                { keys: ['a'], content: 'A', depth: 4, position: 'before_char' },
+                { key: ['b'], content: 'B', position: 1 },
+            ],
+        });
+        expect(lore[0].depth).toBe(4);
+        expect(lore[0].position).toBe('before');
+        expect(lore[1].position).toBe('after');
+    });
+
+    it('before lore 进入主 system，after 进入后置 system', () => {
+        const { messages, debug } = buildMessagesWithDebug({
+            message: '触发词 源晶',
+            history: [{ role: 'user', text: 'hi' }, { role: 'model', text: 'yo' }],
+            characterName: 'A',
+            characterDescription: '详细角色描述超过八十字以确保不是 thin card 的简单兜底路径测试内容填充足够长',
+            userName: 'U',
+            loreEntries: [
+                { keys: [], content: 'BEFORE_LORE_XYZ', constant: true, position: 'before' },
+                { keys: ['源晶'], content: 'AFTER_LORE_XYZ', constant: false, position: 'after' },
+            ],
+        });
+        expect(debug.loreBefore).toBeGreaterThanOrEqual(1);
+        expect(debug.loreAfter).toBeGreaterThanOrEqual(1);
+        expect(messages[0].content).toContain('BEFORE_LORE_XYZ');
+        const post = messages.filter((m) => m.role === 'system').slice(1).map((m) => m.content).join('\n');
+        expect(post).toContain('AFTER_LORE_XYZ');
     });
 });

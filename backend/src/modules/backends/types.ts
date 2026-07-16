@@ -19,6 +19,8 @@ export interface LoreEntryInput {
     enabled?: boolean;
     selective?: boolean;
     insertion_order?: number;
+    depth?: number;
+    position?: 'before' | 'after';
 }
 
 export interface ChatRequest {
@@ -54,6 +56,14 @@ export interface ChatRequest {
     max_tokens?: number;
     /** 返回 prompt debug 信息（非流式 / 或日志） */
     debug?: boolean;
+    /** 导演词强度 light | standard | strict */
+    promptStrictness?: 'light' | 'standard' | 'strict';
+    /** 上下文字符预算 */
+    contextBudgetChars?: number;
+    /** lore 默认扫描深度（条） */
+    loreScanDepth?: number;
+    /** 续写模式 */
+    continueMode?: boolean;
 }
 
 export interface ChatResponse {

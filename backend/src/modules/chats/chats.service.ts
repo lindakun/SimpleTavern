@@ -59,6 +59,25 @@ export function getChatData(
 }
 
 /**
+ * 分页获取聊天数据（从末尾取 limit 条，offset 为已跳过条数）
+ */
+export function getChatDataPage(
+    chatsDir: string,
+    characterFileName: string,
+    chatFileName: string,
+    options?: { limit?: number; offset?: number },
+): chatRepo.ChatPageResult {
+    const chatDir = chatRepo.getCharacterChatDir(chatsDir, characterFileName);
+    const filePath = chatRepo.getChatFilePath(chatsDir, characterFileName.replace('.png', ''), chatFileName);
+
+    if (!chatRepo.isPathUnderParent(chatDir, filePath)) {
+        throw new Error('Invalid chat file path');
+    }
+
+    return chatRepo.readChatFilePage(filePath, options);
+}
+
+/**
  * 保存聊天数据
  */
 export function saveChat(

@@ -17,30 +17,35 @@ export function useCharacterManagement(navigate: ReturnType<typeof useNavigate>)
   const userApi = useUserApi();
   const { toggleFavorite } = useToggleFavorite();
   const { data: favoriteIds = [] } = useFavorites();
-  const {
-    characters,
-    updateCharacter: storeUpdateChar,
-    removeCharacter: storeRemoveChar,
-    setEditingCharacter,
-  } = useCharacterStore();
+  const characters = useCharacterStore((s) => s.characters);
+  const editingCharacter = useCharacterStore((s) => s.editingCharacter);
+  const storeUpdateChar = useCharacterStore((s) => s.updateCharacter);
+  const storeRemoveChar = useCharacterStore((s) => s.removeCharacter);
+  const setEditingCharacter = useCharacterStore((s) => s.setEditingCharacter);
 
   // ── Load characters on mount ──
   useEffect(() => {
+    const store = useCharacterStore.getState();
+    store.setDiscoverStatus('loading');
     Promise.all([
-      characterApi.getDiscoverCharacters().catch(() => []),
+      characterApi.getDiscoverCharacters(),
       characterApi.getMyCharacters().catch(() => []),
       characterApi.getUserPngCharacters().catch(() => []),
     ]).then(([discoverData, charsData, pngCharsData]) => {
+      const s = useCharacterStore.getState();
       if (Array.isArray(discoverData) && discoverData.length > 0) {
-        useCharacterStore.getState().setCharacters(discoverData);
+        s.setCharacters(discoverData);
       }
       const mergeChars = (data: Character[]) => {
         if (Array.isArray(data) && data.length > 0) {
           useCharacterStore.getState().addCharacters(data);
         }
       };
-      mergeChars(charsData);
-      mergeChars(pngCharsData);
+      mergeChars(charsData as Character[]);
+      mergeChars(pngCharsData as Character[]);
+      s.setDiscoverStatus('ready');
+    }).catch(() => {
+      useCharacterStore.getState().setDiscoverStatus('error');
     });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -178,17 +183,31 @@ export function useCharacterManagement(navigate: ReturnType<typeof useNavigate>)
     }
   }, [characterApi, showToast, storeRemoveChar]);
 
+  /** 下拉刷新 / 重试：更新发现页角色，保留我的/PNG 等未出现在 discover 列表中的角色 */
   const characterApiRefresh = useCallback(async () => {
-    const data = await characterApi.getDiscoverCharacters();
-    if (Array.isArray(data) && data.length > 0) {
-      useCharacterStore.getState().setCharacters(data);
+    const store = useCharacterStore.getState();
+    store.setDiscoverStatus('loading');
+    try {
+      const data = await characterApi.getDiscoverCharacters();
+      if (Array.isArray(data) && data.length > 0) {
+        const discoverIds = new Set(data.map((c) => c.id));
+        const preserved = store.characters.filter((c) => !discoverIds.has(c.id));
+        store.setCharacters([...data, ...preserved]);
+      }
+      store.setDiscoverStatus('ready');
+    } catch (err) {
+      store.setDiscoverStatus('error');
+      throw err;
     }
   }, [characterApi]);
 
+  const discoverStatus = useCharacterStore((s) => s.discoverStatus);
+
   return {
     characters,
-    editingCharacter: useCharacterStore.getState().editingCharacter ?? null,
+    editingCharacter,
     setEditingCharacter,
+    discoverStatus,
     favoriteIds,
     handleLogin,
     handleGoogleLogin,

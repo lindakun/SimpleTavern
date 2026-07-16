@@ -3,7 +3,7 @@
  */
 
 import { useApiClient } from './client';
-import type { ChatMessage, ChatThread } from '../types';
+import type { ChatThread } from '../types';
 
 interface SendMessageParams {
   message: string;
@@ -30,6 +30,12 @@ interface SendMessageParams {
   presence_penalty?: number;
   responseLength?: string | number;
   max_tokens?: number;
+  promptStrictness?: 'light' | 'standard' | 'strict';
+  continueMode?: boolean;
+}
+
+export interface StreamDoneMeta {
+  finishReason?: string;
 }
 
 interface SendMessageResponse {
@@ -57,7 +63,7 @@ export function useChatApi() {
     sendMessageStream: async (
       params: SendMessageParams,
       onChunk: (text: string) => void,
-      onDone: () => void,
+      onDone: (meta?: StreamDoneMeta) => void,
       onError: (err: Error) => void,
       externalSignal?: AbortSignal,
     ) => {
@@ -87,8 +93,13 @@ export function useChatApi() {
         });
 
         if (!response.ok) {
-          const errData = await response.json().catch(() => ({}));
-          throw new Error((errData as any)?.error || `HTTP ${response.status}`);
+          const errData = await response.json().catch(() => ({} as Record<string, unknown>));
+          // 后端错误契约为 { code, message }，旧字段 error 一并兼容
+          const msg =
+            (errData as { message?: string; error?: string })?.message
+            || (errData as { message?: string; error?: string })?.error
+            || `HTTP ${response.status}`;
+          throw new Error(msg);
         }
 
         if (!response.body) {
@@ -99,6 +110,7 @@ export function useChatApi() {
         const decoder = new TextDecoder();
         let buffer = '';
         let finished = false;
+        let doneMeta: StreamDoneMeta = {};
 
         const handleLine = (line: string): 'done' | 'error' | 'ok' => {
           if (!line.startsWith('data: ')) return 'ok';
@@ -115,6 +127,11 @@ export function useChatApi() {
             }
             if (parsed.text) {
               onChunk(parsed.text);
+            }
+            if (parsed.done === true || parsed.finishReason) {
+              doneMeta = {
+                finishReason: parsed.finishReason || doneMeta.finishReason,
+              };
             }
             // meta 包忽略
           } catch {
@@ -135,7 +152,7 @@ export function useChatApi() {
             const r = handleLine(line);
             if (r === 'done') {
               finished = true;
-              onDone();
+              onDone(doneMeta);
               return;
             }
             if (r === 'error') return;
@@ -148,13 +165,13 @@ export function useChatApi() {
             const r = handleLine(line);
             if (r === 'done') {
               finished = true;
-              onDone();
+              onDone(doneMeta);
               return;
             }
             if (r === 'error') return;
           }
         }
-        if (!finished) onDone();
+        if (!finished) onDone(doneMeta);
       } catch (err: unknown) {
         onError(err instanceof Error ? err : new Error('流式请求失败'));
       } finally {
@@ -170,38 +187,59 @@ export function useChatApi() {
     getThread: (characterId: string) =>
       get<ChatThread>(`/api/chat/threads/${characterId}`),
 
-    // 保存聊天
-    saveChat: (characterId: string, messages: unknown[]) =>
+    // 保存聊天（fileName 默认 chat，支持多会话）
+    saveChat: (characterId: string, messages: unknown[], fileName = 'chat') =>
       post('/api/chats/save', {
         avatar_url: characterId,
-        file_name: 'chat',
+        file_name: fileName,
         chat: messages,
       }),
 
-    // 获取聊天
-    getChat: (characterId: string) =>
-      post<ChatMessage[]>('/api/chats/get', {
+    /**
+     * 获取聊天
+     * - 默认 limit=50 分页（从末尾取）
+     * - limit=0 拉全量（兼容）
+     */
+    getChat: (
+      characterId: string,
+      opts?: { limit?: number; offset?: number; fileName?: string },
+    ) =>
+      post<
+        | unknown[]
+        | {
+            chat: unknown[];
+            hasMore: boolean;
+            totalMessages: number;
+            offset: number;
+            limit: number;
+          }
+      >('/api/chats/get', {
         avatar_url: characterId,
-        file_name: 'chat',
+        file_name: opts?.fileName || 'chat',
+        limit: opts?.limit ?? 50,
+        offset: opts?.offset ?? 0,
       }),
 
-    // 删除聊天
-    deleteChat: (characterId: string) =>
+    // 删除聊天（指定会话文件）
+    deleteChat: (characterId: string, fileName = 'chat') =>
       post('/api/chats/delete', {
         avatar_url: characterId,
+        file_name: fileName,
       }),
 
     // 重命名聊天
-    renameChat: (characterId: string, newName: string) =>
+    renameChat: (characterId: string, newName: string, originalFile = 'chat') =>
       post('/api/chats/rename', {
         avatar_url: characterId,
-        file_name: newName,
+        original_file: originalFile,
+        renamed_file: newName,
       }),
 
     // 导出聊天
-    exportChat: (characterId: string) =>
+    exportChat: (characterId: string, fileName = 'chat') =>
       post('/api/chats/export', {
         avatar_url: characterId,
+        file_name: fileName,
       }),
 
     // 导入聊天

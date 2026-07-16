@@ -14,6 +14,8 @@ interface DiscoverScreenProps {
   favoriteIds: string[];
   toggleFavorite: (id: string) => void;
   onRefresh?: () => Promise<void>;
+  /** 首屏加载状态（来自 characterStore） */
+  loadStatus?: 'idle' | 'loading' | 'ready' | 'error';
 }
 
 /** 估算每张角色卡片高度（含 gap） */
@@ -26,6 +28,7 @@ export default function DiscoverScreen({
   favoriteIds,
   toggleFavorite,
   onRefresh,
+  loadStatus = 'idle',
 }: DiscoverScreenProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTag, setSelectedTag] = useState('ALL');
@@ -53,6 +56,14 @@ export default function DiscoverScreen({
     const matchesTag = selectedTag === 'ALL' || c.tags.includes(selectedTag);
     return matchesSearch && matchesTag;
   }), [characters, searchQuery, selectedTag]);
+
+  // 首屏错误与下拉错误合并
+  const showError = loadError || loadStatus === 'error';
+  const showLoadingSkeleton =
+    !showError
+    && filteredCharacters.length === 0
+    && (loadStatus === 'loading' || loadStatus === 'idle')
+    && !searchQuery;
 
   // ─── 虚拟滚动（必须在 pull 手势处理器之前声明）───
   const rowVirtualizer = useVirtualizer({
@@ -203,10 +214,11 @@ export default function DiscoverScreen({
         )}
 
         {/* 加载失败 */}
-        {loadError && filteredCharacters.length === 0 && (
+        {showError && filteredCharacters.length === 0 && (
           <div className="py-16 mx-[18px] bg-surface-container/30 border border-red-500/20 rounded-2xl text-center">
-            <p className="text-sm text-red-400 mb-3">加载失败</p>
+            <p className="text-sm text-red-400 mb-3">加载失败，请检查网络后重试</p>
             <button
+              type="button"
               onClick={async () => {
                 setLoadError(false);
                 if (onRefresh) {
@@ -220,8 +232,8 @@ export default function DiscoverScreen({
           </div>
         )}
 
-        {/* 骨架屏（数据未加载时） */}
-        {!loadError && filteredCharacters.length === 0 && !searchQuery && (
+        {/* 骨架屏（首屏加载中） */}
+        {showLoadingSkeleton && (
           <div className="px-[18px] max-w-7xl mx-auto">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {Array.from({ length: 6 }).map((_, i) => (

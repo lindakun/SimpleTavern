@@ -1,7 +1,7 @@
 import { lazy } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { ScreenId } from './types';
-import type { Character, ChatThread, SendState } from './types';
+import type { Character, ChatThread } from './types';
 import { FAQS } from './data';
 
 // Lazy-loaded screens
@@ -79,9 +79,7 @@ export interface AppRoutesProps {
   handleUpdatePrivacy: (characterId: string, privacyType: 'public' | 'private') => Promise<void>;
   handleCopyCharacter: (character: Character) => Promise<void>;
   handleDeleteCharacter: (characterId: string) => Promise<void>;
-  // Chat state
-  chatThreads: Record<string, ChatThread>;
-  sendingStates: Record<string, SendState>;
+  // Chat state（线程/发送态由组件直接订阅 store，避免 App 流式重渲染）
   activeCharacterId: string;
   setActiveCharacterId: (id: string) => void;
   handleSendMessage: (characterId: string, text: string) => Promise<void>;
@@ -90,6 +88,10 @@ export interface AppRoutesProps {
   handleEditMessage: (characterId: string, messageId: string, newText: string) => void;
   handleRegenerateMessage: (characterId: string, messageId: string) => void;
   handleNewChat: (characterId: string, greetingIndex?: number) => void;
+  handleLoadOlderMessages: (characterId: string) => Promise<void>;
+  handleRetryFailedSend: (characterId: string) => Promise<void>;
+  handleContinueGeneration: (characterId: string) => Promise<void>;
+  handleSelectChatSession: (characterId: string, chatFile: string) => void;
   deleteChatThreads: (characterIds: string[]) => void;
   updateChatThread: (characterId: string, updater: (thread: ChatThread) => ChatThread) => void;
   clearUnreadCount: (characterId: string) => void;
@@ -97,6 +99,7 @@ export interface AppRoutesProps {
   locationPathname: string;
   myCharactersCount: number;
   characterApiRefresh: () => Promise<void>;
+  discoverStatus?: 'idle' | 'loading' | 'ready' | 'error';
 }
 
 export default function AppRoutes(props: AppRoutesProps) {
@@ -108,13 +111,14 @@ export default function AppRoutes(props: AppRoutesProps) {
     favoriteIds, handleToggleFavorite,
     handlePublishCharacter, handleAddReview, handleUpdatePrivacy,
     handleCopyCharacter, handleDeleteCharacter,
-    chatThreads, sendingStates,
     activeCharacterId, setActiveCharacterId,
     handleSendMessage, handleDeleteMessage, handleStopGeneration, handleEditMessage,
     handleRegenerateMessage, handleNewChat,
+    handleLoadOlderMessages, handleRetryFailedSend, handleContinueGeneration,
+    handleSelectChatSession,
     deleteChatThreads, updateChatThread,
     clearUnreadCount,
-    locationPathname, myCharactersCount, characterApiRefresh,
+    locationPathname, myCharactersCount, characterApiRefresh, discoverStatus,
   } = props;
 
   return (
@@ -138,6 +142,7 @@ export default function AppRoutes(props: AppRoutesProps) {
           }}
           toggleFavorite={handleToggleFavorite}
           onRefresh={characterApiRefresh}
+          loadStatus={discoverStatus}
         />
       } />
       <Route path="/character" element={
@@ -189,17 +194,18 @@ export default function AppRoutes(props: AppRoutesProps) {
         currentCharacter ? (
           <ChatScreen
             character={currentCharacter as Character}
-            messages={chatThreads[activeCharacterId]?.messages || []}
             onSendMessage={handleSendMessage}
             onDeleteMessage={handleDeleteMessage}
             onNavigate={handleNavigate}
             onGoBack={() => handleGoBack(ScreenId.MESSAGE_CENTER)}
-            sendState={sendingStates[activeCharacterId] || 'idle'}
             userHandle={user?.username}
             onStopGeneration={() => handleStopGeneration(activeCharacterId)}
             onEditMessage={handleEditMessage}
             onRegenerateMessage={handleRegenerateMessage}
             onNewChat={handleNewChat}
+            onLoadOlderMessages={handleLoadOlderMessages}
+            onRetryFailedSend={handleRetryFailedSend}
+            onContinueGeneration={handleContinueGeneration}
           />
         ) : <Navigate to="/discover" replace />
       } />
@@ -215,9 +221,14 @@ export default function AppRoutes(props: AppRoutesProps) {
       <Route path="/messages" element={
         <MessageCenterScreen
           characters={characters}
-          chatThreads={chatThreads}
           onNavigate={handleNavigate}
-          onSelectCharacter={setActiveCharacterId}
+          onSelectCharacter={(id, chatFile) => {
+            if (chatFile) {
+              handleSelectChatSession(id, chatFile);
+            } else {
+              setActiveCharacterId(id);
+            }
+          }}
           onDeleteChatThreads={(characterIds) => { deleteChatThreads(characterIds); }}
           onTogglePinChat={(characterId, pinned) => {
             updateChatThread(characterId, (prev) => ({ ...prev, pinned }));

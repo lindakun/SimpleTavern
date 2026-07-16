@@ -30,6 +30,10 @@ function extractChatRequest(body: any): ChatRequest {
         responseLength: body.responseLength,
         max_tokens: body.max_tokens,
         debug: body.debug === true,
+        promptStrictness: body.promptStrictness,
+        contextBudgetChars: body.contextBudgetChars,
+        loreScanDepth: body.loreScanDepth,
+        continueMode: body.continueMode === true,
     };
 }
 
@@ -63,15 +67,22 @@ export async function chatStream(req: Request, res: Response, _next: NextFunctio
                 prompt: {
                     thinCard: debug.thinCard,
                     compact: debug.compact,
+                    strictness: debug.strictness,
                     roleSequence: debug.roleSequence,
                     totalMessages: debug.totalMessages,
+                    totalChars: debug.totalChars,
+                    budgetChars: debug.budgetChars,
+                    budgetTrimmed: debug.budgetTrimmed,
                     historyIn: debug.historyIn,
                     historyOut: debug.historyOut,
                     summarized: debug.summarized,
                     loreCount: debug.loreCount,
+                    loreBefore: debug.loreBefore,
+                    loreAfter: debug.loreAfter,
                     firstMesInjected: debug.firstMesInjected,
                     firstMesSynthesized: debug.firstMesSynthesized,
                     systemChars: debug.systemChars,
+                    continueMode: debug.continueMode,
                 },
             },
         })}\n\n`);
@@ -152,6 +163,11 @@ export async function chatStream(req: Request, res: Response, _next: NextFunctio
         }
 
         if (!clientClosed) {
+            // 结束元信息：前端可据此展示「续写」（finish_reason=length）
+            res.write(`data: ${JSON.stringify({
+                done: true,
+                finishReason: finishReason || 'stop',
+            })}\n\n`);
             res.write('data: [DONE]\n\n');
             logger.info(
                 `SSE 流结束, 共发送 ${chunkCount} 个 chunk, 总耗时 ${Date.now() - streamStart}ms` +
