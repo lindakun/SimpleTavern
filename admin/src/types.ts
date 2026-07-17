@@ -138,9 +138,12 @@ export interface UgirlImportResult {
   total: number;
   success: number;
   failed: number;
+  created?: number;
+  updated?: number;
+  skipped?: number;
   results: Array<{
     name: string;
-    status: 'success' | 'failed';
+    status: 'created' | 'updated' | 'skipped' | 'failed' | 'success';
     fileName?: string;
     error?: string;
   }>;

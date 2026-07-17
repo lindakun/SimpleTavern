@@ -99,7 +99,7 @@ backend 容器挂载的目录：
 | 宿主路径 | 容器路径 | 用途 |
 |---------|---------|------|
 | `${SIMPLE_TAVERN_DATA_ROOT}` | `/data` | 主数据目录（角色卡/聊天记录/用户数据） |
-| `/home/ubuntu/code/ugirl_craw/output` | `/ugirl_data:ro` | ugirl 批量导入数据（只读） |
+| `${UGIRL_DATA_HOST_PATH:-/home/ubuntu/code/ugirl_craw}` | `/ugirl_data:ro` | ugirl 仓库根（只读），内含 `export/st-package` |
 
 - 角色卡：`/data/<user>/characters/`
 - 聊天记录：`/data/<user>/chats/<character>/`
@@ -383,13 +383,31 @@ interface ChatMessage {
 
 #### ugirl 角色批量导入子系统
 
-`characters.ugirl-importer.ts` 提供从 ugirl 爬虫 JSON 文件批量导入角色的功能：
+`characters.ugirl-importer.ts` 从 ugirl_craw 导出包批量导入角色：
 
-- 支持多种图片格式（`.png`/`.jpg`/`.jpeg`/`.webp`/`.jfif`），使用 `sharp` 自动转换为 PNG
-- 通过 **magic bytes** 检测真实图片格式（而非依赖扩展名）
-- 并发处理（`CONCURRENCY = 10`）：并行加载头像 + 串行创建角色文件
-- 将 ugirl 特有元数据写入角色 `extensions`：`ugirl_id`、`ugirl_popularity`、`ugirl_rating_avg`、`ugirl_radar_tier`
-- 导入数据源：容器内 `/ugirl_data`（由 `docker-compose.yml` 以只读方式挂载）
+- **推荐格式**：`ugirl-st-package/v1`（`export/st-package/characters.json` + 相对路径 `avatars/`）
+- **兼容**：旧版 `{ items: [...] }` 列表 JSON（importer 内启发式拆分，效果弱于预导出包）
+- 优先使用包内 `item.card.*`（description / personality / scenario / first_mes / system_prompt），**不再截断 500 字**
+- **幂等**：扫描已有 PNG 的 `extensions.ugirl_id`，默认 **update** 已存在、create 新卡
+- 支持多种图片格式（`.png`/`.jpg`/`.jpeg`/`.webp`/`.jfif`），`sharp` 转 PNG；magic bytes 校验
+- 并发（`CONCURRENCY = 10`）：并行加载头像 + 串行写文件
+- 元数据：`ugirl_id`、`ugirl_popularity`、`ugirl_rating_avg`、`ugirl_radar_tier`、`ugirl_quality`
+- 挂载：`UGIRL_DATA_HOST_PATH` → `/ugirl_data`；Admin 默认路径 `/ugirl_data/export/st-package/characters.json`
+- **导入方式（任选）**：
+  1. **一键导入默认包**（服务器已挂载 ugirl 仓库，无需上传）
+  2. **浏览器上传** `characters.json`（自动拉 `avatar_url_remote`）或 `st-package.zip`
+  3. 从扫描到的包列表选择后导入
+- API：`POST /admin-list-ugirl-packages`、`POST /admin-import-ugirl`、`POST /admin-import-ugirl-upload`
+
+上游导出（ugirl_craw）：
+
+```bash
+node export_st_package.js output/ugirl_recommended_all.json \
+  --out export/st-package --avatars output/avatars_processed --skip-function
+
+# 无挂载时：打包 zip 在 Admin 上传，或只传 characters.json
+cd export/st-package && zip -r ../st-package.zip characters.json avatars
+```
 
 #### 角色数据类型
 

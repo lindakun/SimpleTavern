@@ -3,6 +3,7 @@
  */
 
 import { api, apiRequest } from './client';
+// apiRequest 支持 timeout（批量导入可长达数分钟）
 import type {
   UserViewModel,
   CreateUserRequest,
@@ -155,9 +156,44 @@ export const adminApi = {
 
   // ===== ugirl 批量导入 =====
 
-  adminImportUgirl: (filePath: string, handle: string) =>
-    api.post<UgirlImportResult>('/api/characters/admin-import-ugirl', {
-      file_path: filePath,
-      handle,
+  /** 扫描 /ugirl_data 下可导入包 */
+  adminListUgirlPackages: () =>
+    api.post<{
+      root: string;
+      exists: boolean;
+      defaultPath: string;
+      packages: Array<{
+        path: string;
+        relative: string;
+        label: string;
+        format?: string;
+        itemCount?: number;
+        hasAvatarsDir: boolean;
+        mtime?: string;
+        isDefault?: boolean;
+      }>;
+    }>('/api/characters/admin-list-ugirl-packages', {}),
+
+  /** 服务器路径导入；filePath 可空 = 默认包 */
+  adminImportUgirl: (filePath: string | undefined, handle: string) =>
+    apiRequest<UgirlImportResult>('/api/characters/admin-import-ugirl', {
+      method: 'POST',
+      body: JSON.stringify({
+        file_path: filePath || undefined,
+        handle,
+      }),
+      timeout: 600_000,
     }),
+
+  /** 浏览器上传 json/zip 后直接导入 */
+  adminImportUgirlUpload: (file: File, handle: string) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('handle', handle);
+    return apiRequest<UgirlImportResult>('/api/characters/admin-import-ugirl-upload', {
+      method: 'POST',
+      body: formData,
+      timeout: 600_000,
+    });
+  },
 };

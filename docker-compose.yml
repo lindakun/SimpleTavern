@@ -18,8 +18,10 @@ services:
     volumes:
       # 共享原项目的数据目录（本地开发）
       - ${SIMPLE_TAVERN_DATA_ROOT:-/Users/linda/code/SillyTavern/data}:/data
-      # ugirl 数据目录（JSON + avatars_processed，用于批量导入）
-      - /home/ubuntu/code/ugirl_craw/output:/ugirl_data:ro
+      # ugirl 数据目录（建议挂载 ugirl_craw 仓库根，以便读取 export/st-package）
+      # 本机: UGIRL_DATA_HOST_PATH=/Users/linda/code/ugirl_craw
+      # 服务器默认仍兼容旧 output 路径时可显式设置到 output 或仓库根
+      - ${UGIRL_DATA_HOST_PATH:-/home/ubuntu/code/ugirl_craw}:/ugirl_data:ro
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:8001/version"]

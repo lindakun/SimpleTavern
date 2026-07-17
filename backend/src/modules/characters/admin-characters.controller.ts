@@ -537,56 +537,296 @@ export async function adminImportPng(req: Request, res: Response, next: NextFunc
     }
 }
 
+/** ugirl 数据根：容器内挂载点，可用环境变量覆盖 */
+export function getUgirlDataRoot(): string {
+    return process.env.UGIRL_DATA_PATH || '/ugirl_data';
+}
+
+export const DEFAULT_UGIRL_PACKAGE_REL = 'export/st-package/characters.json';
+
 /**
- * 管理员 - 批量导入 ugirl 角色
+ * 在 ugirl 数据根下发现可导入包
+ * POST /api/characters/admin-list-ugirl-packages
+ */
+export async function adminListUgirlPackages(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+        const root = getUgirlDataRoot();
+        const packages: Array<{
+            path: string;
+            relative: string;
+            label: string;
+            format?: string;
+            itemCount?: number;
+            hasAvatarsDir: boolean;
+            mtime?: string;
+            isDefault?: boolean;
+        }> = [];
+
+        if (!fs.existsSync(root)) {
+            res.json({ root, exists: false, packages: [], defaultPath: path.join(root, DEFAULT_UGIRL_PACKAGE_REL) });
+            return;
+        }
+
+        const candidates: string[] = [];
+        const pushIfJson = (p: string) => {
+            if (fs.existsSync(p) && p.endsWith('.json')) candidates.push(p);
+        };
+
+        // 常见位置
+        pushIfJson(path.join(root, DEFAULT_UGIRL_PACKAGE_REL));
+        pushIfJson(path.join(root, 'export/st-package/characters.json'));
+        pushIfJson(path.join(root, 'st-package/characters.json'));
+        pushIfJson(path.join(root, 'characters.json'));
+
+        // 浅扫一层子目录
+        try {
+            for (const name of fs.readdirSync(root)) {
+                const full = path.join(root, name);
+                let st: fs.Stats;
+                try { st = fs.statSync(full); } catch { continue; }
+                if (st.isFile() && name.endsWith('.json') && /ugirl|character/i.test(name)) {
+                    candidates.push(full);
+                }
+                if (st.isDirectory()) {
+                    pushIfJson(path.join(full, 'characters.json'));
+                    pushIfJson(path.join(full, 'export/st-package/characters.json'));
+                    // output/*.json
+                    if (name === 'output' || name === 'export') {
+                        try {
+                            for (const f of fs.readdirSync(full)) {
+                                if (f.endsWith('.json')) candidates.push(path.join(full, f));
+                                if (f === 'st-package') {
+                                    pushIfJson(path.join(full, f, 'characters.json'));
+                                }
+                            }
+                        } catch { /* ignore */ }
+                    }
+                }
+            }
+        } catch (err) {
+            logger.warn(`扫描 ugirl 包失败: ${err}`);
+        }
+
+        const seen = new Set<string>();
+        for (const p of candidates) {
+            const resolved = path.resolve(p);
+            if (seen.has(resolved) || !fs.existsSync(resolved)) continue;
+            seen.add(resolved);
+
+            let format: string | undefined;
+            let itemCount: number | undefined;
+            try {
+                const raw = JSON.parse(fs.readFileSync(resolved, 'utf-8'));
+                format = raw.format;
+                itemCount = Array.isArray(raw.items) ? raw.items.length : (Array.isArray(raw) ? raw.length : undefined);
+            } catch {
+                continue; // 非 JSON 跳过
+            }
+
+            const dir = path.dirname(resolved);
+            const hasAvatarsDir =
+                fs.existsSync(path.join(dir, 'avatars')) ||
+                fs.existsSync(path.join(dir, 'avatars_processed'));
+
+            let mtime: string | undefined;
+            try {
+                mtime = fs.statSync(resolved).mtime.toISOString();
+            } catch { /* ignore */ }
+
+            const relative = path.relative(root, resolved) || path.basename(resolved);
+            const isDefault = relative === DEFAULT_UGIRL_PACKAGE_REL ||
+                resolved === path.resolve(root, DEFAULT_UGIRL_PACKAGE_REL);
+
+            packages.push({
+                path: resolved,
+                relative,
+                label: format === 'ugirl-st-package/v1'
+                    ? `ST 包 · ${relative}${itemCount != null ? ` (${itemCount})` : ''}`
+                    : `JSON · ${relative}${itemCount != null ? ` (${itemCount})` : ''}`,
+                format,
+                itemCount,
+                hasAvatarsDir,
+                mtime,
+                isDefault,
+            });
+        }
+
+        packages.sort((a, b) => {
+            if (a.isDefault && !b.isDefault) return -1;
+            if (!a.isDefault && b.isDefault) return 1;
+            return (b.mtime || '').localeCompare(a.mtime || '');
+        });
+
+        res.json({
+            root,
+            exists: true,
+            packages,
+            defaultPath: path.join(root, DEFAULT_UGIRL_PACKAGE_REL),
+        });
+    } catch (err) {
+        next(err);
+    }
+}
+
+async function resolveTargetUserAndDirs(handleRaw: string | undefined) {
+    const handle = String(handleRaw || 'admin');
+    const users = await getAllUsers();
+    const targetUser = users.find(u => u.handle === handle);
+    if (!targetUser) {
+        throw new BadRequestError(`目标用户 "${handle}" 不存在`);
+    }
+    const config = getConfig();
+    const dirs = getUserDirectories(config.dataRoot, handle);
+    if (!fs.existsSync(dirs.characters)) {
+        fs.mkdirSync(dirs.characters, { recursive: true });
+    }
+    return { handle, dirs };
+}
+
+/**
+ * 管理员 - 批量导入 ugirl 角色（服务器路径）
  * POST /api/characters/admin-import-ugirl
- * 接收: { file_path: 服务器上的 JSON 文件路径, handle: 目标用户名 }
- * 头像目录基于 JSON 文件所在目录自动解析（avatars_processed 子目录）
+ * body: { file_path?: string, handle: string }
+ * - file_path 可省略 → 使用默认 /ugirl_data/export/st-package/characters.json
+ * - 也可传相对 ugirl 根的路径
  */
 export async function adminImportUgirl(req: Request, res: Response, next: NextFunction): Promise<void> {
-    const config = getConfig();
-
     try {
-        const { file_path, handle: handleRaw } = req.body as { file_path?: string; handle?: string };
+        const { file_path: filePathRaw, handle: handleRaw } = req.body as {
+            file_path?: string;
+            handle?: string;
+        };
 
-        if (!file_path || typeof file_path !== 'string') {
-            res.status(400).json({ code: 'BAD_REQUEST', message: '请提供服务器上的 JSON 文件路径 (file_path)' });
+        const root = getUgirlDataRoot();
+        let filePath = (filePathRaw && String(filePathRaw).trim()) || path.join(root, DEFAULT_UGIRL_PACKAGE_REL);
+
+        // 相对路径 → 拼到 ugirl 根
+        if (!path.isAbsolute(filePath)) {
+            filePath = path.join(root, filePath);
+        }
+        filePath = path.resolve(filePath);
+
+        if (!fs.existsSync(filePath)) {
+            res.status(400).json({
+                code: 'BAD_REQUEST',
+                message: `文件不存在: ${filePath}。请确认 Docker 已挂载 ugirl 仓库到 /ugirl_data，或改用「上传 JSON/zip」导入。`,
+            });
             return;
         }
 
-        if (!fs.existsSync(file_path)) {
-            res.status(400).json({ code: 'BAD_REQUEST', message: `文件不存在: ${file_path}` });
-            return;
-        }
+        const { handle, dirs } = await resolveTargetUserAndDirs(handleRaw);
+        logger.info(`管理员导入 ugirl 角色: handle=${handle}, file_path=${filePath}`);
 
-        const handle = String(handleRaw || 'admin');
-
-        // 验证目标用户存在
-        const users = await getAllUsers();
-        const targetUser = users.find(u => u.handle === handle);
-        if (!targetUser) {
-            res.status(400).json({ code: 'BAD_REQUEST', message: `目标用户 "${handle}" 不存在` });
-            return;
-        }
-
-        const dirs = getUserDirectories(config.dataRoot, handle);
-
-        // 确保 characters 目录存在
-        if (!fs.existsSync(dirs.characters)) {
-            fs.mkdirSync(dirs.characters, { recursive: true });
-        }
-
-        logger.info(`管理员导入 ugirl 角色: handle=${handle}, file_path=${file_path}`);
-
-        const result = await importUgirlCharacters(
-            file_path,
-            dirs.characters,
-        );
-
+        const result = await importUgirlCharacters(filePath, dirs.characters);
+        invalidateAdminStatsCache();
+        invalidateDiscoverCache();
         res.json(result);
     } catch (err) {
         next(err);
     }
+}
+
+/**
+ * 管理员 - 上传 st-package zip 或 characters.json 后直接导入
+ * POST /api/characters/admin-import-ugirl-upload  (multipart: file + handle)
+ *
+ * 支持:
+ * - characters.json / *.json（可无本地头像，会尝试 avatar_url_remote）
+ * - st-package.zip（含 characters.json + avatars/）
+ */
+export async function adminImportUgirlUpload(req: Request, res: Response, next: NextFunction): Promise<void> {
+    const file = req.file;
+    try {
+        if (!file) {
+            throw new BadRequestError('请上传 characters.json 或 st-package.zip');
+        }
+
+        const { handle, dirs } = await resolveTargetUserAndDirs(req.body?.handle);
+        const config = getConfig();
+        const workRoot = path.join(config.dataRoot, 'uploads', `ugirl-import-${Date.now()}`);
+        fs.mkdirSync(workRoot, { recursive: true });
+
+        const original = (file.originalname || '').toLowerCase();
+        let jsonPath = '';
+
+        try {
+            if (original.endsWith('.zip')) {
+                jsonPath = await extractUgirlZip(file.path, workRoot);
+            } else if (original.endsWith('.json')) {
+                jsonPath = path.join(workRoot, 'characters.json');
+                fs.copyFileSync(file.path, jsonPath);
+            } else {
+                // 按 content / 试读判断
+                try {
+                    JSON.parse(fs.readFileSync(file.path, 'utf-8'));
+                    jsonPath = path.join(workRoot, 'characters.json');
+                    fs.copyFileSync(file.path, jsonPath);
+                } catch {
+                    throw new BadRequestError('仅支持 .json 或 .zip（st-package）');
+                }
+            }
+
+            logger.info(`管理员上传导入 ugirl: handle=${handle}, json=${jsonPath}, original=${file.originalname}`);
+            const result = await importUgirlCharacters(jsonPath, dirs.characters);
+            invalidateAdminStatsCache();
+            invalidateDiscoverCache();
+            res.json(result);
+        } finally {
+            try { fs.unlinkSync(file.path); } catch { /* ignore */ }
+            // 工作目录可保留以便排错；默认清理
+            try { fs.rmSync(workRoot, { recursive: true, force: true }); } catch { /* ignore */ }
+        }
+    } catch (err) {
+        if (file?.path) {
+            try { fs.unlinkSync(file.path); } catch { /* ignore */ }
+        }
+        next(err);
+    }
+}
+
+/** 解压 zip 到 destDir，返回 characters.json 绝对路径 */
+async function extractUgirlZip(zipPath: string, destDir: string): Promise<string> {
+    const { execFile } = await import('node:child_process');
+    const { promisify } = await import('node:util');
+    const execFileAsync = promisify(execFile);
+
+    try {
+        await execFileAsync('unzip', ['-o', '-q', zipPath, '-d', destDir], { timeout: 120_000 });
+    } catch (err: any) {
+        // 部分环境 unzip 不存在
+        throw new BadRequestError(
+            `解压 zip 失败（需要服务器安装 unzip）: ${err?.message || err}`,
+        );
+    }
+
+    // 在 destDir 内找 characters.json
+    const direct = path.join(destDir, 'characters.json');
+    if (fs.existsSync(direct)) return direct;
+
+    const walk = (dir: string, depth = 0): string | null => {
+        if (depth > 4) return null;
+        let entries: string[];
+        try { entries = fs.readdirSync(dir); } catch { return null; }
+        for (const name of entries) {
+            if (name === 'characters.json') return path.join(dir, name);
+        }
+        for (const name of entries) {
+            const full = path.join(dir, name);
+            try {
+                if (fs.statSync(full).isDirectory()) {
+                    const hit = walk(full, depth + 1);
+                    if (hit) return hit;
+                }
+            } catch { /* ignore */ }
+        }
+        return null;
+    };
+
+    const found = walk(destDir);
+    if (!found) {
+        throw new BadRequestError('zip 内未找到 characters.json，请打包 st-package 目录（含 characters.json 与 avatars/）');
+    }
+    return found;
 }
 
 /**

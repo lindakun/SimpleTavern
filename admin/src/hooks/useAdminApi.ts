@@ -234,12 +234,34 @@ export function useAdminDeleteReview() {
 
 // ===== ugirl 批量导入 Hook =====
 
-// 批量导入 ugirl 角色
+// 扫描服务器 ugirl 包
+export function useAdminListUgirlPackages(enabled = true) {
+  return useQuery({
+    queryKey: ['admin', 'ugirl-packages'],
+    queryFn: () => adminApi.adminListUgirlPackages(),
+    enabled,
+    staleTime: 30_000,
+  });
+}
+
+// 批量导入 ugirl 角色（服务器路径）
 export function useAdminImportUgirl() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ filePath, handle }: { filePath: string; handle: string }) =>
+    mutationFn: ({ filePath, handle }: { filePath?: string; handle: string }) =>
       adminApi.adminImportUgirl(filePath, handle),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: characterKeys.all });
+    },
+  });
+}
+
+// 上传 json/zip 导入
+export function useAdminImportUgirlUpload() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ file, handle }: { file: File; handle: string }) =>
+      adminApi.adminImportUgirlUpload(file, handle),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: characterKeys.all });
     },
