@@ -141,11 +141,14 @@ export interface UgirlImportResult {
   created?: number;
   updated?: number;
   skipped?: number;
+  /** 清理的过期 ugirl 角色（不在本次包内） */
+  pruned?: number;
   results: Array<{
     name: string;
-    status: 'created' | 'updated' | 'skipped' | 'failed' | 'success';
+    status: 'created' | 'updated' | 'skipped' | 'failed' | 'success' | 'pruned';
     fileName?: string;
     error?: string;
+    matchBy?: 'ugirl_id' | 'name' | 'new';
   }>;
 }
 

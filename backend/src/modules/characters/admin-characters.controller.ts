@@ -692,9 +692,15 @@ async function resolveTargetUserAndDirs(handleRaw: string | undefined) {
  */
 export async function adminImportUgirl(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-        const { file_path: filePathRaw, handle: handleRaw } = req.body as {
+        const {
+            file_path: filePathRaw,
+            handle: handleRaw,
+            prune_missing: pruneMissingRaw,
+        } = req.body as {
             file_path?: string;
             handle?: string;
+            /** 同步清理：删除不在本次包内的 ugirl 角色（日更推荐） */
+            prune_missing?: boolean | string;
         };
 
         const root = getUgirlDataRoot();
@@ -714,10 +720,19 @@ export async function adminImportUgirl(req: Request, res: Response, next: NextFu
             return;
         }
 
-        const { handle, dirs } = await resolveTargetUserAndDirs(handleRaw);
-        logger.info(`管理员导入 ugirl 角色: handle=${handle}, file_path=${filePath}`);
+        const pruneMissing =
+            pruneMissingRaw === true ||
+            pruneMissingRaw === '1' ||
+            pruneMissingRaw === 'true';
 
-        const result = await importUgirlCharacters(filePath, dirs.characters);
+        const { handle, dirs } = await resolveTargetUserAndDirs(handleRaw);
+        logger.info(
+            `管理员导入 ugirl 角色: handle=${handle}, file_path=${filePath}, prune_missing=${pruneMissing}`,
+        );
+
+        const result = await importUgirlCharacters(filePath, dirs.characters, undefined, {
+            pruneMissing,
+        });
         invalidateAdminStatsCache();
         invalidateDiscoverCache();
         res.json(result);
@@ -742,6 +757,10 @@ export async function adminImportUgirlUpload(req: Request, res: Response, next: 
         }
 
         const { handle, dirs } = await resolveTargetUserAndDirs(req.body?.handle);
+        const pruneMissing =
+            req.body?.prune_missing === true ||
+            req.body?.prune_missing === '1' ||
+            req.body?.prune_missing === 'true';
         const config = getConfig();
         const workRoot = path.join(config.dataRoot, 'uploads', `ugirl-import-${Date.now()}`);
         fs.mkdirSync(workRoot, { recursive: true });
@@ -766,8 +785,12 @@ export async function adminImportUgirlUpload(req: Request, res: Response, next: 
                 }
             }
 
-            logger.info(`管理员上传导入 ugirl: handle=${handle}, json=${jsonPath}, original=${file.originalname}`);
-            const result = await importUgirlCharacters(jsonPath, dirs.characters);
+            logger.info(
+                `管理员上传导入 ugirl: handle=${handle}, json=${jsonPath}, original=${file.originalname}, prune_missing=${pruneMissing}`,
+            );
+            const result = await importUgirlCharacters(jsonPath, dirs.characters, undefined, {
+                pruneMissing,
+            });
             invalidateAdminStatsCache();
             invalidateDiscoverCache();
             res.json(result);

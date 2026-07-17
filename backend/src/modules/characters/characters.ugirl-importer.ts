@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import sharp from 'sharp';
-import { createCharacter, editCharacter } from './characters.service.js';
+import { createCharacter, editCharacter, removeCharacter } from './characters.service.js';
 import {
     listCharacterFiles,
     readCharacterData,
@@ -70,11 +70,14 @@ export interface UgirlImportResult {
     created: number;
     updated: number;
     skipped: number;
+    /** 因不在本次包内而删除的 ugirl 角色数（pruneMissing） */
+    pruned: number;
     results: Array<{
         name: string;
-        status: 'created' | 'updated' | 'skipped' | 'failed';
+        status: 'created' | 'updated' | 'skipped' | 'failed' | 'pruned';
         fileName?: string;
         error?: string;
+        matchBy?: 'ugirl_id' | 'name' | 'new';
     }>;
 }
 
@@ -85,12 +88,17 @@ export type ImportProgressCallback = (progress: {
 }) => void;
 
 export interface UgirlImportOptions {
-    /** 已存在 ugirl_id 时：update | skip | create（默认 update） */
+    /** 已存在时：update | skip | create（默认 update） */
     onExisting?: 'update' | 'skip' | 'create';
     /** 跳过 quality=low */
     skipLowQuality?: boolean;
     /** 跳过 FUNCTION 类型 */
     skipFunction?: boolean;
+    /**
+     * 同步模式：导入结束后，删除「带 ugirl_id 但不在本次包内」的角色。
+     * 日更推荐列表会轮换 ID，不开此项库会无限膨胀（看起来像没去重）。
+     */
+    pruneMissing?: boolean;
 }
 
 const SUPPORTED_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.webp', '.jfif'];
@@ -399,12 +407,23 @@ function buildV3CharacterData(item: UgirlLegacyItem): Record<string, unknown> {
     };
 }
 
+interface CharIndexes {
+    /** ugirl_id → fileName */
+    byId: Map<string, string>;
+    /** 角色名 → fileName[]（同名可能多份） */
+    byName: Map<string, string[]>;
+    /** fileName → ugirl_id（可空） */
+    fileToId: Map<string, string | null>;
+}
+
 /**
- * 扫描 charactersDir，建立 ugirl_id → fileName 索引
+ * 扫描 charactersDir，建立 ugirl_id / 名称索引，用于去重
  */
-function buildUgirlIdIndex(charactersDir: string): Map<string, string> {
-    const map = new Map<string, string>();
-    if (!fs.existsSync(charactersDir)) return map;
+function buildCharIndexes(charactersDir: string): CharIndexes {
+    const byId = new Map<string, string>();
+    const byName = new Map<string, string[]>();
+    const fileToId = new Map<string, string | null>();
+    if (!fs.existsSync(charactersDir)) return { byId, byName, fileToId };
 
     const files = listCharacterFiles(charactersDir);
     for (const fileName of files) {
@@ -413,16 +432,54 @@ function buildUgirlIdIndex(charactersDir: string): Map<string, string> {
             const raw = readCharacterData(filePath);
             if (!raw) continue;
             const json = JSON.parse(raw);
-            const ext = json?.data?.extensions || json?.extensions || {};
-            const id = ext.ugirl_id;
-            if (id && typeof id === 'string') {
-                map.set(id, fileName);
+            const data = (json?.data || json) as Record<string, unknown>;
+            const ext = (data.extensions || json?.extensions || {}) as Record<string, unknown>;
+            const id = typeof ext.ugirl_id === 'string' ? ext.ugirl_id : null;
+            const name = String(data.name || json?.name || '').trim();
+
+            fileToId.set(fileName, id);
+            if (id) byId.set(id, fileName);
+            if (name) {
+                const list = byName.get(name) || [];
+                list.push(fileName);
+                byName.set(name, list);
             }
         } catch {
             /* 单文件失败忽略 */
         }
     }
-    return map;
+    return { byId, byName, fileToId };
+}
+
+/**
+ * 解析已存在文件：优先 ugirl_id，其次唯一同名文件（含无 id 的旧卡）
+ */
+function resolveExistingFile(
+    ugirlId: string | undefined,
+    name: string,
+    indexes: CharIndexes,
+): { fileName: string; matchBy: 'ugirl_id' | 'name' } | undefined {
+    if (ugirlId && indexes.byId.has(ugirlId)) {
+        return { fileName: indexes.byId.get(ugirlId)!, matchBy: 'ugirl_id' };
+    }
+
+    const nameKey = (name || '').trim();
+    if (!nameKey) return undefined;
+
+    const candidates = indexes.byName.get(nameKey) || [];
+    if (candidates.length === 0) return undefined;
+
+    // 唯一同名 → 直接复用（补写 ugirl_id，避免再 create 出 _1.png）
+    if (candidates.length === 1) {
+        return { fileName: candidates[0], matchBy: 'name' };
+    }
+
+    // 多份同名：优先没有 ugirl_id 的旧卡；否则用第一份
+    const withoutId = candidates.find((f) => !indexes.fileToId.get(f));
+    if (withoutId) {
+        return { fileName: withoutId, matchBy: 'name' };
+    }
+    return { fileName: candidates[0], matchBy: 'name' };
 }
 
 function updateCharacterWithOptionalAvatar(
@@ -451,6 +508,7 @@ export async function importUgirlCharacters(
         onExisting = 'update',
         skipLowQuality = false,
         skipFunction = false,
+        pruneMissing = false,
     } = options;
 
     const raw = fs.readFileSync(jsonFilePath, 'utf-8');
@@ -477,11 +535,13 @@ export async function importUgirlCharacters(
     logger.info(
         `开始导入 ugirl 角色: 共 ${items.length} 个` +
         (isPackage ? ' [st-package/v1]' : ' [legacy]') +
-        `, onExisting=${onExisting}, 头像目录: ${searchDirs.join(', ')}`,
+        `, onExisting=${onExisting}, pruneMissing=${pruneMissing}, 头像目录: ${searchDirs.join(', ')}`,
     );
 
-    const idIndex = buildUgirlIdIndex(charactersDir);
-    logger.info(`已有 ugirl_id 索引: ${idIndex.size} 条`);
+    const indexes = buildCharIndexes(charactersDir);
+    logger.info(
+        `已有索引: ugirl_id=${indexes.byId.size} 条, 角色名=${indexes.byName.size} 组`,
+    );
 
     const result: UgirlImportResult = {
         total: items.length,
@@ -490,8 +550,15 @@ export async function importUgirlCharacters(
         created: 0,
         updated: 0,
         skipped: 0,
+        pruned: 0,
         results: [],
     };
+
+    const packageIds = new Set<string>();
+    for (const it of items) {
+        const id = it.ugirl_id || it.id;
+        if (id) packageIds.add(id);
+    }
 
     for (let i = 0; i < items.length; i += CONCURRENCY) {
         const batch = items.slice(i, i + CONCURRENCY);
@@ -528,53 +595,71 @@ export async function importUgirlCharacters(
             }
 
             const ugirlId = bd.item.ugirl_id || bd.item.id;
-            const existingFile = ugirlId ? idIndex.get(ugirlId) : undefined;
+            const existing = onExisting === 'create'
+                ? undefined
+                : resolveExistingFile(ugirlId, bd.item.name, indexes);
 
             try {
-                if (existingFile && onExisting === 'skip') {
+                if (existing && onExisting === 'skip') {
                     result.skipped++;
                     result.success++;
                     result.results.push({
                         name: bd.item.name,
                         status: 'skipped',
-                        fileName: existingFile,
+                        fileName: existing.fileName,
+                        matchBy: existing.matchBy,
                     });
-                } else if (existingFile && onExisting === 'update') {
+                } else if (existing && onExisting === 'update') {
                     updateCharacterWithOptionalAvatar(
-                        existingFile,
+                        existing.fileName,
                         charactersDir,
                         bd.v3Data,
                         bd.avatarBuffer,
                     );
+                    if (ugirlId) {
+                        const oldId = indexes.fileToId.get(existing.fileName);
+                        if (oldId && oldId !== ugirlId) indexes.byId.delete(oldId);
+                        indexes.byId.set(ugirlId, existing.fileName);
+                        indexes.fileToId.set(existing.fileName, ugirlId);
+                    }
                     result.updated++;
                     result.success++;
                     result.results.push({
                         name: bd.item.name,
                         status: 'updated',
-                        fileName: existingFile,
+                        fileName: existing.fileName,
+                        matchBy: existing.matchBy,
                     });
                 } else {
-                    // create（含 onExisting=create 强制新建，或无索引）
                     const fileName = createCharacter(
                         bd.item.name,
                         charactersDir,
                         bd.v3Data,
                         bd.avatarBuffer,
                     );
-                    if (ugirlId) idIndex.set(ugirlId, fileName);
+                    if (ugirlId) indexes.byId.set(ugirlId, fileName);
+                    indexes.fileToId.set(fileName, ugirlId || null);
+                    const nameKey = (bd.item.name || '').trim();
+                    if (nameKey) {
+                        const list = indexes.byName.get(nameKey) || [];
+                        list.push(fileName);
+                        indexes.byName.set(nameKey, list);
+                    }
                     result.created++;
                     result.success++;
                     result.results.push({
                         name: bd.item.name,
                         status: 'created',
                         fileName,
+                        matchBy: 'new',
                     });
                 }
 
                 if (bd.globalIdx % 50 === 0 || bd.globalIdx === items.length - 1) {
                     const last = result.results[result.results.length - 1];
                     logger.info(
-                        `[${bd.globalIdx + 1}/${items.length}] ${bd.item.name} -> ${last.fileName} (${last.status})` +
+                        `[${bd.globalIdx + 1}/${items.length}] ${bd.item.name} -> ${last.fileName}` +
+                        ` (${last.status}${last.matchBy ? '/' + last.matchBy : ''})` +
                         (bd.avatarBuffer ? ' (含头像)' : ' (无头像)'),
                     );
                 }
@@ -598,8 +683,30 @@ export async function importUgirlCharacters(
         }
     }
 
+    if (pruneMissing) {
+        const toPrune: Array<{ id: string; fileName: string }> = [];
+        for (const [id, fileName] of indexes.byId.entries()) {
+            if (!packageIds.has(id)) toPrune.push({ id, fileName });
+        }
+        logger.info(`pruneMissing: 将删除 ${toPrune.length} 个不在本次包内的 ugirl 角色`);
+        for (const p of toPrune) {
+            try {
+                removeCharacter(p.fileName, charactersDir);
+                result.pruned++;
+                result.results.push({
+                    name: p.id,
+                    status: 'pruned',
+                    fileName: p.fileName,
+                });
+            } catch (err: any) {
+                logger.warn(`删除过期角色失败 ${p.fileName}: ${err?.message || err}`);
+            }
+        }
+    }
+
     logger.info(
-        `导入完成: 成功 ${result.success} (新建 ${result.created} / 更新 ${result.updated} / 跳过 ${result.skipped}) / 失败 ${result.failed}`,
+        `导入完成: 成功 ${result.success} (新建 ${result.created} / 更新 ${result.updated} / 跳过 ${result.skipped})` +
+        ` / 清理 ${result.pruned} / 失败 ${result.failed}`,
     );
     return result;
 }
