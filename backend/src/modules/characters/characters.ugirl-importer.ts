@@ -21,6 +21,8 @@ interface UgirlLegacyItem {
     local_avatar?: string;
     introduction?: string;
     short_introduction?: string;
+    /** 详情 API 补全的真实开场 */
+    greetings?: string[];
     tags?: string[];
     is_nsfw?: boolean;
     card_type?: string;
@@ -99,6 +101,17 @@ export interface UgirlImportOptions {
      * 日更推荐列表会轮换 ID，不开此项库会无限膨胀（看起来像没去重）。
      */
     pruneMissing?: boolean;
+    /**
+     * 字段合并策略：
+     * - replace：全量覆盖（日更默认）
+     * - fill_empty：仅写入旧卡为空的字段，保护手改
+     */
+    mergeMode?: 'replace' | 'fill_empty';
+    /**
+     * fill_empty 时仍强制用包内值覆盖的字段（如 first_mes 冲掉模板假开场）
+     * 支持顶层与 data.* 同名字段
+     */
+    forceFields?: string[];
 }
 
 const SUPPORTED_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.webp', '.jfif'];
@@ -304,7 +317,14 @@ function heuristicCardFromLegacy(item: UgirlLegacyItem): UgirlCardFields {
         }
     }
 
-    if (!first_mes) {
+    const greetings = Array.isArray(item.greetings)
+        ? item.greetings.map((g) => String(g || '').trim()).filter(Boolean)
+        : [];
+    let alternate_greetings: string[] = [];
+    if (greetings.length) {
+        first_mes = greetings[0];
+        alternate_greetings = greetings.slice(1);
+    } else if (!first_mes) {
         first_mes = synthesizeFirstMes(item.name, description, shortIntro);
     }
 
@@ -317,7 +337,7 @@ function heuristicCardFromLegacy(item: UgirlLegacyItem): UgirlCardFields {
         system_prompt: clip(system_prompt, 5000),
         post_history_instructions: '',
         creator_notes: clip(shortIntro || description.slice(0, 200), 3000),
-        alternate_greetings: [],
+        alternate_greetings,
     };
 }
 
@@ -495,6 +515,146 @@ function updateCharacterWithOptionalAvatar(
     return editCharacter(fileName, charactersDir, v3Data);
 }
 
+function isEmptyFieldValue(v: unknown): boolean {
+    if (v == null) return true;
+    if (typeof v === 'string') return !v.trim();
+    if (Array.isArray(v)) return v.length === 0 || v.every((x) => !String(x ?? '').trim());
+    return false;
+}
+
+const TEXT_MERGE_FIELDS = [
+    'description',
+    'personality',
+    'scenario',
+    'first_mes',
+    'mes_example',
+    'system_prompt',
+    'post_history_instructions',
+    'creator_notes',
+    'creatorcomment',
+] as const;
+
+/**
+ * fill_empty：旧卡非空字段保留；forceFields 强制用包内新值。
+ * extensions.ugirl_* 元数据总是更新。
+ */
+function mergeV3ForFillEmpty(
+    existingRaw: Record<string, unknown>,
+    incoming: Record<string, unknown>,
+    forceFields: string[] = [],
+): Record<string, unknown> {
+    const force = new Set(forceFields.map((f) => f.trim()).filter(Boolean));
+    const existingData = (existingRaw.data && typeof existingRaw.data === 'object'
+        ? existingRaw.data
+        : {}) as Record<string, unknown>;
+    const incomingData = (incoming.data && typeof incoming.data === 'object'
+        ? incoming.data
+        : {}) as Record<string, unknown>;
+
+    const pick = (field: string, oldVal: unknown, newVal: unknown): unknown => {
+        if (force.has(field)) {
+            return !isEmptyFieldValue(newVal) ? newVal : oldVal;
+        }
+        if (!isEmptyFieldValue(oldVal)) return oldVal;
+        return newVal;
+    };
+
+    const mergedTop: Record<string, unknown> = { ...incoming };
+    for (const field of TEXT_MERGE_FIELDS) {
+        const oldVal = existingRaw[field] ?? existingData[field];
+        const newVal = incoming[field] ?? incomingData[field];
+        const chosen = pick(field, oldVal, newVal);
+        mergedTop[field] = chosen;
+    }
+
+    // alternate_greetings 仅在 data 层
+    const oldAlts = existingData.alternate_greetings;
+    const newAlts = incomingData.alternate_greetings;
+    const alts = force.has('alternate_greetings')
+        ? (!isEmptyFieldValue(newAlts) ? newAlts : oldAlts)
+        : (!isEmptyFieldValue(oldAlts) ? oldAlts : newAlts);
+
+    // tags：旧卡有则保留，否则用新
+    const oldTags = existingRaw.tags ?? existingData.tags;
+    const newTags = incoming.tags ?? incomingData.tags;
+    const tags = !isEmptyFieldValue(oldTags) ? oldTags : newTags;
+    mergedTop.tags = tags;
+
+    const oldExt = (existingData.extensions && typeof existingData.extensions === 'object'
+        ? existingData.extensions
+        : {}) as Record<string, unknown>;
+    const newExt = (incomingData.extensions && typeof incomingData.extensions === 'object'
+        ? incomingData.extensions
+        : {}) as Record<string, unknown>;
+
+    // 保留用户可能手改的 fav / talkativeness / world / depth_prompt；ugirl_* 用新
+    const mergedExt: Record<string, unknown> = {
+        ...oldExt,
+        ...newExt,
+        talkativeness: oldExt.talkativeness ?? newExt.talkativeness ?? 0.5,
+        fav: oldExt.fav ?? newExt.fav ?? false,
+        world: oldExt.world ?? newExt.world ?? '',
+        depth_prompt: oldExt.depth_prompt ?? newExt.depth_prompt,
+    };
+
+    const mergedData: Record<string, unknown> = {
+        ...incomingData,
+        description: mergedTop.description,
+        personality: mergedTop.personality,
+        scenario: mergedTop.scenario,
+        first_mes: mergedTop.first_mes,
+        mes_example: mergedTop.mes_example,
+        system_prompt: pick(
+            'system_prompt',
+            existingData.system_prompt,
+            incomingData.system_prompt,
+        ),
+        post_history_instructions: pick(
+            'post_history_instructions',
+            existingData.post_history_instructions,
+            incomingData.post_history_instructions,
+        ),
+        creator_notes: pick(
+            'creator_notes',
+            existingData.creator_notes ?? existingRaw.creatorcomment,
+            incomingData.creator_notes ?? incoming.creatorcomment,
+        ),
+        tags,
+        alternate_greetings: alts ?? [],
+        creator: existingData.creator || incomingData.creator || '',
+        name: incomingData.name || existingData.name || incoming.name,
+        character_version: incomingData.character_version || existingData.character_version || '1.0',
+        extensions: mergedExt,
+    };
+
+    // 顶层与 data 对齐
+    mergedTop.description = mergedData.description;
+    mergedTop.personality = mergedData.personality;
+    mergedTop.scenario = mergedData.scenario;
+    mergedTop.first_mes = mergedData.first_mes;
+    mergedTop.mes_example = mergedData.mes_example;
+    mergedTop.creatorcomment = mergedData.creator_notes;
+    mergedTop.data = mergedData;
+    // 保留旧 create_date
+    if (existingRaw.create_date) mergedTop.create_date = existingRaw.create_date;
+
+    return mergedTop;
+}
+
+function readExistingCharacterJson(
+    fileName: string,
+    charactersDir: string,
+): Record<string, unknown> | null {
+    try {
+        const filePath = getCharacterFilePath(charactersDir, fileName);
+        const raw = readCharacterData(filePath);
+        if (!raw) return null;
+        return JSON.parse(raw) as Record<string, unknown>;
+    } catch {
+        return null;
+    }
+}
+
 /**
  * 批量导入 ugirl JSON / st-package v1
  */
@@ -509,6 +669,8 @@ export async function importUgirlCharacters(
         skipLowQuality = false,
         skipFunction = false,
         pruneMissing = false,
+        mergeMode = 'replace',
+        forceFields = ['first_mes', 'alternate_greetings'],
     } = options;
 
     const raw = fs.readFileSync(jsonFilePath, 'utf-8');
@@ -535,7 +697,7 @@ export async function importUgirlCharacters(
     logger.info(
         `开始导入 ugirl 角色: 共 ${items.length} 个` +
         (isPackage ? ' [st-package/v1]' : ' [legacy]') +
-        `, onExisting=${onExisting}, pruneMissing=${pruneMissing}, 头像目录: ${searchDirs.join(', ')}`,
+        `, onExisting=${onExisting}, mergeMode=${mergeMode}, pruneMissing=${pruneMissing}, 头像目录: ${searchDirs.join(', ')}`,
     );
 
     const indexes = buildCharIndexes(charactersDir);
@@ -610,10 +772,17 @@ export async function importUgirlCharacters(
                         matchBy: existing.matchBy,
                     });
                 } else if (existing && onExisting === 'update') {
+                    let payload = bd.v3Data;
+                    if (mergeMode === 'fill_empty') {
+                        const oldJson = readExistingCharacterJson(existing.fileName, charactersDir);
+                        if (oldJson) {
+                            payload = mergeV3ForFillEmpty(oldJson, bd.v3Data, forceFields);
+                        }
+                    }
                     updateCharacterWithOptionalAvatar(
                         existing.fileName,
                         charactersDir,
-                        bd.v3Data,
+                        payload,
                         bd.avatarBuffer,
                     );
                     if (ugirlId) {

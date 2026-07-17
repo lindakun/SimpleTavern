@@ -696,11 +696,17 @@ export async function adminImportUgirl(req: Request, res: Response, next: NextFu
             file_path: filePathRaw,
             handle: handleRaw,
             prune_missing: pruneMissingRaw,
+            merge_mode: mergeModeRaw,
+            force_fields: forceFieldsRaw,
         } = req.body as {
             file_path?: string;
             handle?: string;
             /** 同步清理：删除不在本次包内的 ugirl 角色（日更推荐） */
             prune_missing?: boolean | string;
+            /** replace | fill_empty */
+            merge_mode?: string;
+            /** fill_empty 时强制覆盖字段，如 ["first_mes","alternate_greetings"] */
+            force_fields?: string[] | string;
         };
 
         const root = getUgirlDataRoot();
@@ -725,13 +731,26 @@ export async function adminImportUgirl(req: Request, res: Response, next: NextFu
             pruneMissingRaw === '1' ||
             pruneMissingRaw === 'true';
 
+        const mergeMode =
+            mergeModeRaw === 'fill_empty' || mergeModeRaw === 'fill-empty'
+                ? 'fill_empty'
+                : 'replace';
+        let forceFields: string[] | undefined;
+        if (Array.isArray(forceFieldsRaw)) {
+            forceFields = forceFieldsRaw.map(String);
+        } else if (typeof forceFieldsRaw === 'string' && forceFieldsRaw.trim()) {
+            forceFields = forceFieldsRaw.split(',').map((s) => s.trim()).filter(Boolean);
+        }
+
         const { handle, dirs } = await resolveTargetUserAndDirs(handleRaw);
         logger.info(
-            `管理员导入 ugirl 角色: handle=${handle}, file_path=${filePath}, prune_missing=${pruneMissing}`,
+            `管理员导入 ugirl 角色: handle=${handle}, file_path=${filePath}, prune_missing=${pruneMissing}, merge_mode=${mergeMode}`,
         );
 
         const result = await importUgirlCharacters(filePath, dirs.characters, undefined, {
             pruneMissing,
+            mergeMode,
+            forceFields,
         });
         invalidateAdminStatsCache();
         invalidateDiscoverCache();
@@ -761,6 +780,18 @@ export async function adminImportUgirlUpload(req: Request, res: Response, next: 
             req.body?.prune_missing === true ||
             req.body?.prune_missing === '1' ||
             req.body?.prune_missing === 'true';
+        const mergeModeRaw = req.body?.merge_mode;
+        const mergeMode =
+            mergeModeRaw === 'fill_empty' || mergeModeRaw === 'fill-empty'
+                ? 'fill_empty'
+                : 'replace';
+        const forceFieldsRaw = req.body?.force_fields;
+        let forceFields: string[] | undefined;
+        if (Array.isArray(forceFieldsRaw)) {
+            forceFields = forceFieldsRaw.map(String);
+        } else if (typeof forceFieldsRaw === 'string' && forceFieldsRaw.trim()) {
+            forceFields = forceFieldsRaw.split(',').map((s: string) => s.trim()).filter(Boolean);
+        }
         const config = getConfig();
         const workRoot = path.join(config.dataRoot, 'uploads', `ugirl-import-${Date.now()}`);
         fs.mkdirSync(workRoot, { recursive: true });
@@ -786,10 +817,12 @@ export async function adminImportUgirlUpload(req: Request, res: Response, next: 
             }
 
             logger.info(
-                `管理员上传导入 ugirl: handle=${handle}, json=${jsonPath}, original=${file.originalname}, prune_missing=${pruneMissing}`,
+                `管理员上传导入 ugirl: handle=${handle}, json=${jsonPath}, original=${file.originalname}, prune_missing=${pruneMissing}, merge_mode=${mergeMode}`,
             );
             const result = await importUgirlCharacters(jsonPath, dirs.characters, undefined, {
                 pruneMissing,
+                mergeMode,
+                forceFields,
             });
             invalidateAdminStatsCache();
             invalidateDiscoverCache();
