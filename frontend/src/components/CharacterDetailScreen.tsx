@@ -151,7 +151,7 @@ export default function CharacterDetailScreen({
       <div className="absolute top-1/2 right-0 w-80 h-80 bg-accent-purple opacity-5 blur-[120px] pointer-events-none" />
 
       {/* Floating Top Nav Bar */}
-      <header className="sticky top-0 z-40 bg-background-deep/80 backdrop-blur-md px-6 h-16 flex items-center justify-between border-b border-outline-variant/20">
+      <header className="app-header sticky top-0 z-40 bg-background-deep/80 backdrop-blur-md px-6 flex items-center justify-between border-b border-outline-variant/20">
         <button
           onClick={() => onGoBack ? onGoBack() : onNavigate(ScreenId.DISCOVER)}
           className="flex items-center gap-1.5 pl-2 pr-3 py-1.5 rounded-full bg-surface-container/60 hover:bg-surface-elevated border border-accent-pink/30 hover:border-accent-pink/60 transition-all duration-200 cursor-pointer text-white shadow-[0_0_10px_rgba(232,121,199,0.1)] group/back"
@@ -420,7 +420,7 @@ export default function CharacterDetailScreen({
       </main>
 
       {/* Sticky Bottom Actions Strip */}
-      <div className="fixed bottom-16 left-1/2 -translate-x-1/2 w-full max-w-lg z-30 px-6 py-4 bg-background-deep/90 border-t border-outline-variant/30 flex items-center justify-center gap-4 shadow-[0_-5px_25px_rgba(11,7,32,0.8)] safe-bottom">
+      <div className="fixed bottom-above-nav left-1/2 -translate-x-1/2 w-full max-w-lg z-30 px-6 py-4 bg-background-deep/90 border-t border-outline-variant/30 flex items-center justify-center gap-4 shadow-[0_-5px_25px_rgba(11,7,32,0.8)]">
         <button
           onClick={() => onNavigate(ScreenId.DISCOVER)}
           className="flex-1 h-12 bg-surface-elevated/80 hover:bg-surface-elevated border border-outline-variant/40 text-[#ffd8ee] rounded-xl font-bold text-xs shadow-md active:scale-95 transition-transform cursor-pointer"

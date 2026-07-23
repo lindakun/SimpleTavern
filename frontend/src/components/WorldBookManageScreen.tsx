@@ -460,7 +460,7 @@ export default function WorldBookManageScreen({ onNavigate }: WorldBookManageScr
   return (
     <div className="h-full flex flex-col overflow-hidden bg-[#090A0F]">
       {/* Header */}
-      <div className="shrink-0 px-4 pt-3 pb-2 flex items-center gap-3 border-b border-white/5">
+      <div className="app-header shrink-0 px-4 pb-2 flex items-center gap-3 border-b border-white/5">
         <button
           onClick={() => {
             if (isDirty) {

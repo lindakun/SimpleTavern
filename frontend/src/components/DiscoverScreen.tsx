@@ -132,7 +132,7 @@ export default function DiscoverScreen({
       <div className="absolute top-1/2 left-0 w-80 h-80 bg-accent-purple opacity-5 blur-[120px] pointer-events-none" />
 
       {/* Top Search bar Header */}
-      <header className="flex-shrink-0 z-40 bg-background-deep/80 backdrop-blur-md px-6 py-4 flex items-center justify-between border-b border-outline-variant/20">
+      <header className="app-header flex-shrink-0 z-40 bg-background-deep/80 backdrop-blur-md px-6 py-4 flex items-center justify-between border-b border-outline-variant/20">
         <div className="flex items-center gap-2">
           <img
             src="/yuzuai_logo.png"

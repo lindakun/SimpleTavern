@@ -58,13 +58,21 @@
 html, body, #root {
   width: 100%;
   height: 100%;
+  min-height: 100%;
   overflow-x: hidden;
 }
 
-/* Use dvh for dynamic viewport height on mobile (fallback to 100vh) */
+/* 动态视口高度（移动端地址栏伸缩）+ iOS Safari 兜底 */
 @supports (height: 1dvh) {
   html, body, #root {
     height: 100dvh;
+    min-height: 100dvh;
+  }
+}
+
+@supports (-webkit-touch-callout: none) {
+  html, body, #root {
+    min-height: -webkit-fill-available;
   }
 }
 
@@ -135,13 +143,31 @@ input, textarea, select {
   overscroll-behavior: contain;
 }
 
-/* ---- 安全区域 ---- */
+/* ---- 安全区域（Edge-to-Edge：背景铺满，控件避让） ---- */
 .safe-bottom {
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
 .safe-top {
   padding-top: env(safe-area-inset-top, 0px);
+}
+
+/* 顶栏：背景延伸到刘海，内容高度约 4rem + 安全区 */
+.app-header {
+  padding-top: env(safe-area-inset-top, 0px);
+  min-height: calc(4rem + env(safe-area-inset-top, 0px));
+  box-sizing: border-box;
+}
+
+/* 底栏 / 输入区：背景延伸到 Home 指示条 */
+.app-bottom-bar {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  box-sizing: border-box;
+}
+
+/* 固定在 BottomNav 上方的浮层（底栏内容 4rem + Home 安全区） */
+.bottom-above-nav {
+  bottom: calc(4rem + env(safe-area-inset-bottom, 0px));
 }
 
 /* Content padding to avoid being hidden behind the bottom nav + safe area */
@@ -154,7 +180,7 @@ input, textarea, select {
   padding-bottom: calc(8rem + env(safe-area-inset-bottom, 0px));
 }
 
-/* 固定头部安全区域 */
+/* 固定头部安全区域（兼容旧用法） */
 .header-safe {
   padding-top: env(safe-area-inset-top, 0px);
 }
@@ -165,6 +191,7 @@ body.no-scroll {
   position: fixed;
   width: 100%;
   height: 100%;
+  height: 100dvh;
 }
 
 /* ---- 触摸选择优化 ---- */

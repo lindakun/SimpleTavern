@@ -28,7 +28,7 @@ export default function WelcomeScreen({ onNavigate, onGoogleLogin }: WelcomeScre
     );
   };
   return (
-    <div className="relative flex-1 flex flex-col justify-between overflow-hidden bg-background-deep p-6">
+    <div className="relative flex-1 flex flex-col justify-between overflow-hidden bg-background-deep p-6 safe-top safe-bottom">
       {/* Glow Rings */}
       <div className="absolute -top-1/4 -left-1/4 w-[60vw] h-[60vw] rounded-full bg-accent-pink opacity-15 blur-[100px] pointer-events-none" />
       <div className="absolute -bottom-1/4 -right-1/4 w-[60vw] h-[60vw] rounded-full bg-accent-purple opacity-15 blur-[100px] pointer-events-none" />

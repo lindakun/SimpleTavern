@@ -40,7 +40,7 @@ export default function HelpFeedbackScreen({ faqs, onNavigate }: HelpFeedbackScr
       <div className="absolute top-1/2 right-0 w-80 h-80 bg-accent-purple/5 rounded-full blur-[120px] pointer-events-none" />
 
       {/* Top sticky header conforming with: //button[.//span[text()='chevron_left']] */}
-      <header className="sticky top-0 z-40 bg-[#0F111A]/90 backdrop-blur-md px-6 h-16 flex items-center justify-between border-b border-white/5">
+      <header className="app-header sticky top-0 z-40 bg-[#0F111A]/90 backdrop-blur-md px-6 flex items-center justify-between border-b border-white/5">
         <button
           onClick={() => onNavigate(ScreenId.PROFILE)}
           className="flex items-center gap-1.5 pl-2 pr-3 py-1.5 rounded-full bg-surface-container/60 hover:bg-surface-elevated border border-accent-pink/30 hover:border-accent-pink/60 transition-all duration-200 cursor-pointer text-white shadow-[0_0_10px_rgba(232,121,199,0.1)] group/back"

@@ -62,7 +62,7 @@ export default function AuthLayout({
 
       {/* Header */}
       <header
-        className="z-50 flex items-center justify-between px-4 h-14 bg-background-deep/80 backdrop-blur-xl border-b border-outline-variant/30 safe-top shrink-0"
+        className="app-header z-50 flex items-center justify-between px-4 bg-background-deep/80 backdrop-blur-xl border-b border-outline-variant/30 shrink-0"
       >
         <button
           onClick={onBack}
@@ -96,7 +96,7 @@ export default function AuthLayout({
 
       {/* Footer - 键盘弹出时隐藏 */}
       {footer && !keyboardVisible && (
-        <div className="bg-background-deep/95 backdrop-blur-xl border-t border-outline-variant/30 px-5 py-3 safe-bottom z-10 shrink-0">
+        <div className="app-bottom-bar bg-background-deep/95 backdrop-blur-xl border-t border-outline-variant/30 px-5 py-3 z-10 shrink-0">
           {footer}
         </div>
       )}

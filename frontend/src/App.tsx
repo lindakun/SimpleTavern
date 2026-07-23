@@ -97,7 +97,7 @@ export default function App() {
 
   // ── Route rendering ──
   return (
-    <div className="h-dvh w-full bg-[#090A0F] text-[#E0E0E6] flex flex-col justify-self-center overflow-hidden max-w-lg mx-auto shadow-[0_0_80px_rgba(9,10,15,0.95)] border-x border-white/5 relative safe-top">
+    <div className="h-dvh w-full bg-[#090A0F] text-[#E0E0E6] flex flex-col justify-self-center overflow-hidden max-w-lg mx-auto relative sm:shadow-[0_0_80px_rgba(9,10,15,0.95)] sm:border-x sm:border-white/5">
       <AnimatePresence mode="wait">
         <Suspense fallback={<PageSkeleton />}>
           <div key={location.pathname} className="flex-1 flex flex-col min-h-0">

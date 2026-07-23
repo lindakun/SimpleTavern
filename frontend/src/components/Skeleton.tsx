@@ -175,7 +175,7 @@ export function PageSkeleton() {
   return (
     <div className="relative flex-1 bg-background-deep text-white pb-24 animate-pulse">
       {/* 顶部导航 */}
-      <div className="sticky top-0 z-40 bg-background-deep/80 backdrop-blur-md px-6 h-16 flex items-center justify-between border-b border-outline-variant/20">
+      <div className="app-header sticky top-0 z-40 bg-background-deep/80 backdrop-blur-md px-6 flex items-center justify-between border-b border-outline-variant/20">
         <SkeletonBlock className="w-8 h-8 rounded-full" />
         <SkeletonBlock className="h-4 w-24" />
         <SkeletonBlock className="w-8 h-8 rounded-full" />

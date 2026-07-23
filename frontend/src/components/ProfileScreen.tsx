@@ -158,7 +158,7 @@ export default function ProfileScreen({
       <div className="absolute top-1/2 left-0 w-80 h-80 bg-accent-purple opacity-5 blur-[110px] pointer-events-none" />
 
       {/* Header */}
-      <header className="sticky top-0 z-40 bg-[#0F111A]/90 backdrop-blur-md px-6 h-16 flex items-center justify-between border-b border-white/5">
+      <header className="app-header sticky top-0 z-40 bg-[#0F111A]/90 backdrop-blur-md px-6 flex items-center justify-between border-b border-white/5">
         <h1 className="text-sm font-bold tracking-widest text-[#ffd8ee] font-headline-lg-mobile">
           个人中心
         </h1>

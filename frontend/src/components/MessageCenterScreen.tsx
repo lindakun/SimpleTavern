@@ -237,7 +237,7 @@ export default function MessageCenterScreen({
       <div className="absolute top-0 left-0 w-96 h-96 bg-accent-pink opacity-10 blur-[130px] pointer-events-none" />
       <div className="absolute bottom-0 right-0 w-96 h-96 bg-accent-purple opacity-10 blur-[130px] pointer-events-none" />
 
-      <header className="sticky top-0 z-40 bg-[#0F111A]/90 backdrop-blur-md px-6 h-16 flex items-center justify-between border-b border-white/5">
+      <header className="app-header sticky top-0 z-40 bg-[#0F111A]/90 backdrop-blur-md px-6 flex items-center justify-between border-b border-white/5">
         <h1 className="text-lg font-bold tracking-widest text-[#ffade2] font-headline-lg-mobile">
           {isSelectionMode ? `已选 ${selectedIds.size} 项` : '消息中心'}
         </h1>
@@ -349,7 +349,7 @@ export default function MessageCenterScreen({
       </main>
 
       {isSelectionMode && (
-        <div className="fixed bottom-16 left-0 right-0 z-50 max-w-lg mx-auto safe-bottom">
+        <div className="fixed bottom-above-nav left-0 right-0 z-50 max-w-lg mx-auto">
           <div className="bg-[#0F111A]/95 backdrop-blur-md border-t border-accent-pink/20 px-6 py-3 flex items-center justify-between">
             <button onClick={exitSelectionMode} className="text-xs text-on-surface-variant hover:text-white transition-colors cursor-pointer px-3 py-2">取消</button>
             <button onClick={handleBatchDelete} disabled={selectedIds.size === 0 || batchDelete.isPending}

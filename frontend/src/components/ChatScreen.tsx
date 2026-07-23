@@ -455,7 +455,7 @@ export default function ChatScreen({
       <div className="absolute top-1/6 -left-20 w-72 h-72 bg-accent-pink/5 rounded-full blur-[100px] pointer-events-none" />
       <div className="absolute bottom-1/6 -right-20 w-72 h-72 bg-accent-purple/5 rounded-full blur-[100px] pointer-events-none" />
 
-      <header className="flex-shrink-0 z-40 bg-[#0F111A]/95 backdrop-blur-md h-16 px-4 flex items-center justify-between border-b border-white/5">
+      <header className="app-header flex-shrink-0 z-40 bg-[#0F111A]/95 backdrop-blur-md px-4 flex items-center justify-between border-b border-white/5">
         <button
           type="button"
           onClick={() => (onGoBack ? onGoBack() : onNavigate(ScreenId.MESSAGE_CENTER))}
@@ -810,7 +810,7 @@ export default function ChatScreen({
         </div>
       </main>
 
-      <div className="flex-shrink-0 w-full bg-[#0B0720]/95 border-t border-outline-variant/20 p-3 flex flex-col gap-2">
+      <div className="app-bottom-bar flex-shrink-0 w-full bg-[#0B0720]/95 border-t border-outline-variant/20 p-3 flex flex-col gap-2">
         <form onSubmit={(e) => handleSend(e)} className="w-full flex items-center gap-2 p-1.5 bg-surface-container/80 rounded-xl border border-outline-variant/40 backdrop-blur-md">
           <button
             type="button"
