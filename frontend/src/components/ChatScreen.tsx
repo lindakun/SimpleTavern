@@ -810,7 +810,8 @@ export default function ChatScreen({
         </div>
       </main>
 
-      <div className="app-bottom-bar flex-shrink-0 w-full bg-[#0B0720]/95 border-t border-outline-variant/20 p-3 flex flex-col gap-2">
+      {/* 安全区只由下方 inline BottomNav 承担，此处不再加 app-bottom-bar，避免与底栏之间出现大块空白 */}
+      <div className="flex-shrink-0 w-full bg-[#0B0720]/95 border-t border-outline-variant/20 p-3 flex flex-col gap-2">
         <form onSubmit={(e) => handleSend(e)} className="w-full flex items-center gap-2 p-1.5 bg-surface-container/80 rounded-xl border border-outline-variant/40 backdrop-blur-md">
           <button
             type="button"

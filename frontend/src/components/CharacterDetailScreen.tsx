@@ -420,7 +420,7 @@ export default function CharacterDetailScreen({
       </main>
 
       {/* Sticky Bottom Actions Strip */}
-      <div className="fixed bottom-above-nav left-1/2 -translate-x-1/2 w-full max-w-lg z-30 px-6 py-4 bg-background-deep/90 border-t border-outline-variant/30 flex items-center justify-center gap-4 shadow-[0_-5px_25px_rgba(11,7,32,0.8)]">
+      <div className="fixed bottom-above-nav left-1/2 -translate-x-1/2 w-full max-w-lg z-30 px-6 py-2.5 bg-background-deep/90 border-t border-outline-variant/30 flex items-center justify-center gap-3 shadow-[0_-5px_25px_rgba(11,7,32,0.8)]">
         <button
           onClick={() => onNavigate(ScreenId.DISCOVER)}
           className="flex-1 h-12 bg-surface-elevated/80 hover:bg-surface-elevated border border-outline-variant/40 text-[#ffd8ee] rounded-xl font-bold text-xs shadow-md active:scale-95 transition-transform cursor-pointer"
